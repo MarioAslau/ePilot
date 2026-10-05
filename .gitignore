@@ -1,0 +1,51 @@
+# ─── Dependencies ───────────────────────────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+
+# ─── Build outputs ──────────────────────────────────────────────────────────────
+dist/
+build/
+.serverless/
+.build/
+
+# ─── Environment & secrets ──────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ─── AWS & Serverless ───────────────────────────────────────────────────────────
+.serverless/
+serverless-state.json
+
+# ─── Vite ───────────────────────────────────────────────────────────────────────
+vite.config.ts.timestamp-*
+
+# ─── Test coverage ──────────────────────────────────────────────────────────────
+coverage/
+playwright-report/
+test-results/
+
+# ─── TypeScript ─────────────────────────────────────────────────────────────────
+*.tsbuildinfo
+
+# ─── macOS ──────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ─── IDEs ───────────────────────────────────────────────────────────────────────
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ─── Logs ───────────────────────────────────────────────────────────────────────
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

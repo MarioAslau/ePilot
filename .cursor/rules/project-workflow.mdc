@@ -1,0 +1,138 @@
+---
+description: Project workflow and engineering requirements for the epilot BTC prediction game
+alwaysApply: true
+---
+
+# Project workflow
+
+## Goal
+
+Build the epilot BTC/USD prediction assignment incrementally.
+Deliver a reliable, understandable and deployed MVP before optional modes.
+
+## Required context
+
+Before starting work:
+- Read docs/implementation-plan.md.
+- Identify the active ticket and its acceptance criteria.
+- Read relevant sections of docs/architecture.md.
+- Inspect existing code before proposing changes.
+
+Do not assume ordinary documentation is automatically loaded.
+Explicitly read the relevant files.
+
+## Ticket execution
+
+- Work on one ticket at a time.
+- Before editing, explain the approach and affected files briefly.
+- Implement only the active ticket.
+- Preserve unrelated existing changes.
+- Prefer simple code and small, reviewable changes.
+- Run appropriate checks and fix failures introduced by your changes.
+- Never claim a check passed unless it actually ran.
+- Do not begin the next ticket automatically.
+- Do not commit or push unless user explicitly asks.
+
+After implementing a ticket, report:
+1. What changed and why.
+2. Checks run and their results.
+3. Exact manual testing steps.
+4. Remaining limitations or decisions.
+5. Suggested commit message.
+
+Mark the ticket Awaiting manual verification.
+Stop and wait for user to test.
+Mark it Complete only after user confirms.
+
+## Documentation maintenance
+
+After each ticket:
+- Update its status in docs/implementation-plan.md.
+- Add a short factual implementation diary entry.
+
+When relevant:
+- Update docs/architecture.md for changes to decisions, API contracts,
+  data models, workflows, scoring, security or recovery.
+- Update README.md for changes to functionality, setup, commands,
+  testing or deployment.
+
+Describe actual implementation honestly.
+Clearly distinguish planned behaviour from implemented behaviour.
+Do not create additional documentation files without a clear reason.
+
+## Core game requirements
+
+- New players start with score 0.
+- Show backend score and latest available BTC/USD price.
+- Allow Up or Down.
+- Permit only one active prediction per player.
+- Enforce the active-prediction restriction in the backend.
+- The backend owns entry prices, timestamps and deadlines.
+- Do not trust client-supplied scores, prices or results.
+- Do not settle before at least 60 seconds have elapsed.
+- Compare the resolution price with the recorded entry price.
+- Equal price means remain pending and retry.
+- Standard win adds 1; standard loss subtracts 1.
+- Persist scores and predictions in DynamoDB.
+- Repeated requests must not create duplicate rounds or score twice.
+- Browser closure must not stop backend resolution.
+- Restore anonymous identity and active state after reopening.
+
+## Agreed stack
+
+- React, TypeScript and Vite.
+- Tailwind CSS and Lucide.
+- TanStack Query with HTTP polling.
+- Zod at untrusted boundaries.
+- API Gateway HTTP API.
+- Focused TypeScript AWS Lambda handlers.
+- DynamoDB.
+- Step Functions Standard.
+- Serverless Framework.
+- Coinbase Exchange public BTC-USD API.
+- AWS Amplify Hosting.
+- Vitest, React Testing Library and Playwright.
+- CloudWatch structured logs and actionable alarms.
+
+Do not introduce CDK, WebSockets, user accounts or additional services
+without explaining the tradeoff and agreeing the change with user.
+
+## Engineering requirements
+
+- Keep handlers thin and domain rules independently testable.
+- Use decimal-safe price comparison.
+- Validate requests and provider responses.
+- Use conditional DynamoDB writes and transactions for concurrency.
+- Make mutation and settlement effects idempotent.
+- Keep display-price caching separate from settlement pricing.
+- Use injected clocks/providers for deterministic tests.
+- Never shorten the production minimum 60-second wait.
+- Show honest loading, pending, stale-data and error states.
+- Never commit secrets or log anonymous access tokens.
+- Use least-privilege IAM where practical.
+- Explain material changes to the agreed architecture before implementing.
+
+## Optional features
+
+Standard scoring remains +1/-1.
+Double Down and Redemption are separate optional modes.
+Implement them only after the MVP gate passes.
+Document and test their scoring explicitly.
+Use independent feature flags.
+
+## Skills
+
+At T01, install and verify Grill Me and Ponytail for Cursor.
+Do not assume they are installed or automatically running.
+
+- Grill Me: clarify important planning decisions before application code.
+- Ponytail: review simplification after relevant tests pass.
+- Preserve behaviour, contracts and correctness safeguards.
+- Inspect proposed simplifications before applying them.
+
+## Learning
+
+user must be able to explain the implementation in an interview.
+Explain important decisions, unfamiliar concepts and failure scenarios.
+Do not hide complexity behind generated code or claim guarantees
+the implementation does not provide.
