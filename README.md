@@ -17,16 +17,17 @@ Application and AWS infrastructure are not implemented yet.
 
 Planned:
 - Anonymous player starts with score 0.
-- Display current score and latest available BTC/USD price.
+- Display current score, accuracy stats and latest available BTC/USD price.
 - Predict Up or Down.
 - One active prediction per player.
 - Backend waits at least 60 seconds.
 - Equal entry/resolution price keeps the round pending.
 - Correct prediction adds 1 point.
 - Incorrect prediction subtracts 1 point.
-- Backend persists score and predictions.
+- Backend persists score, wins, losses and predictions.
 - Browser reopening restores identity and active state.
 - Backend resolution continues when the browser is closed.
+- Result receipt shows entry price, compared price and trade timestamp.
 
 ## Optional features
 

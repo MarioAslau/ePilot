@@ -220,6 +220,8 @@ Player:
 - playerId
 - accessTokenHash
 - score
+- wins          (count of correct predictions; displayed in ScoreCard at MVP)
+- losses        (count of incorrect predictions; displayed in ScoreCard at MVP)
 - activePredictionId
 - createdAt
 
@@ -274,21 +276,58 @@ Entry and resolution quotes follow their own freshness requirements.
 
 ## Concurrency and idempotency
 
-Prediction creation transaction:
-- Require player has no active prediction.
-- Create prediction.
-- Set activePredictionId.
-- Record request idempotency information.
+### Idempotency key
 
-Settlement transaction:
-- Require prediction is unresolved.
-- Require player's active ID matches the prediction.
-- Store outcome and quote.
-- Add score delta.
-- Clear activePredictionId.
+Before submitting a prediction the browser generates a key with
+`crypto.randomUUID()` (built into all modern browsers, no library needed).
+The key is stored client-side while the request is in flight and reused
+on any retry.
 
-Transactions either apply all required changes or none.
-Duplicate execution is possible; duplicate score effects must be prevented.
+The backend stores one Idempotency record per `(playerId, idempotencyKey)`:
+
+```
+playerId:       string
+idempotencyKey: string   (UUID v4 from the browser)
+direction:      "up" | "down"
+predictionId:   string
+expiresAt:      TTL, 24 hours
+```
+
+On a repeated request with a known key: return the stored prediction
+immediately without re-executing creation logic.
+On a repeated request with a known key but a different direction: return
+`409 IDEMPOTENCY_CONFLICT`. Do not process.
+
+This makes `POST /predictions` safe to retry after a lost response.
+See D4 in the decision log.
+
+### Prediction creation transaction
+
+The DynamoDB transaction applies all of the following atomically, or none:
+- Condition: player has no `activePredictionId`.
+- Write: new Prediction record.
+- Write: set `activePredictionId` on the Player record.
+- Write: Idempotency record for this request.
+
+If the condition fails (player already has an active prediction):
+return `409 ACTIVE_ROUND`. The transaction condition — not application
+code — is what enforces the one-active-prediction rule. Two simultaneous
+requests with different keys both hit the condition; only the first to
+land succeeds.
+
+### Settlement transaction
+
+The DynamoDB transaction applies all of the following atomically, or none:
+- Condition: prediction status is not yet resolved.
+- Condition: player's `activePredictionId` matches this prediction.
+- Write: outcome, resolution price, `resolutionTradeTime` and quote metadata.
+- Write: score delta on Player record.
+- Write: increment `wins` or `losses` on Player record depending on outcome.
+- Write: clear `activePredictionId` on Player record.
+
+Transactions either apply all changes or none.
+Duplicate settlement calls return the stored outcome without re-applying
+the score delta.
 
 ## Workflow startup and recovery
 
@@ -469,7 +508,7 @@ separate from data-fetching.
 | DirectionButtons | Up/Down buttons with locked and loading states |
 | RoundTicket | Entry price, latest price, step tracker, wait ring, state copy |
 | ResultReceipt | Outcome badge, score delta, entry/compared price, timestamps |
-| ScoreCard | Numeric score, accuracy stats after first round |
+| ScoreCard | Numeric score; after the first settled round also shows accuracy %, wins and losses counts |
 | RoundHistory | Settled prediction list; honest placeholder until T11 |
 | HowItWorks | Expandable accordion; MVP content in from T02 |
 | StatusNotice | Info / warn / error inline notices with icon, copy and action |
@@ -811,3 +850,81 @@ If a player's `localStorage` is cleared, their token is gone and the
 account is inaccessible. The DynamoDB record remains orphaned. This is
 a documented limitation of anonymous, device-local identity — not a
 fixable bug without introducing accounts.
+
+---
+
+### D4 — Idempotency: browser-generated UUID key, backend stores (playerId, key, direction, predictionId), two 409 codes
+
+**Decision.**
+Before submitting a prediction, the browser generates an idempotency key
+with `crypto.randomUUID()`. The key is included in the request body and
+reused on any retry of the same submission. The backend stores one
+Idempotency record per `(playerId, idempotencyKey)` containing the
+direction, the created `predictionId`, and a 24-hour TTL. A second
+request with the same key returns the stored prediction without re-running
+creation logic. A second request with the same key but a different
+direction returns `409 IDEMPOTENCY_CONFLICT`.
+
+Concurrent submissions from different tabs use different keys and both
+reach the prediction creation transaction. The transaction condition
+(player must have no `activePredictionId`) ensures only the first to land
+succeeds; the second receives `409 ACTIVE_ROUND`.
+
+**Reason.**
+A lost HTTP response (backend succeeded, browser never received it) is a
+realistic failure mode on mobile networks. Without idempotency, a retry
+creates a duplicate prediction and potentially double-scores. The key lets
+the backend recognise a retry and return the original result safely.
+`crypto.randomUUID()` is available in all modern browsers with no library
+dependency. The transaction condition is the authoritative enforcement
+mechanism for one-active-prediction; application-level locking is not needed.
+
+**Alternatives considered.**
+- Server-generated idempotency key: requires a pre-registration round
+  trip before every prediction. More complex with no benefit over
+  client-generated UUIDs for this use case.
+- Optimistic locking only (no idempotency record): prevents double-creation
+  from concurrent tabs but does not handle the lost-response/retry case.
+
+**Tradeoff or limitation.**
+Idempotency records are stored per player and expire after 24 hours.
+A player who loses their response and retries after 24 hours would
+create a new prediction rather than recovering the original. This window
+is acceptable for a game with 60-second rounds.
+
+---
+
+### D5 — Accuracy stats (wins, losses, accuracy %) included in MVP ScoreCard
+
+**Decision.**
+The Player record stores `wins` and `losses` counts alongside `score`.
+Both are initialised to 0 on player creation and incremented atomically
+in the settlement transaction. `GET /me` returns all three values.
+The ScoreCard displays accuracy percentage and wins/losses counts after
+the first settled round. For new players with no settled rounds, only
+the score and a brief explanation are shown.
+
+The recovery scanner (`recoverStuckPredictions`) is built and deployed
+as part of T08, not deferred to T10. All workflow reliability work —
+startup, resolution, recovery — lives in one ticket.
+
+**Reason.**
+The prototype already shows accuracy stats and the data needed (wins,
+losses) is a trivial addition to the settlement transaction. Deferring
+it would require a data migration later. Including it at MVP means the
+ScoreCard is honest and complete from the first real round.
+The recovery scanner belongs in T08 because T08 owns the full
+resolution lifecycle; splitting it into T10 would leave T08 in a state
+where stuck predictions have no recovery path during production testing.
+
+**Alternatives considered.**
+- Score only at MVP, stats at T11: avoids adding wins/losses to the
+  data model early, but requires a backfill for existing players.
+- Recovery scanner at T10: keeps T08 smaller but leaves a gap in
+  production reliability between T08 and T10 verification.
+
+**Tradeoff or limitation.**
+Accuracy percentage is only meaningful after several rounds. For a player
+with one round it shows 100% or 0%, which is technically correct but not
+very informative. The ScoreCard hides stats until at least one round
+is settled to avoid this edge case looking odd.

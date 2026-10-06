@@ -10,7 +10,7 @@ Then add optional features that demonstrate product judgment.
 
 - Active ticket: T01
 
-- Status: Not started
+- Status: In progress
 
 - Starting point: Git repository created; application not implemented.
 
@@ -119,7 +119,7 @@ A local fixture view helps test presentation without waiting for markets. It is 
 
 - [x] T00 — Establish project documentation
 
-- [ ] T01 — Verify skills, clarify architecture and approve UI
+- [ ] T01 — Verify skills, clarify architecture and approve UI (in progress)
 
 - [ ] T02 — Scaffold TypeScript projects and testable UI
 
@@ -187,7 +187,7 @@ docs: establish project workflow and implementation plan
 
 ## T01 — Verify skills, clarify architecture and approve UI
 
-Status: Not started
+Status: In progress
 
 Dependencies: T00.
 
@@ -432,7 +432,7 @@ Dependencies: T04.
 
 Tasks:
 
-- POST /players creates a player ID and generates an access token with `crypto.randomBytes(32).toString('hex')`. Return the raw token to the browser once; never store it on the server. Store the SHA-256 hash of the token on the Player record in DynamoDB. See D3 in architecture.md decision log.
+- POST /players creates a player ID and generates an access token with `crypto.randomBytes(32).toString('hex')`. Return the raw token to the browser once; never store it on the server. Store the SHA-256 hash of the token on the Player record in DynamoDB. Initialise score, wins and losses at 0. See D3 in architecture.md decision log.
 
 - Store player ID and raw token in browser localStorage.
 
@@ -518,21 +518,17 @@ Dependencies: T06.
 
 Tasks:
 
-- Authenticate and validate direction/idempotency key.
+- Authenticate and validate direction and idempotency key. The browser generates the key with `crypto.randomUUID()` before submission and reuses it on retry. See D4 in architecture.md decision log.
+
+- Check the Idempotency record: if `(playerId, idempotencyKey)` already exists, return the stored prediction immediately. If the key exists with a different direction, return `409 IDEMPOTENCY_CONFLICT`.
 
 - Fetch entry quote on the backend.
 
 - Record server createdAt and dueAt.
 
-- Transactionally create prediction and lock player.
-
-- Enforce no existing active prediction.
-
-- Store retry/idempotency information.
+- Transactionally create prediction and lock player. Transaction conditions: player has no `activePredictionId`; writes Prediction, updates Player, writes Idempotency record atomically. If condition fails return `409 ACTIVE_ROUND`.
 
 - Return the original prediction for a duplicate request.
-
-- Reject reuse of a key with a different payload.
 
 - Implement Up/Down submission, immediately locked controls and a server-confirmed round ticket.
 - Show accepted quote/time, direction and a minimum-wait countdown from server timestamps. At zero show Checking price; do not invent a result.
@@ -586,7 +582,7 @@ Tasks:
 
 - Provider failure: retry/backoff without scoring.
 
-- Differing price: transactionally settle, update score and clear lock.
+- Differing price: transactionally settle, update score, increment wins or losses, and clear lock.
 
 - Condition settlement on unresolved status and matching active ID.
 
@@ -628,6 +624,8 @@ Acceptance:
 
 - Score effect occurs once despite retries.
 
+- recoverStuckPredictions scanner is deployed and tested; stuck prediction auto-recovers within five minutes.
+
 - Startup and workflow failures have a documented recovery path.
 
 Suggested commit:
@@ -665,7 +663,8 @@ Tasks:
 - Finish the Hunch step tracker, timer ring, result receipt and source/freshness copy. Label temporary market movement as not final.
 - Test focus when buttons are replaced by a round ticket; announce transitions once, never every timer tick.
 - If rounded receipt values hide the winning difference, show enough precision to explain the actual comparison.
-- Check that history placeholders and any statistics are honest before T11.
+- Render ScoreCard with numeric score for new players; after the first settled round also show accuracy percentage and wins/losses counts from the `/me` response (MVP, not deferred to T11). Statistics must accurately reflect only settled rounds.
+- Check that history placeholders are honest before T11.
 
 Tests:
 
@@ -1024,6 +1023,22 @@ If time runs short:
 - Decision: Cursor-native project rule; four maintained documents plus design reference assets. UI spec lives in architecture.md; reference assets added to docs/design/ during T01.
 
 - Limitations: Application not implemented. Design reference files (docs/design/) not yet added to the repository.
+
+- Commit: Pending.
+
+### T01
+
+- Status: In progress.
+
+- Changed: Conducted bounded Grill Me architecture review. Agreed five decisions (D1–D5) and recorded them in the architecture decision log. Updated architecture.md (resolution price model, workflow startup, anonymous identity, concurrency/idempotency section, data model, UI design section). Updated implementation-plan.md (T03, T04, T05, T07, T08, T09 task details). Updated README.md (how resolution works, anonymous persistence, standard functionality). UI specification was copied from the implementation plan into architecture.md as a separate task before this review. Skill installation (Grill Me, Ponytail) and reference file placement (docs/design/) remain to be completed.
+
+- Checks: Document consistency reviewed manually after each decision. No code, deployment or test execution performed.
+
+- Manual verification: Pending — Grill Me review agreed with Mario. Skill installation and invocation not yet verified.
+
+- Decision or tradeoff: D1 (resolution price + trade timestamp), D2 (sync StartExecution + recovery scanner, no Streams), D3 (randomBytes(32) token, SHA-256 hash, timingSafeEqual), D4 (UUID idempotency key, two 409 codes), D5 (wins/losses at MVP, recovery scanner in T08).
+
+- Remaining limitation: Skills not yet installed. Design reference files (docs/design/) not yet added to the repository. T01 acceptance requires skill verification before marking complete.
 
 - Commit: Pending.
 
