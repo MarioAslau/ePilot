@@ -8,9 +8,9 @@ Then add optional features that demonstrate product judgment.
 
 ## Current progress
 
-- Active ticket: T01
+- Active ticket: T02
 
-- Status: In progress
+- Status: Not started
 
 - Starting point: Git repository created; application not implemented.
 
@@ -60,12 +60,12 @@ The architecture file was not supplied. Before code changes, copy the approved U
 
 The uploaded Markdown had escaped headings and bullets. This revision restores normal Markdown formatting.
 
-### Design references to add to the repository during T01
+### Design references added to the repository during T01
 
-- `docs/design/hunch-prototype.html`: the supplied HTML, renamed to this stable path.
-- `docs/design/desktop-ready.png`: screenshot 19.08.48, ready state.
-- `docs/design/desktop-rules-open.png`: screenshot 19.08.51, rules expanded.
-- Screenshot 19.08.55 was unavailable and has not been reviewed.
+- `docs/design/hunch-prototype.html`: the supplied HTML, renamed to this stable path. ✅
+- `docs/design/desktop-ready.png`: screenshot 19.08.48, ready state. ✅
+- `docs/design/desktop-rules-open.png`: screenshot 19.08.51, rules expanded. ✅
+- `docs/design/desktop-active.png`: screenshot 19.08.55, active prediction with countdown. ✅
 
 `docs/design/` contains reference assets, not another maintained planning document. Preserve the prototype as a design reference. Implement the product in React/TypeScript rather than shipping its in-page simulated server. No mobile screenshot was supplied; confirm the responsive layout in T01/T02. Double Down and Redemption are not implemented in the supplied prototype; design their offers before T12/T13.
 
@@ -119,7 +119,7 @@ A local fixture view helps test presentation without waiting for markets. It is 
 
 - [x] T00 — Establish project documentation
 
-- [ ] T01 — Verify skills, clarify architecture and approve UI (in progress)
+- [x] T01 — Verify skills, clarify architecture and approve UI
 
 - [ ] T02 — Scaffold TypeScript projects and testable UI
 
@@ -187,7 +187,7 @@ docs: establish project workflow and implementation plan
 
 ## T01 — Verify skills, clarify architecture and approve UI
 
-Status: In progress
+Status: Complete
 
 Dependencies: T00.
 
@@ -209,9 +209,10 @@ Tasks:
 
 - Verify each skill is discoverable and can be explicitly invoked.
 
-- Follow the agreed installation: copied skills under `.cursor/skills/grill-me/` and `.cursor/skills/ponytail/`; full Ponytail source as an unmodified submodule at `vendor/ponytail/`; install project Cursor hooks from that checkout. Reconcile existing installation first rather than installing twice.
-- Inspect the current upstream installer before executing it; preserve unrelated hooks and the project workflow rule. Generated machine-specific hook paths require local setup on each machine; document this in README. Do not add a second always-on Ponytail rule alongside hooks.
-- Verify skill invocation and native Cursor hook activation separately. Document observed behaviour and limitations rather than assuming all integrations are identical.
+- ✅ Skills installed: `.cursor/skills/grill-me/SKILL.md` and `.cursor/skills/ponytail/SKILL.md`. Full Ponytail source at `vendor/ponytail/`. Hooks in `.cursor/hooks.json`.
+- ✅ Hook limitation documented in README: absolute machine-specific paths require re-running the installation script on each new machine.
+- ✅ Grill Me verified: explicitly invoked this session via `/grill-me`; `disable-model-invocation: true` confirmed.
+- ✅ Ponytail verified: hook activated at session start (PONYTAIL MODE ACTIVE confirmed).
 
 - Run a bounded Grill Me review of the MVP.
 
@@ -1028,71 +1029,24 @@ If time runs short:
 
 ### T01
 
-- Status: In progress.
+- Status: Complete.
 
-- Changed: Conducted bounded Grill Me architecture review. Agreed five decisions (D1–D5) and recorded them in the architecture decision log. Updated architecture.md (resolution price model, workflow startup, anonymous identity, concurrency/idempotency section, data model, UI design section). Updated implementation-plan.md (T03, T04, T05, T07, T08, T09 task details). Updated README.md (how resolution works, anonymous persistence, standard functionality). UI specification was copied from the implementation plan into architecture.md as a separate task before this review. Skill installation (Grill Me, Ponytail) and reference file placement (docs/design/) remain to be completed.
+- Changed: Conducted bounded Grill Me architecture review. Agreed five decisions (D1–D5) and recorded them in the architecture decision log. Updated architecture.md (resolution price model, workflow startup, anonymous identity, concurrency/idempotency section, data model, UI design section). Updated implementation-plan.md (T03, T04, T05, T07, T08, T09 task details). Updated README.md (how resolution works, anonymous persistence, standard functionality, skills). UI specification copied from implementation plan into architecture.md. Both skills installed and verified. Design reference files added to docs/design/ (prototype HTML + three desktop screenshots including active-prediction state).
 
-- Checks: Document consistency reviewed manually after each decision. No code, deployment or test execution performed.
+- Checks: Skills verified by locating and reading the actual skill files. Ponytail hook activation confirmed via session hook context. Document consistency reviewed manually after each decision. No code, deployment or test execution performed.
 
-- Manual verification: Pending — Grill Me review agreed with Mario. Skill installation and invocation not yet verified.
+- Skill verification:
+  - Grill Me: `.cursor/skills/grill-me/SKILL.md` present and readable. Correctly invoked this session via `/grill-me`. `disable-model-invocation: true` means it must be explicitly called; the model cannot invoke it automatically.
+  - Ponytail: `.cursor/skills/ponytail/SKILL.md` present. Full source at `vendor/ponytail/`. Hooks installed in `.cursor/hooks.json` with `sessionStart` and `beforeSubmitPrompt` triggers. Active this session (PONYTAIL MODE ACTIVE confirmed).
+  - Hook limitation: `.cursor/hooks.json` uses absolute machine-specific paths. Any machine cloning this repo must re-run the Ponytail hook installation script before hooks activate. Document this in README.
+
+- Manual verification: Confirmed by Mario. Grill Me review, skill installation, hook verification and design reference files all complete.
 
 - Decision or tradeoff: D1 (resolution price + trade timestamp), D2 (sync StartExecution + recovery scanner, no Streams), D3 (randomBytes(32) token, SHA-256 hash, timingSafeEqual), D4 (UUID idempotency key, two 409 codes), D5 (wins/losses at MVP, recovery scanner in T08).
 
-- Remaining limitation: Skills not yet installed. Design reference files (docs/design/) not yet added to the repository. T01 acceptance requires skill verification before marking complete.
+- Remaining limitation: Ponytail hooks use absolute machine-specific paths; must be reinstalled on each new machine. No mobile screenshot was supplied; responsive layout to be confirmed during T02.
 
 - Commit: Pending.
-
-### T01
-
-- Status: Awaiting manual verification.
-- What changed:
-  - `.cursor/skills/grill-me/SKILL.md` and `agents/openai.yaml` — copied from
-    mattpocock/skills via `npx skills@latest add mattpocock/skills --agent cursor
-    --copy --skill grill-me -y`. The skills CLI (v1.7.0) placed its own copy in
-    `.agents/skills/grill-me/`; the `.cursor/skills/` copy was made manually to
-    match Cursor's native skill directory.
-  - `.cursor/skills/ponytail/SKILL.md` — copied from DietrichGebert/ponytail via
-    `npx skills@latest add DietrichGebert/ponytail --agent cursor --copy --skill
-    ponytail -y`. Same dual-directory note applies.
-  - `vendor/ponytail/` — git submodule pinned to `552acd5` from
-    `https://github.com/DietrichGebert/ponytail`. Added with
-    `git submodule add … vendor/ponytail`. Submodule is read-only: no files
-    inside it are modified by this project.
-  - `.cursor/hooks.json` — generated by
-    `node vendor/ponytail/scripts/cursor-hooks.js install --project`. Contains
-    machine-specific absolute paths; gitignored; not committed.
-  - `.gitignore` — added `.cursor/hooks.json` entry.
-  - `README.md` — added skill descriptions, hook behaviour, developer setup and
-    uninstall instructions.
-  - `.agents/skills/` — created by the skills CLI as its own registry; committed
-    alongside `.cursor/skills/`.
-- Checks run and results:
-  - `node -e "JSON.parse(…'hooks.json')"` — valid JSON, exit 0.
-  - `ls vendor/ponytail/hooks/ vendor/ponytail/scripts/` — all required scripts
-    present.
-  - `ponytail.mdc` — absent from `.cursor/rules/`; confirmed.
-  - `project-workflow.mdc` — unchanged; confirmed.
-- Manual verification: Passed. sessionStart delivered `PONYTAIL MODE ACTIVE — level: full` in a new chat. Level switch to `lite` and back to `full` confirmed via beforeSubmitPrompt hook. Skills visible in Cursor `/` menu.
-- Decision or tradeoff:
-  - Submodule at `vendor/ponytail/` rather than a gitignored clone. Pins a
-    specific commit and is reproducible with one command
-    (`git submodule update --init`).
-  - `.cursor/hooks.json` is gitignored (machine-specific absolute paths). Each
-    developer re-runs the installer.
-  - `ponytail.mdc` is not installed. The hooks manage level activation. Adding
-    the rule file would silently disable hooks for all workspace users.
-  - Skills CLI v1.7.0 warns about Node 20 (requires ≥22) but runs correctly.
-    Its canonical install directory is `.agents/skills/`; `.cursor/skills/` is
-    Cursor's native path and was populated separately.
-- Remaining limitation:
-  - Hook behaviour was verified by Ponytail upstream on Cursor 3.20.17; this
-    project runs 3.8.22. Live session output is the authoritative evidence.
-  - Subagents and cloud agents do not receive the ruleset via hooks.
-  - `sessionStart` is fire-and-forget; a prompt sent within the first fraction
-    of a second of a new chat may miss the context attachment.
-  - Mode state (`~/.cursor/.ponytail-active`) is one flag per user, shared
-    across all open Cursor conversations.
-- Commit: Pending after Mario's verification.
 
 ### Future entry template
 

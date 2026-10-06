@@ -1,0 +1,1053 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hunch: one-minute BTC/USD prediction game (prototype)</title>
+<meta name="description" content="Predict whether BTC/USD will be higher or lower after at least a minute. Points only. Interactive design prototype with mock data.">
+<meta property="og:title" content="Hunch: one-minute BTC/USD prediction game">
+<meta property="og:description" content="Predict the direction. Wait a minute. See a transparent result. Build your personal score.">
+<meta property="og:type" content="website">
+<meta name="color-scheme" content="dark">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
+<style>
+/* ============ TOKENS ============ */
+:root{
+  /* surfaces */
+  --bg:#121418; --surface:#1A1D23; --raised:#22262D; --line:#2C3139; --line-strong:#3B414B;
+  /* text */
+  --text:#ECEEF1; --muted:#A3ABB7; --subtle:#8A93A0;
+  /* brand + semantic */
+  --accent:#F2C14E; --accent-ink:#1A1408; --accent-soft:rgba(242,193,78,.12);
+  --up:#26C281; --up-ink:#04150D; --up-soft:rgba(38,194,129,.12); --up-line:rgba(38,194,129,.35);
+  --down:#F2555F; --down-ink:#1E0508; --down-soft:rgba(242,85,95,.12); --down-line:rgba(242,85,95,.35);
+  --warn:#F0A53A; --warn-soft:rgba(240,165,58,.12);
+  /* type */
+  --font:"Archivo", ui-sans-serif, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --t-display:clamp(2.25rem, 1.6rem + 2.6vw, 3rem);
+  --t-h1:1.375rem; --t-h2:1rem; --t-body:.9375rem; --t-small:.8125rem; --t-cap:.75rem;
+  /* spacing (4px grid) */
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:20px; --s6:24px; --s8:32px; --s10:40px; --s12:48px;
+  /* radius: pills 999, controls 10, cards 14 */
+  --r-sm:6px; --r-md:10px; --r-lg:14px;
+  /* depth */
+  --shadow:0 1px 0 rgba(255,255,255,.03) inset, 0 12px 32px -18px rgba(0,0,0,.7);
+  --ease:cubic-bezier(.2,.7,.2,1);
+}
+*,*::before,*::after{box-sizing:border-box}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px);background:var(--bg)}
+body{margin:0;padding-bottom:64px;background:var(--bg);color:var(--text);font-family:var(--font);font-size:var(--t-body);line-height:1.5;-webkit-font-smoothing:antialiased}
+h1,h2,h3,p,ol,ul,dl,dd{margin:0}
+ol,ul{padding:0;list-style:none}
+button{font:inherit;color:inherit}
+.num{font-variant-numeric:tabular-nums lining-nums}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--r-sm)}
+.ic{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+/* ============ PROTOTYPE BAR (not part of product) ============ */
+.protobar{display:flex;flex-wrap:wrap;align-items:center;gap:var(--s2) var(--s3);padding:var(--s2) var(--s4);border-bottom:1px dashed rgba(242,193,78,.4);background:repeating-linear-gradient(135deg,#17191d 0 10px,#15171b 10px 20px);font-size:var(--t-small);color:var(--muted)}
+.protobar .tag{display:inline-flex;align-items:center;gap:6px;color:var(--accent);font-weight:650}
+.protobar .grow{flex:1}
+.seg{display:inline-flex;border:1px solid var(--line-strong);border-radius:var(--r-md);padding:2px;background:var(--bg)}
+.seg button{border:0;background:none;padding:6px 10px;border-radius:8px;cursor:pointer;color:var(--muted);min-height:32px}
+.seg button[aria-pressed="true"]{background:var(--raised);color:var(--text)}
+.pbtn{display:inline-flex;align-items:center;gap:6px;border:1px dashed rgba(242,193,78,.55);background:var(--accent-soft);color:var(--accent);padding:6px 12px;border-radius:var(--r-md);cursor:pointer;min-height:36px;font-weight:600}
+.pbtn:hover{background:rgba(242,193,78,.2)}
+
+.proto-fab{position:fixed;z-index:25;left:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:999px;border:1px dashed rgba(242,193,78,.6);font-size:var(--t-cap)!important;background:rgba(22,24,28,.92);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);color:var(--accent);font-weight:650;font-size:var(--t-small);cursor:pointer;box-shadow:0 10px 30px -10px rgba(0,0,0,.8)}
+.proto-fab:hover{background:#1f2227}
+.proto-fab .ic{font-size:16px}
+.ds-back{margin-bottom:var(--s6)}
+/* ============ APP SHELL ============ */
+.wrap{max-width:1120px;margin:0 auto;padding:0 var(--s4)}
+.appbar{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);padding:var(--s4) 0}
+.wordmark{display:inline-flex;align-items:center;gap:10px;font-weight:760;font-stretch:118%;font-size:1.375rem;letter-spacing:-.02em;color:var(--text);text-decoration:none}
+.wordmark svg{width:28px;height:28px}
+.appbar-right{display:flex;align-items:center;gap:var(--s2)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid var(--line);border-radius:999px;font-size:var(--t-small);color:var(--muted);background:var(--surface)}
+.chip strong{color:var(--text);font-weight:650}
+.chip-score{display:inline-flex}
+@media (max-width:479px){.chip-long{display:none}}
+@media (min-width:960px){.chip-score{display:none}}
+
+.layout{display:grid;gap:var(--s4);padding-bottom:var(--s10)}
+.col{display:grid;gap:var(--s4);align-content:start;min-width:0}
+@media (min-width:960px){.layout{grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:var(--s6)}.col{gap:var(--s6)}}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);padding:var(--s5);box-shadow:var(--shadow);min-width:0}
+@media (min-width:768px){.card{padding:var(--s6)}}
+.stage{padding:0;overflow:hidden}
+.stage > div{padding:var(--s5)}
+@media (min-width:768px){.stage > div{padding:var(--s6)}}
+.stage-play{border-top:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.015),transparent 40%)}
+.label{font-size:var(--t-small);font-weight:600;color:var(--muted);letter-spacing:.01em}
+.fine{font-size:var(--t-cap);color:var(--subtle);line-height:1.45}
+.muted{color:var(--muted)}
+
+/* skeleton */
+.sk{display:block;border-radius:var(--r-sm);background:linear-gradient(90deg,var(--raised) 0,#2a2f37 50%,var(--raised) 100%);background-size:200% 100%;animation:sk 1.4s linear infinite}
+@keyframes sk{to{background-position:-200% 0}}
+
+/* ============ MARKET ============ */
+.mk-head{display:flex;align-items:center;justify-content:space-between;gap:var(--s3)}
+.pair{font-weight:650;font-size:var(--t-h2);display:flex;align-items:baseline;gap:8px}
+.pair span{color:var(--subtle);font-weight:500;font-size:var(--t-small)}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:var(--t-cap);font-weight:600;border:1px solid}
+.pill .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.live{color:var(--up);border-color:var(--up-line);background:var(--up-soft)}
+.pill.live .dot{animation:pulse 2s ease-in-out infinite}
+.pill.delayed{color:var(--warn);border-color:rgba(240,165,58,.35);background:var(--warn-soft)}
+.pill.down{color:var(--down);border-color:var(--down-line);background:var(--down-soft)}
+.pill.neutral{color:var(--muted);border-color:var(--line-strong);background:var(--raised)}
+@keyframes pulse{50%{opacity:.35}}
+.mk-row{display:flex;align-items:center;gap:var(--s2);margin-top:var(--s3)}
+.mk-price{font-size:var(--t-display);font-weight:700;letter-spacing:-.03em;line-height:1.05;font-stretch:94%}
+.tick-ind{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;font-size:14px}
+.tick-ind .ic{stroke-width:2.6}
+.tick-ind.up{color:var(--up);background:var(--up-soft)}.tick-ind.down{color:var(--down);background:var(--down-soft)}
+.mk-price.stale{color:var(--subtle)}
+.mk-meta{display:flex;flex-wrap:wrap;justify-content:space-between;gap:var(--s1) var(--s3);margin-top:var(--s2);font-size:var(--t-small);color:var(--muted)}
+.up-t{color:var(--up)}.down-t{color:var(--down)}
+.spark{margin:var(--s5) calc(var(--s5) * -1) 0;height:120px;position:relative}
+@media (min-width:768px){.spark{margin-left:calc(var(--s6) * -1);margin-right:calc(var(--s6) * -1)}}
+.spark-dot{position:absolute;width:9px;height:9px;margin:-4.5px 0 0 -4.5px;border-radius:50%;background:var(--text);box-shadow:0 0 0 4px rgba(236,238,241,.14)}
+.spark-dot.live::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:1px solid rgba(236,238,241,.45);animation:ping 2s var(--ease) infinite}
+@keyframes ping{0%{transform:scale(.4);opacity:1}100%{transform:scale(1.6);opacity:0}}
+.spark-axis{display:flex;justify-content:space-between;margin-top:var(--s2)}
+.spark svg{width:100%;height:100%;display:block;overflow:visible}
+.spark-legend{display:flex;gap:var(--s4)}
+.spark-legend span{display:inline-flex;align-items:center;gap:6px}
+.spark-legend i{display:inline-block;width:14px;height:0;border-top:2px dashed var(--accent)}
+
+/* ============ PLAY ============ */
+.play-title{font-size:1.25rem;font-weight:700;letter-spacing:-.01em;line-height:1.25;font-stretch:104%}
+.play-title:focus{outline:none}
+.play-sub{color:var(--muted);margin-top:var(--s1);max-width:56ch;font-size:var(--t-small)}
+.choices{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3);margin-top:var(--s5)}
+.choice{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;height:76px;padding:0 var(--s3);border:0;border-radius:14px;cursor:pointer;isolation:isolate;transition:transform .14s var(--ease),box-shadow .2s var(--ease),filter .2s,opacity .2s}
+.choice .cl{display:inline-flex;align-items:center;gap:8px;font-size:1.25rem;font-weight:740;letter-spacing:-.01em;font-stretch:106%;line-height:1}
+.choice .cl .ic{font-size:20px;stroke-width:2.6}
+.choice small{font-size:var(--t-cap);font-weight:550;opacity:.72;letter-spacing:.01em}
+.choice.up{background:linear-gradient(180deg,#34D493 0%,#20B475 100%);color:var(--up-ink);box-shadow:inset 0 1px 0 rgba(255,255,255,.28),inset 0 -1px 0 rgba(0,0,0,.12),0 10px 24px -14px rgba(38,194,129,.9)}
+.choice.down{background:linear-gradient(180deg,#F96B74 0%,#E4434E 100%);color:var(--down-ink);box-shadow:inset 0 1px 0 rgba(255,255,255,.25),inset 0 -1px 0 rgba(0,0,0,.12),0 10px 24px -14px rgba(242,85,95,.9)}
+@media (hover:hover){.choice.up:not(:disabled):hover{transform:translateY(-1px);box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 16px 30px -14px rgba(38,194,129,1)}
+.choice.down:not(:disabled):hover{transform:translateY(-1px);box-shadow:inset 0 1px 0 rgba(255,255,255,.3),0 16px 30px -14px rgba(242,85,95,1)}}
+.choice:not(:disabled):active{transform:scale(.97)}
+.choice:disabled{cursor:not-allowed}
+.choice:disabled:not(.loading):not(.dim){background:var(--raised);color:var(--subtle);box-shadow:inset 0 0 0 1px var(--line)}
+.choice.dim{opacity:.3}
+.choice.loading{cursor:progress}
+.spin.dark{border-color:rgba(0,0,0,.2);border-top-color:currentColor;width:18px;height:18px}
+.payout{display:flex;justify-content:space-between;margin-top:var(--s2);padding:0 var(--s1);font-size:var(--t-cap);color:var(--subtle)}
+.payout b{font-weight:650}
+.rules-inline{margin-top:var(--s4);display:flex;gap:var(--s2);color:var(--muted);font-size:var(--t-small)}
+.rules-inline .ic{margin-top:3px;color:var(--subtle)}
+
+/* notices */
+.notice{display:flex;gap:var(--s3);padding:var(--s3) var(--s4);border-radius:var(--r-md);border:1px solid var(--line-strong);background:var(--raised);font-size:var(--t-small);margin-top:var(--s4)}
+.notice .ic{font-size:18px;margin-top:1px}
+.notice strong{display:block;font-weight:650;color:var(--text);font-size:var(--t-body)}
+.notice p{color:var(--muted)}
+.notice.warn{border-color:rgba(240,165,58,.35);background:var(--warn-soft)}.notice.warn .ic{color:var(--warn)}
+.notice.error{border-color:var(--down-line);background:var(--down-soft)}.notice.error .ic{color:var(--down)}
+.notice.info .ic{color:var(--accent)}
+.notice .actions{margin-top:var(--s2);display:flex;gap:var(--s2)}
+.notice .x{margin-left:auto;align-self:flex-start}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:8px 14px;border-radius:var(--r-md);border:1px solid var(--line-strong);background:var(--raised);color:var(--text);cursor:pointer;font-weight:600;font-size:var(--t-small)}
+.btn:hover{border-color:#4a515c;background:#272b33}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.05)}
+.iconbtn{display:grid;place-items:center;width:36px;height:36px;border-radius:var(--r-md);border:1px solid transparent;background:none;color:var(--muted);cursor:pointer;font-size:18px}
+.iconbtn:hover{background:var(--raised);color:var(--text)}
+
+/* ============ ROUND TICKET (signature component) ============ */
+.ticket{margin-top:var(--s4);border:1px solid var(--line-strong);border-radius:var(--r-md);background:linear-gradient(180deg,var(--raised),var(--surface));overflow:hidden}
+.ticket.up{border-top:3px solid var(--up)}.ticket.down{border-top:3px solid var(--down)}
+.tk-head{display:flex;justify-content:space-between;align-items:center;padding:var(--s4) var(--s4) 0}
+.dirtag{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:var(--t-body)}
+.dirtag.up{color:var(--up)}.dirtag.down{color:var(--down)}
+.tk-id{font-size:var(--t-cap);color:var(--subtle)}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--s2);padding:var(--s3) var(--s4) var(--s4);font-size:var(--t-cap);color:var(--subtle)}
+.steps li{display:flex;flex-direction:column;gap:6px}
+.steps li::before{content:"";height:3px;border-radius:2px;background:var(--line-strong)}
+.steps li.done{color:var(--muted)}.steps li.done::before{background:var(--muted)}
+.steps li.cur{color:var(--text);font-weight:600}.steps li.cur::before{background:var(--accent)}
+.steps .dot{display:none}
+.tk-prices{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3);padding:var(--s4);border-top:1px solid var(--line)}
+.tk-prices > div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.k{font-size:var(--t-cap);color:var(--subtle);font-weight:500}
+.v{font-size:1.25rem;font-weight:700;letter-spacing:-.01em}
+.d{font-size:var(--t-small)}
+.tk-body{padding:var(--s4)}
+.tk-wait{display:flex;align-items:center;gap:var(--s4)}
+.tk-wait strong{display:block;font-weight:650}
+.tk-wait p{color:var(--muted);font-size:var(--t-small);margin-top:2px}
+.ring{position:relative;width:76px;height:76px;flex:none;display:grid;place-items:center}
+.ring svg{position:absolute;inset:0;transform:rotate(-90deg)}
+.ring circle{fill:none;stroke-width:5}
+.ring-bg{stroke:var(--line)}
+.ring-fg{stroke:var(--accent);stroke-linecap:round;transition:stroke-dashoffset .1s linear}
+.ring .timer{font-size:1.125rem;font-weight:720}
+.tk-timer-row{display:flex;justify-content:space-between;align-items:baseline}
+.timer{font-size:2.25rem;font-weight:720;letter-spacing:-.02em;line-height:1}
+.bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin:var(--s3) 0}
+.bar span{display:block;height:100%;background:var(--accent);transform-origin:left;transition:transform .1s linear}
+.tk-state{display:flex;gap:var(--s3);align-items:flex-start}
+.tk-state strong{display:block;font-size:var(--t-body);font-weight:650}
+.tk-state p{color:var(--muted);font-size:var(--t-small);margin-top:2px}
+.tk-state .fine{margin-top:var(--s2)}
+.state-ic{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;flex:none;font-size:16px;background:var(--accent-soft);color:var(--accent)}
+.state-ic.warn{background:var(--warn-soft);color:var(--warn)}
+.spin{width:16px;height:16px;border-radius:50%;border:2px solid rgba(242,193,78,.25);border-top-color:var(--accent);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.tk-note{padding:0 var(--s4) var(--s3);margin-top:calc(var(--s2) * -1)}
+
+/* receipt */
+.receipt{margin-top:var(--s5);border-radius:var(--r-md);border:1px solid;padding:var(--s4)}
+.receipt.win{border-color:var(--up-line);background:linear-gradient(180deg,var(--up-soft),transparent 70%)}
+.receipt.loss{border-color:var(--down-line);background:linear-gradient(180deg,var(--down-soft),transparent 70%)}
+.rc-top{display:flex;align-items:center;gap:var(--s3)}
+.rc-badge{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;font-size:18px}
+.win .rc-badge{background:var(--up);color:var(--up-ink)}.loss .rc-badge{background:var(--down);color:var(--down-ink)}
+.rc-title{font-weight:700;font-size:1.125rem;line-height:1.2}
+.rc-sub{font-size:var(--t-small);color:var(--muted)}
+.rc-pts{margin-left:auto;font-size:1.75rem;font-weight:760;letter-spacing:-.02em}
+.win .rc-pts{color:var(--up)}.loss .rc-pts{color:var(--down)}
+.kv{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3) var(--s4);margin-top:var(--s4);padding-top:var(--s4);border-top:1px solid var(--line)}
+.kv dt{font-size:var(--t-cap);color:var(--subtle)}
+.kv dd{font-weight:600;font-size:var(--t-body)}
+.receipt .fine{margin-top:var(--s3)}
+
+/* ============ SCORE ============ */
+.score-num{font-size:3.5rem;font-weight:760;letter-spacing:-.03em;line-height:1;margin-top:var(--s2);font-stretch:96%;border-radius:var(--r-sm);display:inline-block;padding:0 4px;margin-left:-4px;transition:background-color .9s var(--ease),color .9s var(--ease)}
+.score-num.neg{color:#F7A6AC}
+.flash-win{background:var(--up-soft);color:var(--up)!important}
+.flash-loss{background:var(--down-soft);color:var(--down)!important}
+.score-row{display:flex;justify-content:space-between;align-items:flex-end;gap:var(--s4)}
+.score-stats{display:flex;gap:var(--s5);text-align:right}
+.score-stats b{display:block;font-size:1.125rem;font-weight:700;margin-top:2px}
+.record{display:flex;gap:var(--s4);margin-top:var(--s3);font-size:var(--t-small);color:var(--muted)}
+.record b{color:var(--text);font-weight:650}
+
+/* ============ HISTORY ============ */
+.hist-head{display:flex;justify-content:space-between;align-items:baseline}
+.h2{font-size:var(--t-h2);font-weight:650}
+.hist{margin-top:var(--s3)}
+.hist li{display:grid;grid-template-columns:32px minmax(0,1fr) auto;gap:var(--s3);align-items:center;padding:var(--s3) 0;border-top:1px solid var(--line)}
+.hist li:first-child{border-top:0}
+.hd{display:grid;place-items:center;width:32px;height:32px;border-radius:50%;font-size:15px}
+.hd.up{background:var(--up-soft);color:var(--up)}.hd.down{background:var(--down-soft);color:var(--down)}
+.hm{min-width:0}
+.hm b{font-weight:600;display:block;font-size:var(--t-small)}
+.hm span{display:block;font-size:var(--t-cap);color:var(--subtle);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hp{font-weight:720;font-size:1rem;text-align:right}
+.hp.win{color:var(--up)}.hp.loss{color:var(--down)}
+.hp small{display:block;font-size:var(--t-cap);font-weight:500;color:var(--subtle)}
+.empty{margin-top:var(--s3);padding:var(--s5);border:1px dashed var(--line-strong);border-radius:var(--r-md);color:var(--muted);font-size:var(--t-small);text-align:center}
+
+/* how */
+details.how summary{display:flex;justify-content:space-between;align-items:center;cursor:pointer;list-style:none;font-weight:650;min-height:32px}
+details.how summary::-webkit-details-marker{display:none}
+details.how summary .ic{transition:transform .2s var(--ease);color:var(--muted)}
+details.how[open] summary .ic{transform:rotate(180deg)}
+.howsteps{counter-reset:s;display:grid;gap:var(--s3);margin-top:var(--s4)}
+.howsteps li{counter-increment:s;display:grid;grid-template-columns:28px 1fr;gap:var(--s3);font-size:var(--t-small);color:var(--muted)}
+.howsteps li::before{content:counter(s);display:grid;place-items:center;width:26px;height:26px;border-radius:50%;border:1px solid var(--line-strong);font-weight:650;color:var(--text);font-size:var(--t-cap)}
+.howsteps b{display:block;color:var(--text);font-weight:600}
+.rulebox{margin-top:var(--s4);padding:var(--s3) var(--s4);border-left:2px solid var(--accent);background:var(--accent-soft);border-radius:0 var(--r-sm) var(--r-sm) 0;font-size:var(--t-small)}
+
+footer.foot{padding:var(--s6) 0 var(--s10);border-top:1px solid var(--line);color:var(--subtle);font-size:var(--t-cap);display:grid;gap:var(--s1)}
+
+/* ============ DRAWER ============ */
+.drawer{position:fixed;z-index:30;left:0;right:0;bottom:0;max-height:78vh;overflow:auto;background:#16181c;border-top:1px dashed rgba(242,193,78,.5);padding:var(--s5) var(--s5) calc(var(--s6) + env(safe-area-inset-bottom,0px));box-shadow:0 -20px 50px rgba(0,0,0,.55);transform:translateY(105%);transition:transform .25s var(--ease);visibility:hidden}
+.drawer.open{transform:none;visibility:visible}
+@media (min-width:768px){.drawer{left:auto;top:0;width:380px;max-height:none;border-top:0;border-left:1px dashed rgba(242,193,78,.5);transform:translateX(105%);padding-top:calc(var(--s5) + env(safe-area-inset-top,0px))}.drawer.open{transform:none}}
+.drawer h2{font-size:var(--t-h2);font-weight:700;color:var(--accent);display:flex;align-items:center;gap:8px}
+.dr-head{display:flex;justify-content:space-between;align-items:center}
+.drawer fieldset{border:0;padding:0;margin:var(--s5) 0 0}
+.drawer legend{font-weight:650;font-size:var(--t-small);margin-bottom:var(--s2)}
+.opt{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r-sm);margin-top:6px;cursor:pointer;font-size:var(--t-small);color:var(--muted);min-height:40px}
+.opt:has(input:checked){border-color:rgba(242,193,78,.6);color:var(--text);background:var(--accent-soft)}
+.opt input{accent-color:var(--accent);margin:0}
+.dr-actions{display:grid;gap:var(--s2);margin-top:var(--s2)}
+.dr-actions .btn{justify-content:flex-start}
+.drawer details{margin-top:var(--s5);font-size:var(--t-small);color:var(--muted)}
+.drawer details summary{cursor:pointer;font-weight:650;color:var(--text)}
+.drawer details li{margin-top:var(--s2);padding-left:var(--s3);border-left:2px solid var(--line-strong)}
+.drawer details b{color:var(--text);font-weight:600}
+
+/* tab closed overlay */
+.overlay{position:fixed;inset:0;z-index:40;background:rgba(10,11,13,.86);display:grid;place-items:center;padding:var(--s5)}
+.overlay[hidden]{display:none}
+.overlay .card{max-width:440px}
+.overlay h2{font-size:var(--t-h1);font-weight:700}
+.overlay p{color:var(--muted);margin-top:var(--s2)}
+.overlay .actions{display:flex;flex-wrap:wrap;gap:var(--s2);margin-top:var(--s5)}
+
+/* ============ DESIGN SYSTEM VIEW ============ */
+.ds{padding:var(--s8) 0 var(--s12)}
+.ds-intro{max-width:64ch}
+.ds-intro h1{font-size:2rem;font-weight:760;font-stretch:112%;letter-spacing:-.02em;line-height:1.1}
+.ds-intro p{color:var(--muted);margin-top:var(--s3)}
+.ds section{margin-top:var(--s10)}
+.ds h2{font-size:var(--t-h1);font-weight:700;margin-bottom:var(--s2)}
+.ds .lead{color:var(--muted);max-width:64ch;margin-bottom:var(--s5);font-size:var(--t-small)}
+.grid-auto{display:grid;gap:var(--s3);grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
+.sw{border:1px solid var(--line);border-radius:var(--r-md);overflow:hidden;background:var(--surface)}
+.sw div{height:56px;border-bottom:1px solid var(--line)}
+.sw p{padding:var(--s2) var(--s3);font-size:var(--t-cap);color:var(--muted)}
+.sw p b{display:block;color:var(--text);font-size:var(--t-small)}
+.typerow{display:grid;grid-template-columns:140px 1fr;gap:var(--s4);align-items:baseline;padding:var(--s3) 0;border-top:1px solid var(--line)}
+.typerow .fine{font-size:var(--t-cap)}
+@media (max-width:600px){.typerow{grid-template-columns:1fr;gap:var(--s1)}}
+.gallery{display:grid;gap:var(--s4);grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
+.gallery > div > .fine{margin-top:var(--s2)}
+.gallery .ticket,.gallery .receipt{margin-top:0}
+.spec{display:grid;gap:var(--s3);grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.spec .card p{color:var(--muted);font-size:var(--t-small);margin-top:var(--s2)}
+.spec .card h3{font-size:var(--t-h2);font-weight:650}
+.tbl{width:100%;border-collapse:collapse;font-size:var(--t-small)}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r-md)}
+.tbl th,.tbl td{text-align:left;padding:var(--s3);border-top:1px solid var(--line);vertical-align:top}
+.tbl th{color:var(--muted);font-weight:600;border-top:0;background:var(--surface)}
+.tbl td:first-child{font-weight:600;white-space:nowrap}
+.tbl td{color:var(--muted)}
+.row-demo{display:flex;flex-wrap:wrap;gap:var(--s3);align-items:center}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:0s!important;animation-iteration-count:1!important;transition-duration:0s!important}
+  .spin{animation:none;border-top-color:var(--accent);border-color:var(--accent)}
+}
+</style>
+</head>
+<body>
+
+<button class="proto-fab" id="pb-open" data-act="open-drawer" aria-controls="drawer" aria-expanded="false"></button>
+
+<div id="view-game">
+  <div class="wrap">
+    <header class="appbar">
+      <a class="wordmark" href="#" aria-label="Hunch home"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="6" fill="#F2C14E"/><path d="M5.5 10.5 9 7l3.5 3.5" fill="none" stroke="#1A1408" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M11.5 13.5 15 17l3.5-3.5" fill="none" stroke="#1A1408" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>hunch</a>
+      <div class="appbar-right">
+        <span class="chip chip-score" id="chip-score"></span>
+        <span class="chip" id="chip-player"></span>
+      </div>
+    </header>
+
+    <main class="layout">
+      <div class="col">
+        <section class="card stage" aria-labelledby="play-title">
+          <div id="market"></div>
+          <div id="play" class="stage-play"></div>
+        </section>
+      </div>
+      <div class="col">
+        <section class="card" id="score" aria-label="Your score"></section>
+        <section class="card" id="history" aria-labelledby="hist-title"></section>
+        <section class="card">
+          <details class="how" id="how">
+            <summary>How a round works <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></summary>
+            <ol class="howsteps">
+              <li><div><b>Call it</b>Choose Up or Down. When our server accepts it, it records the current BTC/USD price as your entry.</div></li>
+              <li><div><b>Wait at least 60 seconds</b>Price moves during this first minute don't settle the round.</div></li>
+              <li><div><b>Compare</b>Higher than entry means Up wins, lower means Down wins. Right is +1, wrong is −1.</div></li>
+            </ol>
+            <p class="rulebox">At least 60 seconds after your prediction, we compare the latest available price with your entry price. If unchanged, we keep waiting.</p>
+            <p class="fine" style="margin-top:12px">If our price source has a problem, your round waits for valid data. An outage never counts as a loss. Results use exact prices, not rounded display values. You can close this page; your round keeps running and the result is here when you return.</p>
+          </details>
+        </section>
+      </div>
+    </main>
+
+    <footer class="foot">
+      <p>Points only. No real money, deposits, purchases or prizes. Hunch is a game, not an exchange.</p>
+      <p>Prices from Coinbase public BTC-USD market data. In this prototype, prices are simulated.</p>
+    </footer>
+  </div>
+</div>
+
+<div id="view-system" hidden>
+  <div class="wrap ds" id="ds"></div>
+</div>
+
+<aside class="drawer" id="drawer" aria-label="Prototype controls" aria-hidden="true">
+  <div class="dr-head">
+    <h2 id="dr-title"></h2>
+    <button class="iconbtn" data-act="close-drawer" aria-label="Close prototype controls" id="dr-close"></button>
+  </div>
+  <p class="fine" style="margin-top:6px">Drives the mock server deterministically. Nothing here exists in the product.</p>
+  <div class="seg" role="group" aria-label="View" style="margin-top:16px">
+    <button data-act="view-game" aria-pressed="true">Game</button>
+    <button data-act="view-system" aria-pressed="false">Design system</button>
+  </div>
+  <p class="fine num" style="margin-top:10px">Sim clock <strong id="pb-clock" style="color:var(--text)">--:--:--</strong></p>
+
+  <fieldset><legend>Outcome of each new round</legend>
+    <label class="opt"><input type="radio" name="outcome" value="natural" checked> Follow the mock market</label>
+    <label class="opt"><input type="radio" name="outcome" value="win"> Force a correct call</label>
+    <label class="opt"><input type="radio" name="outcome" value="loss"> Force an incorrect call</label>
+    <label class="opt"><input type="radio" name="outcome" value="tie"> Price unchanged at 60s, then correct</label>
+    <label class="opt"><input type="radio" name="outcome" value="outage"> Price outage around the deadline</label>
+  </fieldset>
+  <fieldset><legend>Price feed</legend>
+    <label class="opt"><input type="radio" name="feed" value="live" checked> Live</label>
+    <label class="opt"><input type="radio" name="feed" value="stale"> Delayed (no new quotes)</label>
+    <label class="opt"><input type="radio" name="feed" value="unavailable"> Unavailable</label>
+  </fieldset>
+  <fieldset><legend>Placing a prediction</legend>
+    <label class="opt"><input type="radio" name="submit" value="ok" checked> Succeeds</label>
+    <label class="opt"><input type="radio" name="submit" value="fail"> Fails with a server error</label>
+  </fieldset>
+  <fieldset><legend>Player setup for new visitors</legend>
+    <label class="opt"><input type="radio" name="init" value="ok" checked> Succeeds</label>
+    <label class="opt"><input type="radio" name="init" value="fail"> Fails</label>
+  </fieldset>
+  <fieldset><legend>Simulation speed</legend>
+    <div class="seg" role="group" aria-label="Simulation speed" id="speed">
+      <button data-speed="1" aria-pressed="true">1×</button><button data-speed="4" aria-pressed="false">4×</button><button data-speed="10" aria-pressed="false">10×</button>
+    </div>
+  </fieldset>
+  <fieldset><legend>Journeys</legend>
+    <div class="dr-actions">
+      <button class="btn" data-act="skip">Skip to the end of the minimum wait</button>
+      <button class="btn" data-act="close-tab">Close the tab mid-round</button>
+      <button class="btn" data-act="returning">Load a returning player (score −2)</button>
+      <button class="btn" data-act="new-visitor">Start over as a new visitor</button>
+    </div>
+  </fieldset>
+  <details>
+    <summary>Prototype vs production</summary>
+    <ul>
+      <li><b>Prices.</b> Seeded random walk, 1 quote/s. Production: Coinbase Exchange public BTC-USD, fetched server-side.</li>
+      <li><b>Server.</b> In-page mock with fixed latency. Production: HTTP API with focused functions, state in a database.</li>
+      <li><b>Waiting and resolution.</b> Mock checks once per sim second after the deadline. Production: a durable workflow waits 60s, then retries until a valid, differing quote exists.</li>
+      <li><b>Player credentials.</b> Kept in a fake in-memory store so resets are clean. Production: browser storage holds the anonymous credentials; the server holds score and history.</li>
+      <li><b>Polling.</b> Price every 2s, player state every 3s, every 1s once the minimum wait ends. Production: TanStack Query refetch intervals with the same shape.</li>
+      <li><b>Clock.</b> Sim time can be sped up or skipped. Production uses server timestamps; the countdown is a client estimate only.</li>
+    </ul>
+  </details>
+</aside>
+
+<div class="overlay" id="tabclosed" hidden role="dialog" aria-modal="true" aria-labelledby="tc-title">
+  <div class="card">
+    <h2 id="tc-title">Tab closed (simulated)</h2>
+    <p>The page has stopped polling. Your round keeps running on the server and settles without you.</p>
+    <div class="actions">
+      <button class="btn primary" data-act="reopen-later">Reopen 2 minutes later</button>
+      <button class="btn" data-act="reopen-now">Reopen now</button>
+    </div>
+  </div>
+</div>
+
+<div id="sr" class="sr-only" aria-live="polite"></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ================= ICONS (Lucide paths, inlined) ================= */
+const ICONS = {
+  arrowUp:'<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
+  arrowDown:'<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>',
+  check:'<path d="M20 6 9 17l-5-5"/>',
+  x:'<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  clock:'<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  info:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+  alert:'<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  pause:'<rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/>',
+  equal:'<line x1="5" x2="19" y1="9" y2="9"/><line x1="5" x2="19" y1="15" y2="15"/>',
+  user:'<circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/>',
+  flask:'<path d="M10 2v7.31"/><path d="M14 9.3V1.99"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/>',
+  sliders:'<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
+  history:'<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/>',
+  refresh:'<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>'
+};
+const icon = (n, c='') => `<svg class="ic ${c}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]}</svg>`;
+
+/* ================= FORMATTERS ================= */
+const BASE = Date.UTC(2026, 9, 6, 13, 58, 0);
+const usd = c => '$' + (c/100).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+const signed = (c) => (c > 0 ? '+' : c < 0 ? '−' : '±') + usd(Math.abs(c));
+const scoreTxt = n => n < 0 ? '−' + Math.abs(n) : String(n);
+const pad = n => String(n).padStart(2, '0');
+const clock = ms => { const d = new Date(BASE + ms); return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`; };
+const dur = ms => { const s = Math.max(0, Math.round(ms/1000)); return `${Math.floor(s/60)}:${pad(s%60)}`; };
+const countdown = ms => { const s = Math.max(0, Math.ceil(ms/1000)); return `${Math.floor(s/60)}:${pad(s%60)}`; };
+const ago = ms => { const s = Math.max(0, Math.round(ms/1000)); return s <= 1 ? 'just now' : `${s}s ago`; };
+const cap = s => s[0].toUpperCase() + s.slice(1);
+const FRESH_MS = 5000;
+const RC = 2 * Math.PI * 32;
+
+/* ================= SIM CLOCK + SCENARIO ================= */
+const SIM = { t: 120000, speed: 1 };
+const scenario = { outcome: 'natural', feed: 'live', submit: 'ok', init: 'ok' };
+const storage = {};           // stands in for browser localStorage
+
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;}}
+class ApiError extends Error { constructor(status, code, message){ super(message); this.status = status; this.code = code; } }
+const clone = o => JSON.parse(JSON.stringify(o));
+
+/* ================= MOCK SERVER (authoritative) ================= */
+const server = {
+  reset(){
+    this.rng = mulberry32(20261006); this.price = 6741235; this.sec = -1;
+    this.quotes = []; this.overrides = new Map(); this.outages = [];
+    this.players = new Map(); this.roundSeq = 1041; this.playerSeq = 0;
+  },
+  statusAt(sec){
+    if (scenario.feed === 'unavailable') return 'unavailable';
+    for (const [a,b] of this.outages) if (sec >= a && sec <= b) return 'unavailable';
+    if (scenario.feed === 'stale') return 'stale';
+    return 'live';
+  },
+  advanceTo(t){ const target = Math.floor(t/1000); while (this.sec < target) { this.sec++; this.tick(this.sec); } },
+  tick(sec){
+    if (this.overrides.has(sec)) this.price = this.overrides.get(sec);
+    else if (this.rng() > 0.05) { const step = Math.round((this.rng()+this.rng()+this.rng()-1.5) * 900); this.price += step || 1; }
+    const st = this.statusAt(sec);
+    if (st === 'live') { this.quotes.push({ t: sec*1000, p: this.price }); if (this.quotes.length > 400) this.quotes.shift(); }
+    for (const pl of this.players.values()) this.resolve(pl, sec, st);
+  },
+  // Step Functions stand-in: after the deadline, compare a valid fresh quote with the entry.
+  resolve(pl, sec, st){
+    const r = pl.active; if (!r || sec*1000 < r.earliestAt) return;
+    r.checks++; r.lastCheckAt = sec*1000;
+    if (st !== 'live') { r.waitReason = 'price_unavailable'; return; }
+    const q = this.price;
+    if (q === r.entry) { r.waitReason = 'unchanged'; return; }
+    const correct = r.dir === 'up' ? q > r.entry : q < r.entry;
+    const delta = correct ? 1 : -1;
+    pl.score += delta; correct ? pl.wins++ : pl.losses++;
+    pl.history.unshift({ ...r, exit: q, settledAt: sec*1000, outcome: correct ? 'win' : 'loss', delta, waitReason: null });
+    pl.active = null;
+  },
+  newPlayer(){
+    const hex = ((0x7F3A + this.playerSeq++ * 4919) & 0xffff).toString(16).toUpperCase().padStart(4,'0');
+    const pl = { id: 'anon_' + hex, short: hex, score: 0, wins: 0, losses: 0, active: null, history: [] };
+    this.players.set(pl.id, pl); return pl;
+  },
+  createPlayer(){
+    if (scenario.init === 'fail') throw new ApiError(503, 'INIT_FAILED', 'Player setup failed');
+    const pl = this.newPlayer(); return { id: pl.id, secret: 'mock-secret-' + pl.short };
+  },
+  seedReturning(now){
+    const pl = this.newPlayer();
+    const dirs = ['up','down','down','up','up','down'], res = [1,-1,-1,1,-1,-1];
+    let entry = 6729040;
+    for (let i = dirs.length - 1; i >= 0; i--) {
+      const acceptedAt = now - (i+1)*170000 - 20000;
+      const settledAt = Math.ceil((acceptedAt + 60000)/1000)*1000 + (i % 3)*1000;
+      const sign = ((dirs[i] === 'up') === (res[i] === 1)) ? 1 : -1;
+      const exit = entry + sign * (412 + i*263);
+      pl.history.unshift({ id: 'R-' + (this.roundSeq++), dir: dirs[i], entry, exit, acceptedAt, earliestAt: acceptedAt + 60000, settledAt, outcome: res[i] === 1 ? 'win' : 'loss', delta: res[i], checks: 1 });
+      pl.score += res[i]; res[i] === 1 ? pl.wins++ : pl.losses++;
+      entry = exit + 1530 - i*410;
+    }
+    return { id: pl.id, secret: 'mock-secret-' + pl.short };
+  },
+  getState(id, now){
+    const pl = this.players.get(id); if (!pl) throw new ApiError(404, 'NO_PLAYER', 'Unknown player');
+    return clone({ player: { id: pl.id, short: pl.short, score: pl.score, wins: pl.wins, losses: pl.losses }, active: pl.active, history: pl.history.slice(0, 20), serverTime: now });
+  },
+  getPrice(now){
+    if (this.statusAt(this.sec) === 'unavailable') throw new ApiError(503, 'PRICE_UNAVAILABLE', 'Price unavailable');
+    const last = this.quotes[this.quotes.length - 1];
+    if (!last) throw new ApiError(503, 'PRICE_UNAVAILABLE', 'Price unavailable');
+    return clone({ latest: last, stale: now - last.t > FRESH_MS, recent: this.quotes.filter(q => q.t >= now - 150000) });
+  },
+  predict(id, dir, now){
+    const pl = this.players.get(id);
+    if (pl.active) throw new ApiError(409, 'ACTIVE_ROUND', 'You already have an open prediction.');
+    if (scenario.submit === 'fail') throw new ApiError(500, 'SERVER_ERROR', 'Server error');
+    const last = this.quotes[this.quotes.length - 1];
+    if (this.statusAt(this.sec) !== 'live' || !last || now - last.t > FRESH_MS) throw new ApiError(503, 'PRICE_UNAVAILABLE', 'No fresh price');
+    const r = { id: 'R-' + (this.roundSeq++), dir, entry: last.p, acceptedAt: now, earliestAt: now + 60000, waitReason: null, checks: 0 };
+    pl.active = r; this.applyScenario(r); return clone(r);
+  },
+  applyScenario(r){
+    const e = Math.ceil(r.earliestAt/1000), o = scenario.outcome;
+    const sign = win => ((r.dir === 'up') === win) ? 1 : -1;
+    if (o === 'win' || o === 'loss') { const s = sign(o === 'win'); for (let k = -4; k <= 3; k++) this.overrides.set(e+k, r.entry + s*(260 + (k+4)*137)); }
+    else if (o === 'tie') { for (let k = -2; k <= 9; k++) this.overrides.set(e+k, r.entry); const s = sign(true); for (let k = 10; k <= 13; k++) this.overrides.set(e+k, r.entry + s*(180 + (k-10)*95)); }
+    else if (o === 'outage') this.outages.push([e-5, e+9]);
+  }
+};
+const rpc = (fn, ms) => new Promise((res, rej) => setTimeout(() => { try { res(fn()); } catch (e) { rej(e); } }, ms));
+
+/* ================= CLIENT (what the browser knows) ================= */
+const client = {
+  reset(){
+    Object.assign(this, { phase:'boot', bootError:null, playerId:null, state:null, price:null, priceErr:null,
+      stateAt:0, nextState:0, nextPrice:0, busyState:false, busyPrice:false, pending:null, clickedPrice:null,
+      submitErr:null, result:null, tracked:null, entryNote:null, away:null, tabClosed:false, lastPhase:null });
+  },
+  async boot(){
+    this.phase = 'boot'; this.bootError = null; renderAll();
+    this.pollPrice();
+    try {
+      let creds = storage.creds;
+      if (!creds) { creds = await rpc(() => server.createPlayer(), 900); storage.creds = creds; }
+      this.playerId = creds.id;
+      await this.pollState(true);
+      this.phase = 'ready';
+      if (!this.state.history.length) document.getElementById('how').open = true;
+    } catch (e) { this.phase = 'error'; this.bootError = e; }
+    renderAll();
+  },
+  stateInterval(){ const a = this.state && this.state.active; return (a && SIM.t >= a.earliestAt - 500) ? 1000 : 3000; },
+  async pollState(initial){
+    if (this.busyState) return; this.busyState = true;
+    try { const s = await rpc(() => server.getState(this.playerId, SIM.t), 250); if (!this.tabClosed) this.onState(s, initial); }
+    catch (e) { if (initial) throw e; }
+    finally { this.busyState = false; this.stateAt = SIM.t; this.nextState = SIM.t + this.stateInterval(); renderAll(); }
+  },
+  onState(s, initial){
+    const prevActive = this.state && this.state.active;
+    if (initial && storage.openRoundAtClose) {
+      const id = storage.openRoundAtClose; delete storage.openRoundAtClose;
+      const done = s.history.find(h => h.id === id);
+      if (done) { this.result = done; this.away = { kind: 'settled', round: done }; }
+      else if (s.active && s.active.id === id) this.away = { kind: 'running' };
+    }
+    if (this.tracked && !s.active) {
+      const done = s.history.find(h => h.id === this.tracked);
+      if (done) {
+        this.result = done; flashScore(done.outcome);
+        announce(`Result: ${done.outcome === 'win' ? 'correct, plus 1 point' : 'incorrect, minus 1 point'}. Your score is now ${scoreTxt(s.player.score)}.`);
+      }
+    }
+    if (s.active && prevActive && prevActive.id === s.active.id && s.active.waitReason !== prevActive.waitReason) {
+      if (s.active.waitReason === 'unchanged') announce('The latest price equals your entry price. Still waiting for it to move.');
+      if (s.active.waitReason === 'price_unavailable') announce('Price data is unavailable. Your round is on hold and will not count as a loss.');
+    }
+    this.tracked = s.active ? s.active.id : null;
+    this.state = s;
+  },
+  async pollPrice(){
+    if (this.busyPrice) return; this.busyPrice = true;
+    try { const p = await rpc(() => server.getPrice(SIM.t), 200); if (this.price && p.latest.p !== this.price.latest.p) this.lastMove = p.latest.p > this.price.latest.p ? 'up' : 'down'; this.price = p; this.priceErr = null; }
+    catch (e) { this.priceErr = e; }
+    finally { this.busyPrice = false; this.nextPrice = SIM.t + 2000; renderAll(); }
+  },
+  async predict(dir){
+    if (this.pending || !this.state || this.state.active) return;
+    const focusInPlay = document.getElementById('play').contains(document.activeElement);
+    this.pending = dir; this.clickedPrice = this.price ? this.price.latest.p : null;
+    this.submitErr = null; this.result = null; this.away = null; this.entryNote = null;
+    renderAll(); announce(`Placing your ${dir} prediction.`);
+    if (focusInPlay) focusTitle();
+    try {
+      const r = await rpc(() => server.predict(this.playerId, dir, SIM.t), 650);
+      this.state.active = r; this.tracked = r.id;
+      if (this.clickedPrice != null && r.entry !== this.clickedPrice) this.entryNote = r.entry - this.clickedPrice;
+      announce(`Prediction placed: ${dir}, entry price ${usd(r.entry)}. The earliest result is in 60 seconds.`);
+    } catch (e) { this.submitErr = e; announce(errorCopy(e).title + '. ' + errorCopy(e).body); }
+    finally { this.pending = null; renderAll(); if (focusInPlay) focusTitle(); this.pollState(); }
+  },
+  step(){
+    if (this.tabClosed) return;
+    if (this.phase === 'ready' && SIM.t >= this.nextState) this.pollState();
+    if (SIM.t >= this.nextPrice) this.pollPrice();
+  },
+  priceAge(){ return this.price ? SIM.t - this.price.latest.t : Infinity; },
+  feedStatus(){ if (this.priceErr) return 'unavailable'; if (!this.price) return 'loading'; return this.priceAge() > FRESH_MS ? 'delayed' : 'live'; },
+  roundPhase(){
+    if (this.pending) return 'placing';
+    const r = this.state && this.state.active; if (!r) return null;
+    if (SIM.t < r.earliestAt) return 'waiting';
+    if (r.waitReason === 'unchanged') return 'unchanged';
+    if (r.waitReason === 'price_unavailable') return 'paused';
+    return 'checking';
+  }
+};
+
+function errorCopy(e){
+  if (e && e.code === 'PRICE_UNAVAILABLE') return { title: 'Prediction not placed', body: "We couldn't get a fresh price to set your entry. Nothing was recorded and your score is unchanged. Try again in a moment." };
+  if (e && e.code === 'ACTIVE_ROUND') return { title: 'You already have an open prediction', body: 'Only one prediction can be active at a time.' };
+  return { title: 'Prediction not placed', body: 'The server returned an error. Nothing was recorded and your score is unchanged. Try again.' };
+}
+
+/* ================= COMPONENTS ================= */
+function deltaParts(dir, entry, now){
+  const d = now - entry; const fav = dir === 'up' ? d > 0 : d < 0;
+  const cls = d === 0 ? 'muted' : fav ? 'up-t' : 'down-t';
+  const word = d === 0 ? 'Level with entry' : fav ? 'Ahead of entry' : 'Behind entry';
+  return { cls, txt: `${word}, ${signed(d)}` };
+}
+
+function ticketHTML(o){
+  const id = s => o.live ? ` id="${s}"` : '';
+  const steps = ['Placed', 'Waiting', 'Comparing', 'Result'];
+  const idx = { placing:0, waiting:1, checking:2, unchanged:2, paused:2 }[o.phase];
+  const stepper = `<ol class="steps" aria-label="Round progress">${steps.map((s,i) =>
+    `<li class="${i < idx ? 'done' : i === idx ? 'cur' : ''}"${i === idx ? ' aria-current="step"' : ''}>${s}</li>`).join('')}</ol>`;
+  const D = cap(o.dir);
+  const head = `<div class="tk-head"><span class="dirtag ${o.dir}">${icon(o.dir === 'up' ? 'arrowUp' : 'arrowDown')} You called ${D}</span><span class="tk-id">${o.rid ? 'Round ' + o.rid : ''}</span></div>`;
+
+  if (o.phase === 'placing') {
+    return `<div class="ticket ${o.dir}">${head}${stepper}
+      <div class="tk-prices"><div><span class="k">Entry price</span><span class="v muted">Recording…</span></div><div><span class="k">Price you saw</span><span class="v num">${o.now != null ? usd(o.now) : '—'}</span></div></div>
+      <div class="tk-body"><div class="tk-state"><span class="state-ic"><span class="spin"></span></span><div><strong>Placing your prediction</strong><p>Our server records a fresh entry price the moment it accepts your call.</p></div></div></div></div>`;
+  }
+  const dp = deltaParts(o.dir, o.entry, o.now);
+  const prices = `<div class="tk-prices">
+    <div><span class="k">Entry price</span><span class="v num">${usd(o.entry)}</span><span class="fine num">Accepted ${clock(o.acceptedAt)}</span></div>
+    <div><span class="k">Latest price</span><span class="v num"${id('tk-now')}>${usd(o.now)}</span><span class="d num ${dp.cls}"${id('tk-delta')}>${dp.txt}</span></div></div>`;
+  let body = '';
+  if (o.phase === 'waiting') {
+    body = `<div class="tk-wait"><div class="ring"><svg viewBox="0 0 76 76" aria-hidden="true"><circle cx="38" cy="38" r="32" class="ring-bg"/><circle cx="38" cy="38" r="32" class="ring-fg"${id('tk-ring')} stroke-dasharray="${RC.toFixed(2)}" stroke-dashoffset="${(RC * o.remaining / 60000).toFixed(2)}"/></svg><span class="timer num"${id('tk-timer')} role="timer" aria-label="Minimum wait remaining">${countdown(o.remaining)}</span></div>
+      <div><strong>Minimum wait</strong><p>Not final. Moves during this minute don’t count; the result uses a price checked after it.</p></div></div>`;
+  } else if (o.phase === 'checking') {
+    body = `<div class="tk-state"><span class="state-ic"><span class="spin"></span></span><div><strong>Comparing prices</strong><p>Minimum wait complete. We're checking the latest price against your entry. This usually takes a few seconds.</p><p class="fine num"${id('tk-checked')}>Last update from server ${ago(o.checkedAgo)}</p></div></div>`;
+  } else if (o.phase === 'unchanged') {
+    body = `<div class="tk-state"><span class="state-ic">${icon('equal')}</span><div><strong>Price matches your entry</strong><p>The latest price is exactly your entry price, so there's no result yet. We keep checking until it moves.</p><p class="fine num"${id('tk-checked')}>Last update from server ${ago(o.checkedAgo)}</p></div></div>`;
+  } else if (o.phase === 'paused') {
+    body = `<div class="tk-state"><span class="state-ic warn">${icon('pause')}</span><div><strong>Waiting for price data</strong><p>Our price source is temporarily unavailable. Your round is on hold, and an outage never counts as a loss.</p><p class="fine num"${id('tk-checked')}>Last update from server ${ago(o.checkedAgo)}</p></div></div>`;
+  }
+  const note = o.entryNote ? `<p class="fine tk-note num">Entry is ${signed(o.entryNote)} vs the price you saw. The server locks a fresh price on acceptance.</p>` : '';
+  return `<div class="ticket ${o.dir}">${head}<div class="tk-body">${body}</div>${prices}${note}${stepper}</div>`;
+}
+
+function receiptHTML(r, opts = {}){
+  const win = r.outcome === 'win'; const d = r.exit - r.entry;
+  const moved = d > 0 ? `${usd(Math.abs(d))} higher` : `${usd(Math.abs(d))} lower`;
+  return `<div class="receipt ${r.outcome}" ${opts.live ? 'id="receipt"' : ''}>
+    <div class="rc-top">
+      <span class="rc-badge">${icon(win ? 'check' : 'x')}</span>
+      <div><p class="rc-title">${win ? 'Correct' : 'Not this time'}</p><p class="rc-sub">You called ${cap(r.dir)}. BTC was ${moved} than your entry.</p></div>
+      <span class="rc-pts num" aria-label="${win ? 'plus 1 point' : 'minus 1 point'}">${win ? '+1' : '−1'}</span>
+      ${opts.dismiss ? `<button class="iconbtn" data-act="dismiss-result" aria-label="Dismiss result">${icon('x')}</button>` : ''}
+    </div>
+    <dl class="kv num">
+      <div><dt>Entry price</dt><dd>${usd(r.entry)}</dd></div>
+      <div><dt>Compared price</dt><dd>${usd(r.exit)}</dd></div>
+      <div><dt>Accepted</dt><dd>${clock(r.acceptedAt)}</dd></div>
+      <div><dt>Settled</dt><dd>${clock(r.settledAt)} <span class="fine">after ${dur(r.settledAt - r.acceptedAt)}</span></dd></div>
+    </dl>
+    <p class="fine">Compared using exact prices, not rounded display values.</p>
+  </div>`;
+}
+
+function notice(kind, ic, title, body, extra = ''){
+  return `<div class="notice ${kind}" role="status">${icon(ic)}<div><strong>${title}</strong><p>${body}</p>${extra}</div></div>`;
+}
+
+function sparkSVG(recent, now, active, live){
+  if (!recent) return '';
+  const t0 = active ? active.acceptedAt - 60000 : now - 120000;
+  const t1 = active ? Math.max(active.earliestAt + 8000, now + 3000) : now + 5000;
+  const pts = recent.filter(q => q.t >= t0);
+  if (pts.length < 2) return '';
+  const vals = pts.map(q => q.p); if (active) vals.push(active.entry);
+  let mn = Math.min(...vals), mx = Math.max(...vals); const padv = Math.max(200, (mx - mn) * 0.18); mn -= padv; mx += padv;
+  const W = 600, H = 120;
+  const x = t => ((t - t0) / (t1 - t0)) * W, y = p => H - ((p - mn) / (mx - mn)) * H;
+  const line = pts.map(q => `${x(q.t).toFixed(1)},${y(q.p).toFixed(1)}`).join(' ');
+  const last = pts[pts.length - 1];
+  const trend = last.p >= pts[0].p ? '#26C281' : '#F2555F';
+  const area = `M${x(pts[0].t).toFixed(1)},${H} L${line.replace(/ /g, ' L')} L${x(last.t).toFixed(1)},${H} Z`;
+  let entry = '';
+  if (active) {
+    const ey = y(active.entry).toFixed(1), ax = Math.max(0, x(active.acceptedAt)).toFixed(1);
+ const dx = x(active.earliestAt).toFixed(1);
+    entry = `<rect x="${dx}" y="0" width="${(W - dx).toFixed(1)}" height="${H}" fill="#F2C14E" fill-opacity=".05"/>
+      <line x1="${dx}" x2="${dx}" y1="0" y2="${H}" stroke="#A3ABB7" stroke-opacity=".5" stroke-width="1" stroke-dasharray="2 4" vector-effect="non-scaling-stroke"/>
+      <line x1="${ax}" x2="${x(last.t).toFixed(1)}" y1="${ey}" y2="${ey}" stroke="#F2C14E" stroke-width="1.5" stroke-dasharray="4 5" vector-effect="non-scaling-stroke"/>
+      <line x1="${ax}" x2="${ax}" y1="0" y2="${H}" stroke="#F2C14E" stroke-opacity=".35" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
+  }
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="BTC/USD over the last two minutes${active ? ', with your entry price marked' : ''}">
+    <defs><linearGradient id="sg" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${trend}" stop-opacity=".16"/><stop offset="1" stop-color="${trend}" stop-opacity="0"/></linearGradient></defs>
+    <path d="${area}" fill="url(#sg)"/>${entry}
+    <polyline points="${line}" fill="none" stroke="#D5DAE1" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+  </svg><span class="spark-dot${live ? ' live' : ''}" style="left:${(x(last.t) / W * 100).toFixed(2)}%;top:${(y(last.p) / H * 100).toFixed(2)}%"></span>`;
+}
+
+/* ================= RENDER ================= */
+const sigs = {};
+function patch(id, sig, fn){ if (sigs[id] === sig) return false; sigs[id] = sig; document.getElementById(id).innerHTML = fn(); return true; }
+const $ = id => document.getElementById(id);
+
+function renderAll(){ renderHeader(); renderMarket(); renderPlay(); renderScore(); renderHistory(); }
+
+function renderHeader(){
+  const s = client.state;
+  patch('chip-player', s ? s.player.short : 'none', () => `${icon('user')} ${s ? `<span class="chip-long">Anonymous player</span> <strong class="num">${s.player.short}</strong>` : 'Setting up…'}`);
+  patch('chip-score', s ? s.player.score : 'none', () => `Score <strong class="num">${s ? scoreTxt(s.player.score) : '—'}</strong>`);
+}
+
+function renderMarket(){
+  const p = client.price, st = client.feedStatus(), a = client.state && client.state.active;
+  const sig = [st, p && p.latest.t, a && a.id].join('|');
+  patch('market', sig, () => {
+    const pill = { live: '<span class="pill live"><span class="dot"></span>Live</span>', delayed: '<span class="pill delayed">' + icon('clock') + 'Delayed</span>', unavailable: '<span class="pill down">' + icon('alert') + 'Unavailable</span>', loading: '<span class="pill neutral">Loading</span>' }[st];
+    const head = `<div class="mk-head"><h2 class="pair">BTC/USD <span>Bitcoin</span></h2>${pill}</div>`;
+    if (!p) {
+      return head + (st === 'unavailable'
+        ? `<div class="mk-price stale num">—</div>${notice('error', 'alert', 'Price unavailable', 'We can\u2019t reach our price source right now. Predictions are paused until it\u2019s back.')}`
+        : `<span class="sk" style="height:44px;width:70%;margin-top:12px"></span><span class="sk" style="height:14px;width:45%;margin-top:10px"></span><span class="sk" style="height:88px;margin-top:16px"></span>`);
+    }
+    const ref = p.recent.slice().reverse().find(q => q.t <= p.latest.t - 60000);
+    let chg = '';
+    if (ref) { const d = p.latest.p - ref.p; chg = `<span class="num ${d > 0 ? 'up-t' : d < 0 ? 'down-t' : ''}">${signed(d)} (${d >= 0 ? '+' : '−'}${Math.abs(d / ref.p * 100).toFixed(3)}%) 1m</span>`; }
+    const dim = st !== 'live';
+    return `${head}
+      <div class="mk-row"><p class="mk-price num ${dim ? 'stale' : ''}" id="mk-price">${usd(p.latest.p)}</p>${client.lastMove && !dim ? `<span class="tick-ind ${client.lastMove}" aria-label="Last tick ${client.lastMove}">${icon(client.lastMove === 'up' ? 'arrowUp' : 'arrowDown')}</span>` : ''}</div>
+      <div class="mk-meta">${chg}<span class="num" id="mk-age">${dim ? 'Last known price, ' : 'Updated '}${ago(client.priceAge())}</span></div>
+      <div class="spark">${sparkSVG(p.recent, p.latest.t, a, !dim)}</div>
+      <div class="spark-axis fine">${a ? `<span class="spark-legend"><span><i></i>Your entry</span></span><span>Result window from ${clock(a.earliestAt)}</span>` : '<span>Last 2 minutes</span><span>Now</span>'}</div>
+      ${st === 'unavailable' ? notice('error', 'alert', 'Price unavailable', 'We can\u2019t reach our price source. Predictions are paused. Open rounds wait for valid data and never count as a loss.') : ''}
+      ${st === 'delayed' ? notice('warn', 'clock', 'Price updates are delayed', 'We haven\u2019t received a fresh price recently. New predictions open again once it updates.') : ''}`;
+  });
+}
+
+function renderPlay(){
+  const ph = client.roundPhase(), a = client.state && client.state.active, st = client.feedStatus();
+  let blocked = null;
+  if (client.phase !== 'ready') blocked = 'loading';
+  else if (st === 'unavailable') blocked = 'unavailable';
+  else if (st === 'delayed' || st === 'loading') blocked = 'delayed';
+  const sig = JSON.stringify([client.phase, ph, a && a.id, a && a.waitReason, client.pending, client.result && client.result.id, client.submitErr && client.submitErr.code, blocked, client.entryNote, client.away && client.away.kind, client.state && client.state.history.length === 0]);
+  patch('play', sig, () => {
+    if (client.phase === 'boot') return `<h1 class="play-title" id="play-title" tabindex="-1">Setting up your player…</h1><p class="play-sub">No signup needed. You start at a score of 0.</p>
+      <div class="choices" aria-hidden="true"><span class="sk" style="height:92px"></span><span class="sk" style="height:92px"></span></div>`;
+    if (client.phase === 'error') return `<h1 class="play-title" id="play-title" tabindex="-1">We couldn\u2019t start your game</h1>
+      ${notice('error', 'alert', 'Player setup failed', 'Your anonymous player couldn\u2019t be created. Check your connection and try again.', '<div class="actions"><button class="btn primary" data-act="retry">' + icon('refresh') + 'Try again</button></div>')}`;
+
+    let awayHTML = '';
+    if (client.away && client.away.kind === 'settled') awayHTML = `<div class="notice info" role="status">${icon('history')}<div><strong>Welcome back</strong><p>Your ${cap(client.away.round.dir)} prediction settled while this page was closed.</p></div><button class="iconbtn x" data-act="dismiss-away" aria-label="Dismiss">${icon('x')}</button></div>`;
+    if (client.away && client.away.kind === 'running') awayHTML = `<div class="notice info" role="status">${icon('history')}<div><strong>Welcome back</strong><p>Your round kept running while this page was closed.</p></div><button class="iconbtn x" data-act="dismiss-away" aria-label="Dismiss">${icon('x')}</button></div>`;
+
+    if (ph && ph !== 'placing') {
+      const titles = { placing: 'Placing your prediction', waiting: 'Your prediction is in', checking: 'Getting your result', unchanged: 'Still waiting for a result', paused: 'Round on hold' };
+      const o = { live: true, phase: ph, dir: client.pending || a.dir, rid: a && a.id, entry: a && a.entry, acceptedAt: a && a.acceptedAt,
+        now: client.price ? client.price.latest.p : (a && a.entry), remaining: a ? a.earliestAt - SIM.t : 60000, checkedAgo: SIM.t - client.stateAt, entryNote: client.entryNote };
+      if (ph === 'placing') o.now = client.clickedPrice;
+      return `<h1 class="play-title" id="play-title" tabindex="-1">${titles[ph]}</h1>
+        <p class="play-sub">You can close this page. The round keeps running.</p>${awayHTML}${ticketHTML(o)}`;
+    }
+
+    const first = client.state.history.length === 0 && !client.result;
+    const reason = { loading: null,
+      unavailable: notice('error', 'alert', 'Predictions paused', 'There\u2019s no reliable price right now, so we can\u2019t record a fair entry. Your score is safe.'),
+      delayed: notice('warn', 'clock', 'Waiting for a fresh price', 'Predictions open as soon as an up-to-date price arrives.') }[blocked] || '';
+    const err = client.submitErr ? (() => { const c = errorCopy(client.submitErr); return notice('error', 'alert', c.title, c.body); })() : '';
+    const dis = (blocked || client.pending) ? 'disabled' : '';
+    const btn = d => { const isP = client.pending === d, other = client.pending && !isP;
+      return `<button class="choice ${d}${isP ? ' loading' : ''}${other ? ' dim' : ''}" data-act="${d}" ${dis}${isP ? ' aria-busy="true"' : ''}>
+        <span class="cl">${isP ? '<span class="spin dark"></span>' : icon(d === 'up' ? 'arrowUp' : 'arrowDown')}${d === 'up' ? 'Up' : 'Down'}</span>
+        <small>${isP ? 'Locking entry…' : d === 'up' ? 'Price goes higher' : 'Price goes lower'}</small></button>`; };
+    return `<h1 class="play-title" id="play-title" tabindex="-1">${client.result ? 'Go again?' : 'Higher or lower in a minute?'}</h1>
+      <p class="play-sub">${first ? '+1 if you’re right, −1 if you’re wrong. We lock your entry price, wait at least 60 seconds, then compare. Points only, no money.' : '+1 if you’re right, −1 if you’re wrong. We compare at least 60 seconds after accepting your call.'}</p>
+      ${awayHTML}${client.result ? receiptHTML(client.result, { live: true, dismiss: true }) : ''}${err}${reason}
+      <div class="choices" role="group" aria-label="Make a prediction">
+        ${btn('up')}${btn('down')}
+      </div>
+
+      ${first ? `<p class="rules-inline">${icon('info')}<span>At least 60 seconds after your prediction, we compare the latest available price with your entry price. If unchanged, we keep waiting.</span></p>` : ''}`;
+  });
+}
+
+function renderScore(){
+  const s = client.state;
+  patch('score', s ? [s.player.score, s.player.wins, s.player.losses].join() : client.phase, () => {
+    if (!s) return `<h2 class="label">Your score</h2>${client.phase === 'error' ? '<p class="score-num muted num">—</p>' : '<span class="sk" style="height:56px;width:90px;margin-top:8px"></span><span class="sk" style="height:14px;width:60%;margin-top:12px"></span>'}`;
+    const n = s.player.wins + s.player.losses;
+    return `<div class="score-row"><div><h2 class="label">Your score</h2>
+      <p class="score-num num ${s.player.score < 0 ? 'neg' : ''}" id="score-num">${scoreTxt(s.player.score)}</p></div>
+      ${n ? `<div class="score-stats num"><div><span class="k">Accuracy</span><b>${Math.round(s.player.wins / n * 100)}%</b></div><div><span class="k">Correct / wrong</span><b><span class="up-t">${s.player.wins}</span> / <span class="down-t">${s.player.losses}</span></b></div></div>` : ''}</div>
+      ${n ? '' : `<p class="fine" style="margin-top:10px">Everyone starts at 0, and scores can go below zero. Saved to this browser, no account needed.</p>`}`;
+  });
+}
+
+function renderHistory(){
+  const s = client.state;
+  patch('history', s ? s.history.map(h => h.id).join() : client.phase, () => {
+    const head = `<div class="hist-head"><h2 class="h2" id="hist-title">Your rounds</h2>${s && s.history.length ? `<span class="fine">Latest ${Math.min(20, s.history.length)}</span>` : ''}</div>`;
+    if (!s) return head + `<span class="sk" style="height:48px;margin-top:12px"></span><span class="sk" style="height:48px;margin-top:8px"></span>`;
+    if (!s.history.length) return head + `<p class="empty">No rounds yet. Your settled predictions appear here with entry and compared prices.</p>`;
+    return head + `<ol class="hist">${s.history.map(h => `<li>
+      <span class="hd ${h.dir}" aria-hidden="true">${icon(h.dir === 'up' ? 'arrowUp' : 'arrowDown')}</span>
+      <div class="hm"><b>${cap(h.dir)} at ${clock(h.acceptedAt)}</b><span class="num">${usd(h.entry)} to ${usd(h.exit)}, settled after ${dur(h.settledAt - h.acceptedAt)}</span></div>
+      <span class="hp num ${h.outcome}"><span class="sr-only">${h.outcome === 'win' ? 'Correct, ' : 'Incorrect, '}</span>${h.delta > 0 ? '+1' : '−1'}</span></li>`).join('')}</ol>`;
+  });
+}
+
+/* fast, non-structural updates (every 100ms) */
+function fast(){
+  $('pb-clock').textContent = clock(SIM.t);
+  const age = $('mk-age');
+  if (age && client.price) age.textContent = (client.feedStatus() !== 'live' ? 'Last known price, ' : 'Updated ') + ago(client.priceAge());
+  renderMarket(); renderPlay();
+  const a = client.state && client.state.active, ph = client.roundPhase();
+  if (ph !== client.lastPhase) { if (client.lastPhase === 'waiting' && ph === 'checking') announce('Minimum wait complete. Checking the latest price.'); client.lastPhase = ph; }
+  if (!a) return;
+  const t = $('tk-timer'), b = $('tk-ring'), c = $('tk-checked'), n = $('tk-now'), d = $('tk-delta');
+  if (t) t.textContent = countdown(a.earliestAt - SIM.t);
+  if (b) b.setAttribute('stroke-dashoffset', (RC * Math.max(0, a.earliestAt - SIM.t) / 60000).toFixed(2));
+  if (c) c.textContent = 'Last update from server ' + ago(SIM.t - client.stateAt);
+  if (n && client.price) { n.textContent = usd(client.price.latest.p); const dp = deltaParts(a.dir, a.entry, client.price.latest.p); d.className = 'd num ' + dp.cls; d.textContent = dp.txt; }
+}
+
+function flashScore(outcome){
+  requestAnimationFrame(() => { const el = $('score-num'); if (!el) return; el.classList.add(outcome === 'win' ? 'flash-win' : 'flash-loss'); setTimeout(() => el.classList.remove('flash-win', 'flash-loss'), 1100); });
+}
+function focusTitle(){ requestAnimationFrame(() => { const t = $('play-title'); t && t.focus(); }); }
+function announce(msg){ const sr = $('sr'); sr.textContent = ''; setTimeout(() => sr.textContent = msg, 60); }
+
+/* ================= DESIGN SYSTEM VIEW ================= */
+function renderDS(){
+  const sw = (hex, name, role) => `<div class="sw"><div style="background:${hex}"></div><p><b>${name}</b>${hex}<br>${role}</p></div>`;
+  const now = 9000;
+  const base = { dir: 'up', rid: 'R-1052', entry: 6741235, acceptedAt: 300000 };
+  const g = (title, html, note) => `<div><p class="label" style="margin-bottom:8px">${title}</p>${html}${note ? `<p class="fine">${note}</p>` : ''}</div>`;
+  const cb = (d, cls = '', dis = '') => `<button class="choice ${d} ${cls}" tabindex="-1" ${dis}><span class="cl">${cls === 'loading' ? '<span class="spin dark"></span>' : icon(d === 'up' ? 'arrowUp' : 'arrowDown')}${cap(d)}</span><small>${cls === 'loading' ? 'Locking entry…' : d === 'up' ? 'Price goes higher' : 'Price goes lower'}</small></button>`;
+  $('ds').innerHTML = `<button class="btn ds-back" data-act="view-game">${icon('arrowUp').replace('class="ic ', 'style="transform:rotate(-90deg)" class="ic ')}Back to the game</button>
+  <div class="ds-intro">
+    <h1>Hunch design system</h1>
+    <p>Hunch is a one-minute call on Bitcoin\u2019s direction. The name says what the player brings (a hunch) and keeps the stakes honest: points, not money. The mark is two offset chevrons, one up and one down, on a yellow tile.</p>
+  </div>
+
+  <section><h2>Principles</h2>
+    <div class="spec">
+      <div class="card"><h3>Confirmed beats instant</h3><p>We only show outcomes the server has confirmed. A finished countdown says \u201cComparing prices\u201d, never a premature result.</p></div>
+      <div class="card"><h3>Every number has a source</h3><p>Entry, compared price and timestamps sit on every receipt, so a player can check the result themselves.</p></div>
+      <div class="card"><h3>Colour means direction</h3><p>Green is Up and wins, red is Down and losses, yellow is the brand and the player\u2019s entry. Never colour alone: every state pairs with an icon and words.</p></div>
+      <div class="card"><h3>Failures are never losses</h3><p>Outages pause the round with neutral or amber styling, never red. Copy says what happened and what we\u2019re doing about it.</p></div>
+    </div>
+  </section>
+
+  <section><h2>Colour</h2><p class="lead">Charcoal surfaces carry depth through three steps rather than shadows. Yellow is reserved: wordmark, entry line, current step, focus ring, primary action. All text pairs meet WCAG AA on the surfaces they sit on.</p>
+    <div class="grid-auto">
+      ${sw('#121418','bg','Page')}${sw('#1A1D23','surface','Cards')}${sw('#22262D','raised','Inset, controls')}${sw('#2C3139','line','Borders')}
+      ${sw('#ECEEF1','text','Primary text')}${sw('#A3ABB7','muted','Secondary text')}${sw('#8A93A0','subtle','Meta, captions')}
+      ${sw('#F2C14E','accent','Brand, entry, focus')}${sw('#26C281','up','Up, correct')}${sw('#F2555F','down','Down, incorrect')}${sw('#F0A53A','warn','Delayed, on hold')}
+    </div>
+  </section>
+
+  <section><h2>Typography</h2><p class="lead">One family, Archivo, using its width axis: slightly expanded for the wordmark and headings, slightly condensed for large prices so they fit on a 375px screen. All numbers use tabular figures so prices and timers don\u2019t jitter.</p>
+    <div class="typerow"><span class="fine">Display price<br>48/700, 96% width</span><span class="num" style="font-size:3rem;font-weight:700;letter-spacing:-.025em;font-stretch:96%">$67,412.35</span></div>
+    <div class="typerow"><span class="fine">Score<br>56/760</span><span class="num" style="font-size:3.5rem;font-weight:760;letter-spacing:-.03em;line-height:1">−2</span></div>
+    <div class="typerow"><span class="fine">Timer<br>36/720 tabular</span><span class="num" style="font-size:2.25rem;font-weight:720">0:42</span></div>
+    <div class="typerow"><span class="fine">H1<br>22/700, 104% width</span><span class="play-title">Will Bitcoin be higher or lower in a minute?</span></div>
+    <div class="typerow"><span class="fine">H2<br>16/650</span><span class="h2">Your rounds</span></div>
+    <div class="typerow"><span class="fine">Body<br>15/400, 1.5</span><span>We record the price, wait at least 60 seconds, then compare.</span></div>
+    <div class="typerow"><span class="fine">Caption<br>12/400</span><span class="fine">Compared using exact prices, not rounded display values.</span></div>
+  </section>
+
+  <section><h2>Space, radius, depth</h2><p class="lead">4px grid (4, 8, 12, 16, 20, 24, 32, 40, 48). Radius follows hierarchy: 999 for status pills, 10 for controls and nested panels, 14 for top-level cards. Depth is a 1px top highlight plus one soft shadow on cards only.</p>
+    <div class="row-demo">${[4,8,12,16,20,24,32,40,48].map(s => `<span style="display:inline-block;width:${s}px;height:${s}px;background:var(--accent);border-radius:2px" title="${s}px"></span>`).join('')}</div>
+  </section>
+
+  <section><h2>Controls</h2><p class="lead">Up and Down are the only filled colour buttons in the product, so the primary decision is obvious. Minimum target 44px; the prediction buttons are 92px tall for thumbs.</p>
+    <div class="gallery">
+      ${g('Prediction, default', `<div class="choices" style="margin-top:0">${cb('up')}${cb('down')}</div>`, 'Centred label, one-line hint. Hover lifts 1px with a coloured glow; press scales to 97%.')}
+      ${g('Prediction, placing', `<div class="choices" style="margin-top:0">${cb('up', 'loading', 'disabled')}${cb('down', 'dim', 'disabled')}</div>`, 'The chosen side spins in place, the other recedes. No layout jump while the request is in flight.')}
+      ${g('Prediction, disabled', `<div class="choices" style="margin-top:0">${cb('up', '', 'disabled')}${cb('down', '', 'disabled')}</div>`, 'Always paired with a notice explaining why.')}
+      ${g('Buttons and status', `<div class="row-demo"><button class="btn primary" tabindex="-1">${icon('refresh')}Try again</button><button class="btn" tabindex="-1">Secondary</button></div><div class="row-demo" style="margin-top:12px"><span class="pill live"><span class="dot"></span>Live</span><span class="pill delayed">${icon('clock')}Delayed</span><span class="pill down">${icon('alert')}Unavailable</span></div>`)}
+    </div>
+  </section>
+
+  <section><h2>Round states</h2><p class="lead">The round ticket is the signature component. A four-step tracker separates \u201cminimum wait\u201d from \u201ccomparing\u201d, so the end of the countdown never looks like a result.</p>
+    <div class="gallery">
+      ${g('1. Minimum wait', ticketHTML({ ...base, phase: 'waiting', now: 6741647, remaining: 42000 }), 'Live delta is labelled \u201cnot final\u201d.')}
+      ${g('2. Comparing', ticketHTML({ ...base, phase: 'checking', now: 6741647, checkedAgo: 1000 }), 'Countdown done, result not yet confirmed.')}
+      ${g('3a. Price unchanged', ticketHTML({ ...base, phase: 'unchanged', now: 6741235, checkedAgo: 1000 }), 'Exact tie: keeps waiting, no result.')}
+      ${g('3b. On hold', ticketHTML({ ...base, phase: 'paused', now: 6741235, checkedAgo: 3000 }), 'Provider outage. Amber, never red.')}
+      ${g('4a. Correct', receiptHTML({ dir: 'up', entry: 6741235, exit: 6741647, acceptedAt: 300000, settledAt: 362000, outcome: 'win' }))}
+      ${g('4b. Incorrect', receiptHTML({ dir: 'down', entry: 6741235, exit: 6741530, acceptedAt: 300000, settledAt: 361000, outcome: 'loss' }))}
+    </div>
+  </section>
+
+  <section><h2>Feedback and messages</h2><p class="lead">Errors say what happened, what it means for the score, and what to do. They don\u2019t apologise.</p>
+    <div class="gallery">
+      ${g('Info', notice('info', 'history', 'Welcome back', 'Your Up prediction settled while this page was closed.'))}
+      ${g('Warning', notice('warn', 'clock', 'Waiting for a fresh price', 'Predictions open as soon as an up-to-date price arrives.'))}
+      ${g('Error', notice('error', 'alert', 'Prediction not placed', 'The server returned an error. Nothing was recorded and your score is unchanged. Try again.'))}
+    </div>
+  </section>
+
+  <section><h2>Motion</h2><p class="lead">Motion only confirms something changed. All of it is disabled under reduced motion, where state is still carried by text.</p>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Moment</th><th>Treatment</th><th>Why</th></tr></thead><tbody>
+      <tr><td>Price tick</td><td>Small arrow badge flips green or red; the price itself stays white</td><td>Shows direction of the last move without turning the price into a P&amp;L</td></tr>
+      <tr><td>Chart head</td><td>Soft ping on the latest point while live</td><td>Marks “now” on the chart; stops when data is delayed</td></tr>
+      <tr><td>Live pill</td><td>Dot pulses every 2s</td><td>Distinguishes live from delayed at a glance</td></tr>
+      <tr><td>Minimum wait</td><td>Yellow ring fills over 60s around the timer</td><td>Time is the core mechanic; the bar makes it physical</td></tr>
+      <tr><td>Comparing</td><td>Small spinner</td><td>Waiting on the server, not on a timer</td></tr>
+      <tr><td>Score change</td><td>Number background flashes green or red once</td><td>Connects the receipt to the running score</td></tr>
+    </tbody></table></div>
+  </section>
+
+  <section><h2>Accessibility</h2>
+    <div class="spec">
+      <div class="card"><h3>Announcements</h3><p>A polite live region announces placement, end of the minimum wait, tie or outage holds, and results with the new score.</p></div>
+      <div class="card"><h3>Focus</h3><p>After placing a prediction, focus moves to the round heading so keyboard users don\u2019t land on a removed button. Yellow 2px focus ring everywhere.</p></div>
+      <div class="card"><h3>Not colour alone</h3><p>Direction uses arrow icons and words; outcomes use check and cross plus \u201cCorrect\u201d and \u201cNot this time\u201d.</p></div>
+      <div class="card"><h3>Stable numbers</h3><p>Tabular figures and a fixed-width timer stop layout shift while values update every second.</p></div>
+    </div>
+  </section>
+
+  <section><h2>Prototype vs production</h2><p class="lead">What this page simulates, and what the real build does instead.</p>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Concern</th><th>This prototype</th><th>Production</th></tr></thead><tbody>
+      <tr><td>Market data</td><td>Seeded random walk, one quote per second</td><td>Coinbase Exchange public BTC-USD, fetched server-side</td></tr>
+      <tr><td>Player identity</td><td>In-memory stand-in for browser storage</td><td>Anonymous credentials in browser storage; score and history in DynamoDB</td></tr>
+      <tr><td>Placing a call</td><td>Mock with 650ms latency; entry from latest mock quote</td><td>API Gateway + Lambda records a fresh quote and timestamp</td></tr>
+      <tr><td>Waiting and settling</td><td>Checked each sim second after the deadline</td><td>Step Functions Standard waits 60s, then retries until a valid differing quote</td></tr>
+      <tr><td>Updates</td><td>Polling on a simulated clock</td><td>TanStack Query refetch intervals: 2s price, 3s state, 1s near the deadline</td></tr>
+      <tr><td>Countdown</td><td>Driven by sim time</td><td>Client estimate from server timestamps; never treated as a result</td></tr>
+      <tr><td>Icons</td><td>Lucide paths inlined</td><td>lucide-react</td></tr>
+    </tbody></table></div>
+  </section>`;
+}
+
+/* ================= EVENTS ================= */
+const drawer = $('drawer'), openBtn = $('pb-open');
+function setDrawer(open){
+  drawer.classList.toggle('open', open); drawer.setAttribute('aria-hidden', String(!open)); openBtn.setAttribute('aria-expanded', String(open));
+  if (open) setTimeout(() => $('dr-close').focus(), 50); else openBtn.focus();
+}
+function restart(){ client.reset(); for (const k in sigs) delete sigs[k]; client.boot(); }
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act],[data-speed]'); if (!el) return;
+  if (el.dataset.speed) { SIM.speed = +el.dataset.speed; document.querySelectorAll('#speed button').forEach(b => b.setAttribute('aria-pressed', String(b === el))); return; }
+  const act = el.dataset.act;
+  switch (act) {
+    case 'up': case 'down': client.predict(act); break;
+    case 'retry': restart(); break;
+    case 'dismiss-result': client.result = null; client.away = null; renderPlay(); focusTitle(); break;
+    case 'dismiss-away': client.away = null; renderPlay(); focusTitle(); break;
+    case 'open-drawer': setDrawer(!drawer.classList.contains('open')); break;
+    case 'close-drawer': setDrawer(false); break;
+    case 'view-game': case 'view-system': {
+      const sys = act === 'view-system';
+      $('view-game').hidden = sys; $('view-system').hidden = !sys;
+      document.querySelectorAll('[data-act^="view-"]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.act === act)));
+      if (sys) renderDS(); window.scrollTo(0, 0); break;
+    }
+    case 'skip': { const a = client.state && client.state.active; if (a && SIM.t < a.earliestAt - 2000) SIM.t = a.earliestAt - 2000; setDrawer(false); break; }
+    case 'close-tab': storage.openRoundAtClose = client.tracked; client.tabClosed = true; setDrawer(false); $('tabclosed').hidden = false; setTimeout(() => document.querySelector('[data-act="reopen-later"]').focus(), 30); break;
+    case 'reopen-now': case 'reopen-later':
+      if (act === 'reopen-later') { SIM.t += 120000; server.advanceTo(SIM.t); }
+      $('tabclosed').hidden = true; restart(); break;
+    case 'new-visitor': delete storage.creds; delete storage.openRoundAtClose; setDrawer(false); restart(); break;
+    case 'returning': storage.creds = server.seedReturning(SIM.t); delete storage.openRoundAtClose; setDrawer(false); restart(); break;
+  }
+});
+document.addEventListener('change', e => { const t = e.target; if (t.name && t.name in scenario) scenario[t.name] = t.value; });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && drawer.classList.contains('open')) setDrawer(false); });
+
+/* ================= START ================= */
+openBtn.innerHTML = icon('flask') + 'Prototype';
+$('dr-title').innerHTML = icon('sliders') + 'Prototype controls';
+$('dr-close').innerHTML = icon('x');
+server.reset(); server.advanceTo(SIM.t);
+client.reset(); client.boot();
+setInterval(() => { { SIM.t += 100 * SIM.speed; server.advanceTo(SIM.t); client.step(); fast(); } }, 100);
+})();
+</script>
+</body>
+</html>
