@@ -42,6 +42,9 @@ test-results/
 *.sln
 *.sw?
 
+# ─── Ponytail Cursor hooks (machine-specific absolute paths, re-run installer) ──
+.cursor/hooks.json
+
 # ─── Logs ───────────────────────────────────────────────────────────────────────
 *.log
 logs/

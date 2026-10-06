@@ -147,8 +147,51 @@ Commercial value is a hypothesis, not a demonstrated outcome.
 AI assistance is used for planning, implementation and review.
 Changes are reviewed and verified by the author.
 
-Grill Me and Ponytail integration will be documented after installation.
-Do not assume their hooks or automatic activation are enabled.
+### Grill Me
+
+User-invoked only. In a fresh Cursor chat, type `/grill-me` to start a
+structured planning interview. No hooks or automatic activation.
+Source: [mattpocock/skills](https://github.com/mattpocock/skills).
+
+### Ponytail
+
+Installed at two levels:
+
+- **Skill** (`.cursor/skills/ponytail/SKILL.md`): attach explicitly for a
+  simplification review, or invoke when relevant.
+- **Hooks** (`.cursor/hooks.json`, gitignored): every new local Agent chat
+  automatically receives the Ponytail ruleset at the default intensity
+  (`full`). Send `/ponytail lite`, `/ponytail ultra` or `/ponytail off` as a
+  plain message to change the level for that conversation.
+
+The always-on rule file (`.cursor/rules/ponytail.mdc`) is **not installed**.
+Keeping it absent is what allows the hooks to manage the level.
+Subagents and cloud agents do not receive the ruleset via hooks.
+Source: [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail).
+
+### Developer setup (hooks)
+
+`.cursor/hooks.json` is gitignored because it contains the absolute path
+of the `vendor/ponytail` checkout on each machine. After cloning, run:
+
+```bash
+git submodule update --init
+node vendor/ponytail/scripts/cursor-hooks.js install --project
+```
+
+Then open a new Cursor Agent chat. Do not commit your generated
+`.cursor/hooks.json`.
+
+### Uninstall
+
+```bash
+node vendor/ponytail/scripts/uninstall.js       # remove mode flag first
+node vendor/ponytail/scripts/cursor-hooks.js uninstall --project
+rm -rf .cursor/skills/grill-me .cursor/skills/ponytail
+git submodule deinit -f vendor/ponytail && git rm vendor/ponytail
+rm -rf .git/modules/vendor/ponytail
+# restore .gitignore: remove the .cursor/hooks.json line
+```
 
 ## Screenshots
 
