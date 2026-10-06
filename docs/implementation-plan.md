@@ -324,6 +324,7 @@ Tasks:
 - Define UP/DOWN and prediction lifecycle types.
 
 - Define server timestamps and price metadata.
+- Include `resolutionTradeTime` (exchange trade timestamp from Coinbase ticker `time` field) in the Prediction type and resolution response. This is distinct from the Lambda fetch time and proves the compared price is post-deadline. See D1 in architecture.md decision log.
 
 - Choose decimal-safe prices with strings at storage/API boundaries.
 
@@ -390,7 +391,7 @@ Tasks:
 
 - Define health Lambda and API Gateway HTTP API.
 
-- Define an on-demand DynamoDB table.
+- Define an on-demand DynamoDB table. DynamoDB Streams are not required (see D2 in architecture.md); do not enable them.
 
 - Configure IAM, timeouts, resource tags and log retention.
 
@@ -431,9 +432,7 @@ Dependencies: T04.
 
 Tasks:
 
-- POST /players creates player ID, score 0 and an opaque access token.
-
-- Store the token hash in the backend.
+- POST /players creates a player ID and generates an access token with `crypto.randomBytes(32).toString('hex')`. Return the raw token to the browser once; never store it on the server. Store the SHA-256 hash of the token on the Player record in DynamoDB. See D3 in architecture.md decision log.
 
 - Store player ID and raw token in browser localStorage.
 
@@ -452,7 +451,8 @@ Tests:
 
 - Existing player restores.
 
-- Invalid token rejected.
+- Invalid token rejected (hash mismatch returns 401).
+- Token verification uses `crypto.timingSafeEqual` to prevent timing attacks.
 
 - Network errors do not create replacement players.
 
@@ -570,13 +570,7 @@ Dependencies: T07.
 
 Tasks:
 
-- Add DynamoDB Stream trigger for new prediction records.
-
-- Implement workflow starter with deterministic execution name/input.
-
-- Handle duplicate stream delivery safely.
-
-- Configure failed-delivery handling and recovery.
+- In createPrediction: after the DynamoDB transaction succeeds, call sfn:StartExecution with execution name `prediction-{predictionId}`. This call is idempotent on a given name. Grant the Lambda sfn:StartExecution on the workflow ARN only.
 
 - Define Step Functions Standard workflow.
 
@@ -598,7 +592,9 @@ Tasks:
 
 - Return stored result for duplicate settlement.
 
-- Store resolution quote and timestamps.
+- Store resolution quote and timestamps, including `resolutionTradeTime` from the Coinbase ticker `time` field (D1). Show the trade timestamp on the result receipt alongside the fetch timestamp so the player can verify the 60-second rule was satisfied.
+
+- Implement recoverStuckPredictions Lambda on a five-minute CloudWatch schedule. Query for Prediction records in status `pending` with `dueAt` more than two minutes past and no active execution. Call StartExecution with the same deterministic name for each. Alert on scanner failure (D2).
 - Connect active-state polling and the minimum result receipt now, so this ticket produces a playable real core loop. Do not defer all result UI until T09.
 - Return the latest persisted result through `/me` for browser-return display; add the basic score update and repeat-play transition.
 
@@ -610,7 +606,9 @@ Tests:
 
 - Provider failure.
 
-- Duplicate workflow start.
+- StartExecution called twice with the same name does not create a duplicate execution.
+
+- Recovery scanner detects a stuck prediction and starts its execution.
 
 - Duplicate settlement.
 

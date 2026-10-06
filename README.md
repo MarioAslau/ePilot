@@ -107,25 +107,38 @@ and environment configuration after successful deployment.
 
 ## How resolution works
 
-The backend records an entry quote and a deadline.
-After at least 60 seconds, it retrieves a fresh valid quote.
+When a prediction is accepted, the backend records an entry quote and a
+deadline (at least 60 seconds from acceptance), then starts a Step
+Functions workflow using a deterministic execution name. The workflow
+waits until the deadline, then retrieves a fresh quote from Coinbase.
 
-If the quote differs, the backend settles the prediction.
-If equal, it waits and retries.
+If the quote price differs from the entry price, the round is settled.
+If equal, the workflow waits and retries. Provider outages pause the
+round without counting as a loss.
+
+The settlement stores the compared price and the exchange-reported trade
+timestamp, so the result receipt can prove the 60-second rule was
+satisfied independently of when the backend fetched the price.
 
 Movements during the first minute do not settle the prediction.
-Resolution uses sampled provider data rather than guaranteeing the
-first exchange trade at exactly second 60.
+If the workflow fails to start (rare), a scheduled recovery scanner
+detects the stuck prediction within five minutes and restarts it.
 
 ## Anonymous persistence
 
-Planned:
-Browser storage remembers player credentials.
-DynamoDB stores authoritative score and predictions.
-Step Functions runs independently of the browser.
+No account or login required. On first visit the backend creates a player
+and generates a random secret token (256-bit, cryptographically random).
+The token is returned to your browser once and saved to `localStorage`.
+The backend stores only a hash of that token — never the token itself —
+so a database breach cannot impersonate players.
 
-Clearing storage loses anonymous access.
-Cross-device restoration is outside the initial scope.
+On every return visit your browser sends the stored token. The backend
+hashes it, matches it to the stored hash, and restores your score and
+active round. The token never leaves your browser except in API requests
+over HTTPS.
+
+Clearing browser storage loses anonymous access. Cross-device restoration
+is outside the initial scope.
 
 ## Product rationale
 

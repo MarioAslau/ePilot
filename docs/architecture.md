@@ -76,9 +76,9 @@ Proposed functions:
 - createPlayer
 - getPlayerState
 - getMarketPrice
-- createPrediction
-- startPredictionWorkflow
+- createPrediction (also calls sfn:StartExecution synchronously after the DB write; see D2)
 - resolvePrediction
+- recoverStuckPredictions (scheduled scanner; see D2)
 - getPredictionHistory
 - acceptOffer, added for optional modes
 - health
@@ -135,8 +135,8 @@ Do not introduce a separate Amplify-managed backend.
 3. Player submits direction with an idempotency key.
 4. Backend fetches a fresh entry quote.
 5. DynamoDB transaction creates prediction and locks the player.
-6. DynamoDB Stream triggers a workflow starter.
-7. Starter begins a deterministically named Standard execution.
+6. createPrediction Lambda calls sfn:StartExecution with a deterministic name (prediction-{predictionId}).
+7. Step Functions begins the durably named Standard execution.
 8. Workflow waits until dueAt.
 9. Resolver retrieves a fresh quote after the deadline.
 10. Equal price causes another wait.
@@ -145,17 +145,35 @@ Do not introduce a separate Amplify-managed backend.
 
 ## Anonymous identity
 
-Create a random player ID and high-entropy access token.
-Store a token hash in the backend.
-Store ID and raw token in browser localStorage.
+On first visit, `POST /players` generates two values:
 
-A player ID identifies a record; the token authorises access.
+- **Player ID** — a short human-readable identifier (e.g. `anon_7F3A`).
+  Public. Returned to the browser and stored in DynamoDB.
+- **Access token** — `crypto.randomBytes(32).toString('hex')`, 64 hex
+  characters, 256 bits of entropy. Secret. Returned to the browser in
+  the response body once and never stored on the server.
+
+The browser saves both to `localStorage`. Every subsequent authenticated
+request sends them in an `Authorization` header.
+
+The backend stores only the SHA-256 hash of the raw token
+(`crypto.createHash('sha256').update(token).digest('hex')`) on the
+Player record. To authenticate a request it hashes the incoming token
+and compares it to the stored hash using `crypto.timingSafeEqual` to
+prevent timing attacks. There is no decryption step; hashing is
+one-way.
+
+A player ID identifies a record; the token proves ownership.
 The browser never owns the authoritative score.
 
+On browser return, the token is still in `localStorage`. The browser
+sends it with `GET /me`; the backend verifies and returns the player's
+score and active prediction. See D3 in the decision log.
+
 Limitations:
-- Clearing storage loses access.
+- Clearing storage loses access; the orphaned DynamoDB record remains.
 - Different devices do not share identity.
-- localStorage tokens are exposed if the app suffers an XSS flaw.
+- `localStorage` tokens are exposed if the app suffers an XSS flaw.
 - This is anonymous continuity, not account authentication.
 
 Do not log tokens or render unsafe user-provided HTML.
@@ -217,6 +235,7 @@ Prediction:
 - entryQuoteMetadata
 - resolvedAt
 - resolutionPrice
+- resolutionTradeTime   (exchange timestamp of the compared trade, from the Coinbase ticker `time` field)
 - resolutionQuoteMetadata
 - outcome
 - scoreDelta
@@ -273,16 +292,28 @@ Duplicate execution is possible; duplicate score effects must be prevented.
 
 ## Workflow startup and recovery
 
-Use the DynamoDB Stream to bridge saved predictions to workflow startup.
-This avoids relying on one HTTP handler completing both a database write
-and a workflow-start call.
+After writing the Prediction record, createPrediction calls
+`sfn:StartExecution` synchronously with the execution name
+`prediction-{predictionId}`. If the call fails or the Lambda crashes
+after the DB write, the execution is never started. This window is
+narrow but real.
 
-Handle duplicate delivery using deterministic execution names and input.
-Configure failed-delivery handling.
-Monitor workflow failures and preserve pending records for recovery.
+Recovery path: a scheduled recoverStuckPredictions Lambda runs every
+five minutes. It queries for Prediction records in status `pending`
+whose `dueAt` is more than two minutes in the past and for which no
+active Step Functions execution exists. For each, it calls
+`StartExecution` with the same deterministic name.
 
-This adds operational complexity.
-Review it during Grill Me before implementing T08.
+`StartExecution` with the same execution name is idempotent: Step
+Functions returns the existing execution without creating a duplicate.
+
+This replaces the originally proposed DynamoDB Streams approach.
+Streams provided near-automatic recovery at the cost of a stream
+configuration, event-source mapping, filtering, at-least-once delivery
+handling and a harder local test story. The synchronous call with a
+scheduled recovery scanner is simpler to build, test and explain,
+and the failure window is operationally acceptable at this scale.
+See D2 in the decision log.
 
 ## Failure behaviour
 
@@ -668,3 +699,115 @@ Costs:
 - Set log retention.
 - Enable billing alerts.
 - Document teardown and retained data before submission.
+
+## Decision log
+
+Decisions agreed during the T01 Grill Me review.
+Record format: decision, reason, alternatives considered, tradeoff or limitation.
+
+---
+
+### D1 — Resolution price: first valid differing ticker poll after deadline, with trade timestamp recorded
+
+**Decision.**
+Settle the round on the first Coinbase ticker response after `dueAt` whose
+price differs from the entry price. Store both the settlement price and the
+exchange-reported trade timestamp (`time` field from the ticker response) as
+`resolutionTradeTime` on the Prediction record.
+
+**Reason.**
+The ticker's `time` field is the exchange timestamp of the last trade,
+not the Lambda fetch time. Storing it lets the result receipt show players
+exactly when the compared trade occurred, proving the 60-second rule was
+satisfied without requiring them to trust the fetch timestamp alone.
+This satisfies the "every number has a source" design principle at negligible
+extra cost: one additional field parsed and stored.
+
+**Alternatives considered.**
+- Ticker poll only, no trade timestamp (Option A): simpler, but the receipt
+  cannot prove the compared price is post-deadline without showing fetch time,
+  which can be slightly later than the trade.
+- Coinbase 60-second candle close (Option B): more auditable candle boundary,
+  but candle data can lag by up to 60 seconds, equal-price retry becomes
+  significantly harder, and it requires a second API shape with its own
+  validation.
+
+**Tradeoff or limitation.**
+The trade timestamp comes from the Coinbase API response and is trusted as
+received. It is not independently verified. Settlement still requires a
+differing price; a trade at exactly the entry price keeps the round pending.
+The resolver may fetch the ticker a few seconds after `dueAt`, so the
+compared trade may be up to a few seconds post-deadline rather than exactly
+at second 60.
+
+---
+
+### D2 — Workflow startup: synchronous StartExecution inside createPrediction, with a scheduled recovery scanner
+
+**Decision.**
+After writing the Prediction to DynamoDB, the createPrediction Lambda calls
+`sfn:StartExecution` synchronously using the execution name
+`prediction-{predictionId}`. A separate recoverStuckPredictions Lambda runs
+every five minutes on a CloudWatch schedule. It finds any Prediction in
+status `pending` whose `dueAt` is more than two minutes past and for which
+no active execution exists, then calls `StartExecution` with the same
+deterministic name. `StartExecution` is idempotent on a given execution
+name, so duplicate calls are safe.
+
+**Reason.**
+The original design used a DynamoDB Stream to decouple the DB write from
+the workflow start. That approach is reliable but adds substantial
+complexity: stream enablement, event-source mapping, delivery filtering,
+at-least-once handling, a dead-letter queue, and a test environment that
+can emulate stream delivery. The synchronous call achieves the same
+correctness for the common path. The failure window (Lambda crashes after
+DB write, before StartExecution) is narrow and handled by the recovery
+scanner rather than infrastructure plumbing.
+
+**Alternatives considered.**
+- DynamoDB Streams + startPredictionWorkflow Lambda (original design):
+  near-automatic recovery, but higher infrastructure complexity, harder to
+  test locally, and more moving parts to explain.
+
+**Tradeoff or limitation.**
+A prediction stuck in `pending` is not recovered until the next scanner
+run (up to five minutes). During that window the player's UI will show the
+round as active past the deadline. The scanner must be monitored and its
+failures alerted. This is an operationally acceptable tradeoff at MVP
+scale; revert to a stream-based approach if throughput or recovery-latency
+requirements increase.
+
+---
+
+### D3 — Anonymous token: randomBytes(32), SHA-256 storage, timingSafeEqual verification
+
+**Decision.**
+Generate the access token with `crypto.randomBytes(32).toString('hex')`
+(256 bits of entropy). Return the raw token to the browser once in the
+`POST /players` response body. Store only its SHA-256 hash on the Player
+record in DynamoDB. Verify incoming tokens by hashing the presented value
+and comparing with `crypto.timingSafeEqual`.
+
+**Reason.**
+256 bits of entropy makes the token computationally unguessable; no
+dictionary or brute-force attack is feasible. Storing only the hash means
+a DynamoDB breach exposes no usable secrets — the raw tokens exist only in
+players' browsers and in the single HTTP response that created them.
+SHA-256 (not bcrypt) is appropriate because token entropy is high; slow
+hashing is only needed for low-entropy human-chosen passwords. Using
+`timingSafeEqual` closes timing-attack vectors at no cost.
+
+**Alternatives considered.**
+- UUID v4: 122 bits of entropy, also sufficient, but conventionally used
+  as identifiers not secrets. Using the same format for ID and token
+  obscures intent.
+- bcrypt for hashing: adds a dependency and 100–300 ms to every
+  authenticated request with no security benefit given the token entropy.
+- Storing the raw token: eliminates the hash step but means a DynamoDB
+  breach directly compromises all players.
+
+**Tradeoff or limitation.**
+If a player's `localStorage` is cleared, their token is gone and the
+account is inaccessible. The DynamoDB record remains orphaned. This is
+a documented limitation of anonymous, device-local identity — not a
+fixable bug without introducing accounts.
