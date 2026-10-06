@@ -80,7 +80,7 @@ docs: establish project workflow and implementation plan
 
 ## T01 — Install skills and clarify the plan
 
-Status: Awaiting manual verification
+Status: Complete
 Dependencies: T00.
 
 Sources:
@@ -605,7 +605,7 @@ If time runs short:
     present.
   - `ponytail.mdc` — absent from `.cursor/rules/`; confirmed.
   - `project-workflow.mdc` — unchanged; confirmed.
-- Manual verification: Pending Mario's live hook test in a new Cursor chat.
+- Manual verification: Passed. sessionStart delivered `PONYTAIL MODE ACTIVE — level: full` in a new chat. Level switch to `lite` and back to `full` confirmed via beforeSubmitPrompt hook. Skills visible in Cursor `/` menu.
 - Decision or tradeoff:
   - Submodule at `vendor/ponytail/` rather than a gitignored clone. Pins a
     specific commit and is reproducible with one command
