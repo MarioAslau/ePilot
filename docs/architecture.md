@@ -312,6 +312,280 @@ Backend state controls eligibility and outcome.
 Countdown is presentation only.
 Consider server/client clock offset.
 
+## UI design
+
+### References
+
+Design files live at these stable repository paths, added during T01:
+
+- `docs/design/hunch-prototype.html` — the approved interactive HTML prototype
+  with a built-in state gallery, scenario controls and design-system view.
+- `docs/design/desktop-ready.png` — desktop screenshot, ready state.
+- `docs/design/desktop-rules-open.png` — desktop screenshot, rules panel expanded.
+- `docs/design/desktop-active.png` — desktop screenshot, active prediction with countdown.
+
+These are reference assets. Implement the product in React/TypeScript;
+do not ship the prototype's in-page mock server.
+
+### Design principles
+
+Four principles govern every state and copy decision:
+
+- **Confirmed beats instant.** Show only outcomes the server has confirmed.
+  A finished countdown shows "Comparing prices", never a premature result.
+- **Every number has a source.** Entry price, compared price and timestamps
+  appear on every receipt so a player can verify the result themselves.
+- **Colour means direction.** Green is Up and wins; red is Down and losses;
+  yellow is the brand and the player's entry marker. Never colour alone:
+  every state pairs with an icon and words.
+- **Failures are never losses.** Outages and provider holds use neutral or
+  amber styling, never red. Copy says what happened and what will happen next.
+
+### Visual identity and tokens
+
+Product name: **Hunch**. Dark trading-inspired style with charcoal
+background, raised cards, yellow brand/focus accents, green Up and red Down.
+
+```
+/* Surfaces */
+--bg:           #121418   page background
+--surface:      #1A1D23   cards
+--raised:       #22262D   inset panels, controls
+--line:         #2C3139   borders
+--line-strong:  #3B414B   stronger borders
+
+/* Text */
+--text:         #ECEEF1   primary
+--muted:        #A3ABB7   secondary
+--subtle:       #8A93A0   captions, meta
+
+/* Brand and semantic */
+--accent:       #F2C14E   brand, entry line, focus ring, current step
+--accent-ink:   #1A1408   text on accent
+--accent-soft:  rgba(242,193,78,.12)
+
+--up:           #26C281   Up direction, correct outcome
+--up-ink:       #04150D
+--up-soft:      rgba(38,194,129,.12)
+--up-line:      rgba(38,194,129,.35)
+
+--down:         #F2555F   Down direction, incorrect outcome
+--down-ink:     #1E0508
+--down-soft:    rgba(242,85,95,.12)
+--down-line:    rgba(242,85,95,.35)
+
+--warn:         #F0A53A   delayed feed, on-hold state
+--warn-soft:    rgba(240,165,58,.12)
+```
+
+Use these as implementation reference. Verify contrast ratios on actual
+controls before shipping.
+
+### Typography
+
+Font family: Archivo with system fallback (`ui-sans-serif, "Helvetica Neue",
+Helvetica, Arial, sans-serif`). Use the variable width axis: slightly
+expanded for the wordmark and headings; slightly condensed for large prices
+so they fit at 375 px.
+
+All prices, scores and timers use `font-variant-numeric: tabular-nums
+lining-nums` to prevent layout shift during live updates.
+
+| Role | Size / Weight | Notes |
+|------|---------------|-------|
+| Display price | 48 px / 700, 96% width | clamp to viewport |
+| Score | 56 px / 760 | |
+| Timer | 36 px / 720, tabular | |
+| H1 / play title | 22 px / 700, 104% width | |
+| H2 | 16 px / 650 | |
+| Body | 15 px / 400, 1.5 lh | |
+| Caption / fine | 12 px / 400 | |
+
+4 px spacing grid: 4, 8, 12, 16, 20, 24, 32, 40, 48 px.
+Radius hierarchy: 999 px pills, 10 px controls and nested panels,
+14 px top-level cards.
+
+### Layout
+
+Desktop (960 px+): two-column grid inside a 1120 px centred content area.
+Left column (7fr): MarketCard and PredictionPanel stacked. Right column
+(5fr): ScoreCard, RoundHistory and HowItWorks stacked.
+
+Mobile (below 960 px): single column. Stacking order:
+1. Header (logo + anonymous ID + score chip)
+2. MarketCard
+3. PredictionPanel
+4. ScoreCard
+5. RoundHistory / history placeholder
+6. HowItWorks
+
+Keep the current score visible on mobile at all times without depending
+on the desktop sidebar. The header score chip appears only below 960 px.
+
+### Component responsibilities
+
+These are named responsibilities, not a requirement to create one file per label.
+Reuse or split as implementation dictates; keep presentation components
+separate from data-fetching.
+
+| Component | Responsibility |
+|-----------|----------------|
+| AppHeader | Logo, anonymous player ID, header score chip (mobile) |
+| MarketCard | Price display, source/freshness pill, sparkline chart |
+| PriceStatus | Live / Delayed / Unavailable pill with dot or icon |
+| PriceChart | SVG sparkline built from validated in-session observations |
+| PredictionPanel | Hosts DirectionButtons or active RoundTicket or ResultReceipt |
+| DirectionButtons | Up/Down buttons with locked and loading states |
+| RoundTicket | Entry price, latest price, step tracker, wait ring, state copy |
+| ResultReceipt | Outcome badge, score delta, entry/compared price, timestamps |
+| ScoreCard | Numeric score, accuracy stats after first round |
+| RoundHistory | Settled prediction list; honest placeholder until T11 |
+| HowItWorks | Expandable accordion; MVP content in from T02 |
+| StatusNotice | Info / warn / error inline notices with icon, copy and action |
+
+### Application states
+
+**Ready**
+Show the latest available price, source, update age, player score, Up/Down
+buttons and a concise rules summary. Negative scores are valid and must
+display correctly. Disable direction buttons until player setup completes.
+
+**Submission**
+Lock both buttons immediately when a direction is chosen.
+Show "Recording entry" with a spinner.
+On server confirmation, render the RoundTicket with the server-confirmed
+direction, accepted price and timestamps.
+Do not treat the price the player saw when they clicked as the accepted
+entry price; the backend fetches a fresh quote at acceptance time.
+Show an entry-note if the server price differs from the displayed price.
+
+**Active / Waiting**
+Show the RoundTicket with:
+- Entry price and accepted timestamp.
+- Latest available price and live delta labelled "not final".
+- Minimum-wait countdown ring (yellow, fills over 60 s).
+- Step tracker: Placed → Waiting → Comparing → Result.
+- Label "Minimum wait — Not final. Moves during this minute don't count."
+
+**After countdown — Checking / Equal / Outage**
+At timer zero show "Comparing prices". Do not invent a result.
+Show state-specific copy only when the backend reports that reason:
+- `checking`: "Minimum wait complete. We're checking the latest price."
+- `unchanged`: "The latest price equals your entry price. Still waiting."
+- `price_unavailable`: "Our price source is temporarily unavailable.
+  Your round is on hold, and an outage never counts as a loss."
+A stale display feed alone does not establish the resolver's status.
+Use amber / neutral styling for holds, never red.
+
+**Results**
+Show ResultReceipt with: "Correct" or "Not this time", score delta (+1 / −1),
+direction called, entry price, compared price, accepted and settled timestamps,
+elapsed duration, and a note that exact prices are used, not rounded display values.
+If rounded receipt values hide the winning difference, show enough precision
+to explain the actual comparison.
+Flash the score number once on settlement.
+Show a result once per prediction, including after browser return.
+Re-enable direction buttons only after backend-confirmed resolution.
+
+**Error and recovery**
+- Player setup / restoration failure: show retry notice; do not create a
+  replacement player on a temporary network failure.
+- Submission outcome unknown: lock controls and attempt to reconcile with
+  the same idempotency key; never claim nothing was recorded before a
+  definitive server rejection.
+- Stale market: show last known price as stale; disable new submissions.
+- Player-state failure: mark score as "last confirmed" and conservatively
+  block new submissions until reconciled.
+
+### Score copy
+
+Use exactly: "Your score is saved on our server. This browser remembers
+your anonymous player."
+
+Do not say "Saved to this browser" — that implies the wrong ownership.
+Explain separately that clearing browser storage or switching devices loses
+anonymous access.
+
+### Polling and data freshness
+
+Market polling: approximately 5 s interval, configurable.
+Player-state polling: approximately 2 s while a round is active,
+approximately 3 s otherwise; approximately 1 s near the deadline.
+Refetch on window focus return and after mutations.
+Avoid overlapping requests.
+
+Status labels:
+- Live feed: "Latest available" or "Updated X seconds ago · Coinbase"
+- Stale feed: "Last known price, updated X seconds ago · Coinbase"
+- Unavailable: show error notice; preserve last known value
+
+Do not imply a streaming feed. No WebSockets required for MVP.
+
+### Motion
+
+All animation is disabled under `prefers-reduced-motion`; state remains
+communicated through text and icons alone.
+
+| Moment | Treatment | Rationale |
+|--------|-----------|-----------|
+| Price tick | Small up/down arrow badge; price number stays white | Shows last-move direction without colouring the price |
+| Chart live dot | Soft ping every 2 s while live; stops when delayed | Marks "now" on the chart |
+| Live pill dot | Pulses every 2 s | Distinguishes live from delayed at a glance |
+| Minimum-wait ring | Yellow arc fills over 60 s around the timer | Makes the core mechanic physical |
+| Comparing | Small spinner | Waiting on the server, not a timer |
+| Score change | Number background flashes green or red once, fades over ~1 s | Connects the receipt to the running score |
+
+### Accessibility
+
+- Use native HTML controls (`<button>`, `<details>`) rather than custom roles.
+- Minimum touch target: 44 × 44 px. Direction buttons are 76 px tall.
+- Visible focus ring: 2 px solid `--accent` (#F2C14E) with 2 px offset.
+- After placing a prediction, move focus to the round heading so keyboard
+  users do not land on a removed button.
+- Polite live region announces:
+  - Placement confirmation with direction and entry price.
+  - End of minimum wait ("Minimum wait complete. Checking the latest price.").
+  - Equal-price or outage hold with score-safety reassurance.
+  - Result with outcome and new score total.
+  - Do not announce every price tick or countdown second.
+- Direction and outcome use arrow icons plus words; never colour alone.
+- Chart has a text alternative (`aria-label` on the SVG).
+- Prices and timers use tabular figures so layouts do not shift.
+
+### History placeholder
+
+Basic rules explanation (`HowItWorks`) is MVP functionality, present from T02.
+Persisted, paginated round history is T11.
+
+Before T11 is complete, use an honest placeholder such as
+"Your settled predictions will appear here" or omit the history card.
+Never tell an existing player they have no rounds just because the
+history feature is not yet wired.
+
+### Prototype boundaries
+
+The HTML prototype uses a seeded random price walk, an in-page mock server,
+fake in-memory credentials, fixed RPC delays and simulated tab closure.
+It is a design reference, not proof of backend correctness.
+
+The following prototype behaviours must NOT appear in production:
+
+- Seeded random price walk or any synthetic market data.
+- In-page mock server, scenario controls, time skips or speed multipliers.
+- Fake in-memory credential store (production uses browser localStorage +
+  DynamoDB).
+- Integer-cent precision assumption: use decimal-safe string prices at all
+  storage and API boundaries; show additional precision in receipts when
+  rounded values would hide the outcome.
+- Full player history in every `/me` response: return active prediction
+  and an identifiable latest result only; paginate history in T11.
+- Synthetic two-minute chart history: collect validated display-price
+  samples in memory from page load only; start with an empty chart and
+  "Collecting recent prices"; do not invent earlier points.
+- Simulated polling intervals as production configuration: the prototype's
+  polling shape is illustrative; tune actual intervals from observed cost
+  and latency.
+
 ## Optional modes
 
 These are proposed defaults, to be confirmed before implementation.
