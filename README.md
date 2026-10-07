@@ -17,16 +17,17 @@ Application and AWS infrastructure are not implemented yet.
 
 Planned:
 - Anonymous player starts with score 0.
-- Display current score and latest available BTC/USD price.
+- Display current score, accuracy stats and latest available BTC/USD price.
 - Predict Up or Down.
 - One active prediction per player.
 - Backend waits at least 60 seconds.
 - Equal entry/resolution price keeps the round pending.
 - Correct prediction adds 1 point.
 - Incorrect prediction subtracts 1 point.
-- Backend persists score and predictions.
+- Backend persists score, wins, losses and predictions.
 - Browser reopening restores identity and active state.
 - Backend resolution continues when the browser is closed.
+- Result receipt shows entry price, compared price and trade timestamp.
 
 ## Optional features
 
@@ -107,25 +108,38 @@ and environment configuration after successful deployment.
 
 ## How resolution works
 
-The backend records an entry quote and a deadline.
-After at least 60 seconds, it retrieves a fresh valid quote.
+When a prediction is accepted, the backend records an entry quote and a
+deadline (at least 60 seconds from acceptance), then starts a Step
+Functions workflow using a deterministic execution name. The workflow
+waits until the deadline, then retrieves a fresh quote from Coinbase.
 
-If the quote differs, the backend settles the prediction.
-If equal, it waits and retries.
+If the quote price differs from the entry price, the round is settled.
+If equal, the workflow waits and retries. Provider outages pause the
+round without counting as a loss.
+
+The settlement stores the compared price and the exchange-reported trade
+timestamp, so the result receipt can prove the 60-second rule was
+satisfied independently of when the backend fetched the price.
 
 Movements during the first minute do not settle the prediction.
-Resolution uses sampled provider data rather than guaranteeing the
-first exchange trade at exactly second 60.
+If the workflow fails to start (rare), a scheduled recovery scanner
+detects the stuck prediction within five minutes and restarts it.
 
 ## Anonymous persistence
 
-Planned:
-Browser storage remembers player credentials.
-DynamoDB stores authoritative score and predictions.
-Step Functions runs independently of the browser.
+No account or login required. On first visit the backend creates a player
+and generates a random secret token (256-bit, cryptographically random).
+The token is returned to your browser once and saved to `localStorage`.
+The backend stores only a hash of that token — never the token itself —
+so a database breach cannot impersonate players.
 
-Clearing storage loses anonymous access.
-Cross-device restoration is outside the initial scope.
+On every return visit your browser sends the stored token. The backend
+hashes it, matches it to the stored hash, and restores your score and
+active round. The token never leaves your browser except in API requests
+over HTTPS.
+
+Clearing browser storage loses anonymous access. Cross-device restoration
+is outside the initial scope.
 
 ## Product rationale
 
@@ -147,51 +161,23 @@ Commercial value is a hypothesis, not a demonstrated outcome.
 AI assistance is used for planning, implementation and review.
 Changes are reviewed and verified by the author.
 
-### Grill Me
+Two project-scoped skills are installed:
 
-User-invoked only. In a fresh Cursor chat, type `/grill-me` to start a
-structured planning interview. No hooks or automatic activation.
-Source: [mattpocock/skills](https://github.com/mattpocock/skills).
+- **Grill Me** — structured architecture review, one question at a time.
+  Invoke explicitly with `/grill-me`. Cannot be invoked automatically by
+  the model (`disable-model-invocation: true`).
+  Located at `.cursor/skills/grill-me/SKILL.md`.
 
-### Ponytail
+- **Ponytail** — enforces minimal, lazy solutions during coding.
+  Located at `.cursor/skills/ponytail/SKILL.md`.
+  Full source preserved at `vendor/ponytail/` (unmodified).
 
-Installed at two levels:
-
-- **Skill** (`.cursor/skills/ponytail/SKILL.md`): attach explicitly for a
-  simplification review, or invoke when relevant.
-- **Hooks** (`.cursor/hooks.json`, gitignored): every new local Agent chat
-  automatically receives the Ponytail ruleset at the default intensity
-  (`full`). Send `/ponytail lite`, `/ponytail ultra` or `/ponytail off` as a
-  plain message to change the level for that conversation.
-
-The always-on rule file (`.cursor/rules/ponytail.mdc`) is **not installed**.
-Keeping it absent is what allows the hooks to manage the level.
-Subagents and cloud agents do not receive the ruleset via hooks.
-Source: [DietrichGebert/ponytail](https://github.com/DietrichGebert/ponytail).
-
-### Developer setup (hooks)
-
-`.cursor/hooks.json` is gitignored because it contains the absolute path
-of the `vendor/ponytail` checkout on each machine. After cloning, run:
-
-```bash
-git submodule update --init
-node vendor/ponytail/scripts/cursor-hooks.js install --project
-```
-
-Then open a new Cursor Agent chat. Do not commit your generated
-`.cursor/hooks.json`.
-
-### Uninstall
-
-```bash
-node vendor/ponytail/scripts/uninstall.js       # remove mode flag first
-node vendor/ponytail/scripts/cursor-hooks.js uninstall --project
-rm -rf .cursor/skills/grill-me .cursor/skills/ponytail
-git submodule deinit -f vendor/ponytail && git rm vendor/ponytail
-rm -rf .git/modules/vendor/ponytail
-# restore .gitignore: remove the .cursor/hooks.json line
-```
+Ponytail hooks are installed in `.cursor/hooks.json` and activate
+automatically at session start and before each prompt. The hook file
+contains **absolute paths specific to this machine**. On any other
+machine, re-run the Ponytail hook installation script from `vendor/ponytail/`
+before the hooks will activate. Do not commit the regenerated hooks.json
+without checking the paths are correct for the target machine.
 
 ## Screenshots
 
