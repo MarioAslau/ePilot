@@ -1,0 +1,28 @@
+{
+  "private": true,
+  "name": "hunch",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "yarn workspace web dev",
+    "build": "yarn workspaces run build",
+    "typecheck": "yarn workspaces run typecheck",
+    "lint": "eslint .",
+    "test": "yarn workspaces run test",
+    "check": "yarn typecheck && yarn lint && yarn test && yarn build"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "@typescript-eslint/eslint-plugin": "^8.16.0",
+    "@typescript-eslint/parser": "^8.16.0",
+    "eslint": "^9.15.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "globals": "^15.12.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

@@ -7,7 +7,7 @@ Then add optional features that demonstrate product judgment.
 
 ## Current progress
 
-- Active ticket: T00
+- Active ticket: T02
 - Status: In progress
 - Starting point: Git repository created; application not implemented.
 
@@ -39,7 +39,7 @@ the deployed user journey works.
 
 - [ ] T00 — Establish project documentation
 - [ ] T01 — Install skills and clarify the plan
-- [ ] T02 — Scaffold TypeScript projects
+- [x] T02 — Scaffold TypeScript projects
 - [ ] T03 — Define contracts and test game rules
 - [ ] T04 — Deploy a minimal AWS slice
 - [ ] T05 — Create and restore anonymous players
@@ -120,28 +120,31 @@ chore: add verified Cursor skills and planning decisions
 
 ## T02 — Scaffold TypeScript projects
 
-Status: Not started
+Status: Awaiting manual verification
 Dependencies: T01.
 
 Tasks:
-- Confirm a supported Node.js LTS version.
-- Use npm workspaces and commit the lockfile.
-- Create apps/web with React, TypeScript and Vite.
-- Create apps/api for TypeScript Lambda application code.
-- Create packages/contracts for shared types and Zod schemas.
-- Add Tailwind, Lucide and TanStack Query to the frontend.
-- Configure strict TypeScript, linting and Vitest.
-- Add root scripts for dev, build, typecheck, lint, test and check.
-- Add .gitignore and .env.example.
-- Build a minimal dark frontend shell.
-- Pin Serverless Framework and check its build/auth requirements.
-- Avoid redundant build plugins if native bundling is sufficient.
+- [x] Confirm a supported Node.js LTS version (using Node 20.20 / Yarn 1.22.22).
+- [x] Use Yarn workspaces and commit the lockfile.
+- [x] Create apps/web with React, TypeScript and Vite.
+- [x] Create apps/api for TypeScript Lambda application code.
+- [x] Create packages/contracts for shared types and Zod schemas.
+- [x] Add Tailwind v4, Lucide and TanStack Query to the frontend.
+- [x] Configure strict TypeScript, linting and Vitest.
+- [x] Add root scripts for dev, build, typecheck, lint, test and check.
+- [x] Add .gitignore and .env.example.
+- [x] Build all 9 UI state fixtures and Hunch visual foundation components.
+- [x] Pin Serverless Framework (^4) with serverless-esbuild.
 
 Acceptance:
-- Dependencies install successfully.
-- Typecheck, lint, tests and build run.
-- Local frontend opens.
-- No game functionality is claimed yet.
+- [x] Dependencies install successfully (`yarn install`).
+- [x] Typecheck passes (`yarn workspace web typecheck`).
+- [x] Lint passes (`yarn lint`).
+- [x] Tests pass — 5/5 (`yarn workspace web test`).
+- [x] Production build succeeds (`yarn workspace web build`).
+- [ ] Local dev server opens in browser (`yarn dev`).
+- [ ] Fixture states render correctly at http://localhost:5173/?fixture=ready (and each other fixture name).
+- [ ] No game functionality is claimed yet.
 
 Manual checkpoint:
 Run the documented commands from the repository root.
@@ -626,6 +629,45 @@ If time runs short:
   - Mode state (`~/.cursor/.ponytail-active`) is one flag per user, shared
     across all open Cursor conversations.
 - Commit: Pending after Mario's verification.
+
+### T02
+
+- Status: Awaiting manual verification.
+- What changed:
+  - `package.json` (root) — Yarn workspace config, root scripts (`dev`, `build`, `typecheck`, `lint`, `test`, `check`), ESLint 9 + TypeScript ESLint + react-hooks plugin in devDependencies.
+  - `tsconfig.json` (root) — project references to all three workspaces; no files compiled at root.
+  - `eslint.config.mjs` — ESLint 9 flat config; strict TS rules + react-hooks; ignores `vendor/`, `dist/`, `docs/`.
+  - `.env.example` — `VITE_API_BASE_URL` and `VITE_FIXTURE` documented.
+  - `packages/contracts/` — package.json, tsconfig.json, `src/index.ts` (export stub). Zod installed. Types defined in T03.
+  - `apps/api/` — package.json, tsconfig.json, `serverless.yml` (Serverless Framework 4, serverless-esbuild, Node 20, eu-west-1 default), `src/handlers/health.ts` (GET /health → 200 `{status:"ok"}`).
+  - `apps/web/` — Vite 6, Tailwind CSS v4 (`@tailwindcss/vite` plugin, `@import "tailwindcss"` in CSS, `@theme` block), React 18, TanStack Query v5, Lucide React, Archivo Variable font, strict TypeScript, Vitest with jsdom.
+  - `apps/web/src/styles/tokens.css` — full Hunch design system: CSS custom properties for all 31 tokens, base reset, all component utility classes ported from the Hunch prototype.
+  - Components created: `AppHeader`, `MarketCard`, `PriceStatus`, `PredictionPanel`, `DirectionButtons`, `RoundTicket`, `ResultReceipt`, `ScoreCard`, `HowItWorks`, `StatusNotice`.
+  - `apps/web/src/fixtures/index.ts` — 9 fixture states: ready, submitting, active, checking, equal-price, provider-hold, win, loss, setup-error.
+  - `apps/web/src/FixtureApp.tsx` — dev-only fixture runner; dynamically imported via `?fixture=` query param; excluded from production build.
+  - `apps/web/src/App.tsx` — structural layout shell; no live data yet.
+  - `apps/web/src/main.tsx` — boots fixture runner in dev when `?fixture=` present, else boots App.
+  - Tests: `AppHeader.test.tsx` (3 cases), `HowItWorks.test.tsx` (2 cases).
+- Checks run and results:
+  - `yarn install` — exit 0; lockfile created.
+  - `yarn workspace web typecheck` — exit 0.
+  - `yarn lint` — exit 0.
+  - `yarn workspace web test` — 5/5 passed.
+  - `yarn workspace web build` — exit 0; 145 kB JS (gzip 47 kB); FixtureApp tree-shaken from production bundle.
+- Manual verification: Pending.
+- Decision or tradeoff:
+  - Yarn Classic v1 (not v3/v4 PnP) — matches what the user has installed; avoids `.yarnrc.yml` complexity for now.
+  - Tailwind v4 plugin API instead of v3 `tailwind.config.js` — matches architecture.md decision; `@theme` block replaces config file entirely.
+  - `@testing-library/jest-dom` pinned to `6.9.1` — `^6.6.0` resolved to `6.10.0` which requires Node ≥ 22; Node 20 is installed.
+  - Fixture runner uses dynamic `import()` in `main.tsx` — ensures the 9 fixture states and their test data are not compiled into the production build.
+  - `vitest.config.ts` excluded from the main `tsconfig.json` include list — `@tailwindcss/vite` bundles its own vite version causing a type mismatch; vitest handles its own config typechecking independently.
+- Remaining limitations:
+  - `apps/api` typecheck runs `tsc --noEmit`; there is no bundled Lambda artifact yet (T04 covers deployment).
+  - `contracts` package exports nothing yet; contents are defined in T03.
+  - No live API calls; App.tsx renders placeholder props only.
+  - Sparkline chart area in MarketCard is left as a placeholder — data visualisation added when real price data is available (T06).
+  - Countdown ring in RoundTicket uses a hardcoded 60-second circumference; actual timer logic added in T06.
+- Commit: `chore: scaffold Yarn monorepo, Hunch design system and 9 fixture states`
 
 ### Future entry template
 
