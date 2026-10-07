@@ -9,7 +9,7 @@ Then add optional features that demonstrate product judgment.
 ## Current progress
 
 - Active ticket: T03
-- Status: Awaiting manual verification
+- Status: Complete
 
 - Starting point: Git repository created; application not implemented.
 
@@ -119,7 +119,7 @@ A local fixture view helps test presentation without waiting for markets. It is 
 - [x] T00 — Establish project documentation
 - [x] T01 — Verify skills, clarify architecture and approve UI
 - [x] T02 — Scaffold TypeScript projects and testable UI
-- [ ] T03 — Define contracts and test game rules
+- [x] T03 — Define contracts and test game rules
 
 - [ ] T04 — Deploy a minimal AWS slice
 
@@ -295,7 +295,7 @@ chore: scaffold TypeScript frontend and serverless backend
 
 ## T03 — Define contracts and test game rules
 
-Status: Awaiting manual verification
+Status: Complete
 
 Dependencies: T02.
 
@@ -339,7 +339,7 @@ Acceptance:
 
 - [x] Contracts are documented.
 
-- [ ] Manual checkpoint: explain which price is compared and why early movements do not settle.
+- [x] Manual checkpoint: explain which price is compared and why early movements do not settle.
 
 Manual checkpoint:
 
@@ -1070,7 +1070,7 @@ If time runs short:
 
 ### T03
 
-- Status: Awaiting manual verification.
+- Status: Complete. Verified by Mario 2026-10-07. `yarn workspace contracts test` showed 8/8 passed. The compared price is the resolution price against the stored entry price. A move before 60 seconds returns `TOO_EARLY` before any price comparison.
 - What changed:
   - `packages/contracts/src/index.ts` — Zod schemas and types for direction, prediction status, outcome, decimal prices, players, predictions (including `resolutionTradeTime`), create-player token response, `GET /me`, `GET /market`, create-prediction request, history, wait reasons and errors.
   - `packages/contracts/src/evaluator.ts` — pure `evaluate()`. Caller supplies both timestamps. Price comparison uses scaled `BigInt`. Default wait is 60 seconds.
@@ -1086,7 +1086,7 @@ If time runs short:
   - `yarn workspace web typecheck` — exit 0.
   - `yarn workspace web test` — 5/5 passed.
   - `yarn lint` — exit 0.
-- Manual verification: Pending. Mario explains which price is compared and why a move inside the first minute does not settle.
+- Manual verification: Passed. Mario ran through the evaluator tests and the 60-second rule on 2026-10-07.
 - Decision or tradeoff:
   - No decimal library. Scaled `BigInt` comparison is enough for positive decimal strings.
   - `waitReason` is a field on `GET /me`, not something the client derives from the display quote.
