@@ -1,3 +1,5 @@
+import type { Direction, Outcome, PriceString, WaitReason } from 'contracts'
+
 /**
  * Fixture data for all 9 UI states.
  * Only loaded in development when ?fixture=<name> is present.
@@ -36,26 +38,26 @@ const LATER = new Date(NOW.getTime() + 75_000)
 export interface FixtureState {
   /** Human-readable label for the banner nav */
   label: string
-  price: string | null
+  price: PriceString | null
   priceStatus: 'loading' | 'live' | 'stale' | 'unavailable'
   score: number
   wins: number
   losses: number
   isSubmitting?: boolean
   activeRound?: {
-    direction: 'UP' | 'DOWN'
-    entryPrice: string
+    direction: Direction
+    entryPrice: PriceString
     entryTime: Date
     deadline: Date
     predictionId: string
-    state: 'waiting' | 'checking' | 'equal-price' | 'provider-hold'
+    state: WaitReason
     secondsRemaining?: number
   }
   result?: {
-    outcome: 'WIN' | 'LOSS'
-    direction: 'UP' | 'DOWN'
-    entryPrice: string
-    resolutionPrice: string
+    outcome: Outcome
+    direction: Direction
+    entryPrice: PriceString
+    resolutionPrice: PriceString
     entryTime: Date
     resolutionTime: Date
     predictionId: string
@@ -97,7 +99,7 @@ export const fixtures: Record<FixtureName, FixtureState> = {
       entryTime: NOW,
       deadline: LATER,
       predictionId: 'pred-fixture-0001',
-      state: 'waiting',
+      state: 'WAITING_FOR_DEADLINE',
       secondsRemaining: 43,
     },
   },
@@ -115,7 +117,7 @@ export const fixtures: Record<FixtureName, FixtureState> = {
       entryTime: NOW,
       deadline: LATER,
       predictionId: 'pred-fixture-0002',
-      state: 'checking',
+      state: 'CHECKING_PRICE',
       secondsRemaining: 0,
     },
   },
@@ -133,7 +135,7 @@ export const fixtures: Record<FixtureName, FixtureState> = {
       entryTime: NOW,
       deadline: LATER,
       predictionId: 'pred-fixture-0003',
-      state: 'equal-price',
+      state: 'EQUAL_PRICE',
       secondsRemaining: 0,
     },
   },
@@ -151,7 +153,7 @@ export const fixtures: Record<FixtureName, FixtureState> = {
       entryTime: NOW,
       deadline: LATER,
       predictionId: 'pred-fixture-0004',
-      state: 'provider-hold',
+      state: 'PROVIDER_HOLD',
       secondsRemaining: 0,
     },
   },

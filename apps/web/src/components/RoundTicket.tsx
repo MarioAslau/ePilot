@@ -1,14 +1,13 @@
+import type { Direction, WaitReason } from 'contracts'
 import { ChevronDown, ChevronUp, Clock } from 'lucide-react'
 
-type TicketState = 'waiting' | 'checking' | 'equal-price' | 'provider-hold'
-
 interface Props {
-  direction: 'UP' | 'DOWN'
+  direction: Direction
   entryPrice: string
   entryTime: Date
   deadline: Date
   predictionId: string
-  state?: TicketState
+  state?: WaitReason
   /** Seconds remaining until deadline (computed by parent) */
   secondsRemaining?: number
 }
@@ -23,19 +22,19 @@ function formatTime(d: Date): string {
   return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
-function stateLabel(state: TicketState): string {
-  if (state === 'waiting')       return 'Waiting for deadline'
-  if (state === 'checking')      return 'Checking price…'
-  if (state === 'equal-price')   return 'Price unchanged — retrying'
-  if (state === 'provider-hold') return 'Provider hold — retrying'
+function stateLabel(state: WaitReason): string {
+  if (state === 'WAITING_FOR_DEADLINE') return 'Waiting for deadline'
+  if (state === 'CHECKING_PRICE')       return 'Checking price…'
+  if (state === 'EQUAL_PRICE')          return 'Price unchanged — retrying'
+  if (state === 'PROVIDER_HOLD')        return 'Provider hold — retrying'
   return ''
 }
 
-function stateDetail(state: TicketState): string {
-  if (state === 'waiting')       return 'Your prediction locks in at the entry price. Resolution checks begin after the deadline.'
-  if (state === 'checking')      return 'Fetching the resolution price from Coinbase. This happens automatically in the background.'
-  if (state === 'equal-price')   return 'The current price equals your entry price. Waiting for the market to move before settling.'
-  if (state === 'provider-hold') return "The price provider is temporarily unavailable. We'll retry automatically."
+function stateDetail(state: WaitReason): string {
+  if (state === 'WAITING_FOR_DEADLINE') return 'Your prediction locks in at the entry price. Resolution checks begin after the deadline.'
+  if (state === 'CHECKING_PRICE')       return 'Fetching the resolution price from Coinbase. This happens automatically in the background.'
+  if (state === 'EQUAL_PRICE')          return 'The current price equals your entry price. Waiting for the market to move before settling.'
+  if (state === 'PROVIDER_HOLD')        return "The price provider is temporarily unavailable. We'll retry automatically."
   return ''
 }
 
@@ -43,7 +42,7 @@ function stateDetail(state: TicketState): string {
  * Active-round tracking card shown after a prediction is submitted.
  * Displays direction, entry price, deadline and live state copy.
  */
-export function RoundTicket({ direction, entryPrice, entryTime, deadline, predictionId, state = 'waiting', secondsRemaining }: Props) {
+export function RoundTicket({ direction, entryPrice, entryTime, deadline, predictionId, state = 'WAITING_FOR_DEADLINE', secondsRemaining }: Props) {
   const isUp = direction === 'UP'
 
   const progress = secondsRemaining != null
@@ -67,8 +66,8 @@ export function RoundTicket({ direction, entryPrice, entryTime, deadline, predic
       {/* Progress steps */}
       <ol className="steps" aria-label="Round progress">
         <li className="done">Predicted</li>
-        <li className={state === 'waiting' ? 'cur' : 'done'}>Waiting</li>
-        <li className={state === 'checking' || state === 'equal-price' || state === 'provider-hold' ? 'cur' : ''}>Resolving</li>
+        <li className={state === 'WAITING_FOR_DEADLINE' ? 'cur' : 'done'}>Waiting</li>
+        <li className={state === 'WAITING_FOR_DEADLINE' ? '' : 'cur'}>Resolving</li>
         <li>Settled</li>
       </ol>
 

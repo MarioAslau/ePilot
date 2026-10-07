@@ -202,7 +202,7 @@ Do not log tokens or render unsafe user-provided HTML.
 - GET /health
   Basic deployment connectivity check.
 
-Define exact schemas in packages/contracts during T03.
+Exact schemas live in `packages/contracts`.
 Use a consistent error shape with code, message and request ID.
 
 Proposed responses:
@@ -210,6 +210,41 @@ Proposed responses:
 - 401: invalid anonymous credentials
 - 409: active prediction or conflicting idempotency payload
 - 503: provider unavailable
+
+## Contracts
+
+Implemented in `packages/contracts`. Zod schemas are the runtime check;
+the exported types are what the API and the browser share.
+
+Prices are decimal strings (`PriceString`). Comparison uses scaled
+`BigInt` values, not `parseFloat`. `"65432.10"` and `"65432.1"` are equal.
+Display rounding cannot decide a win or a loss.
+
+Timestamps are ISO 8601 strings. `resolutionTradeTime` is the Coinbase
+ticker `time` of the compared trade. `fetchedAt` on a display quote is
+not a settlement input.
+
+`evaluate` is a pure function. The caller passes `createdAt` and
+`resolvedAt`. It does not read the clock. If fewer than 60 seconds
+have elapsed it returns `TOO_EARLY` and does not look at the price.
+An equal price returns `EQUAL_PRICE`. Otherwise the score delta is
+exactly `+1` or `-1`.
+
+`GET /me` returns `activePrediction`, `latestResolvedPrediction`
+(identified by `predictionId`), `serverTime`, and `waitReason`.
+`waitReason` is `WAITING_FOR_DEADLINE`, `CHECKING_PRICE`, `EQUAL_PRICE`,
+`PROVIDER_HOLD`, or `null`. The UI must use that field. It must not
+infer an equal-price or provider hold from the display quote.
+Display freshness is `MarketResponse.isFresh` only.
+
+`POST /players` returns `playerId` and a 64-hex-character access token
+once. `POST /predictions` takes `direction` and a UUID `idempotencyKey`.
+If that response is lost, send the same body again. That replay is
+`RecoverSubmissionRequest`. Do not mint a new key until the server answers.
+
+Error codes: `INVALID_INPUT`, `UNAUTHORIZED`, `ACTIVE_ROUND`,
+`IDEMPOTENCY_CONFLICT`, `PROVIDER_UNAVAILABLE`.
+Only `PROVIDER_UNAVAILABLE` is in `RECOVERABLE_ERROR_CODES`.
 
 ## Proposed data model
 

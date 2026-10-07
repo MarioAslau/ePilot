@@ -62,7 +62,7 @@ Their precise rules and availability will be documented when implemented.
 - docs/architecture.md: design, decisions and recovery guidance.
 - apps/web: frontend, planned.
 - apps/api: backend and infrastructure, planned.
-- packages/contracts: shared schemas/types, planned.
+- packages/contracts: shared Zod schemas, types and the scoring evaluator.
 - .cursor/skills: verified project skills, planned.
 
 ## Prerequisites

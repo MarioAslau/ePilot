@@ -8,8 +8,8 @@ Then add optional features that demonstrate product judgment.
 
 ## Current progress
 
-- Active ticket: T02
-- Status: Complete
+- Active ticket: T03
+- Status: Awaiting manual verification
 
 - Starting point: Git repository created; application not implemented.
 
@@ -295,49 +295,51 @@ chore: scaffold TypeScript frontend and serverless backend
 
 ## T03 — Define contracts and test game rules
 
-Status: Not started
+Status: Awaiting manual verification
 
 Dependencies: T02.
 
 Tasks:
 
-- Define UP/DOWN and prediction lifecycle types.
+- [x] Define UP/DOWN and prediction lifecycle types.
 
-- Define server timestamps and price metadata.
-- Include `resolutionTradeTime` (exchange trade timestamp from Coinbase ticker `time` field) in the Prediction type and resolution response. This is distinct from the Lambda fetch time and proves the compared price is post-deadline. See D1 in architecture.md decision log.
+- [x] Define server timestamps and price metadata.
+- [x] Include `resolutionTradeTime` (exchange trade timestamp from Coinbase ticker `time` field) in the Prediction type and resolution response. This is distinct from the Lambda fetch time and proves the compared price is post-deadline. See D1 in architecture.md decision log.
 
-- Choose decimal-safe prices with strings at storage/API boundaries.
+- [x] Choose decimal-safe prices with strings at storage/API boundaries.
 
-- Implement a pure evaluator with an injected clock.
+- [x] Implement a pure evaluator with an injected clock.
 
-- Define proposed API requests, responses and errors.
-- Include `/me` activePrediction, latest resolved prediction and server time; identify the result by prediction ID so it can restore and avoid duplicate feedback.
-- Define backend wait reasons, quote freshness and recoverable errors needed by the UI. Do not infer provider/equal-price resolution status from the display quote.
-- Connect local fixture shapes to these contracts and define indeterminate submission recovery.
+- [x] Define proposed API requests, responses and errors.
+- [x] Include `/me` activePrediction, latest resolved prediction and server time; identify the result by prediction ID so it can restore and avoid duplicate feedback.
+- [x] Define backend wait reasons, quote freshness and recoverable errors needed by the UI. Do not infer provider/equal-price resolution status from the display quote.
+- [x] Connect local fixture shapes to these contracts and define indeterminate submission recovery.
 
-- Define anonymous token and idempotency-key handling.
+- [x] Define anonymous token and idempotency-key handling.
 
-- Document contracts in docs/architecture.md.
+- [x] Document contracts in docs/architecture.md.
 
 Tests:
 
-- UP and DOWN wins/losses.
+- [x] UP and DOWN wins/losses.
 
-- Before 60 seconds: no settlement.
+- [x] Before 60 seconds: no settlement.
 
-- At the deadline: eligible for evaluation.
+- [x] At the deadline: eligible for evaluation.
 
-- Equal price: retry.
+- [x] Equal price: retry.
 
-- Display rounding cannot determine the outcome.
+- [x] Display rounding cannot determine the outcome.
 
-- Standard score delta is exactly +1 or -1.
+- [x] Standard score delta is exactly +1 or -1.
 
 Acceptance:
 
-- Domain rules pass deterministic tests.
+- [x] Domain rules pass deterministic tests.
 
-- Contracts are documented.
+- [x] Contracts are documented.
+
+- [ ] Manual checkpoint: explain which price is compared and why early movements do not settle.
 
 Manual checkpoint:
 
@@ -1065,6 +1067,35 @@ If time runs short:
   - Sparkline chart area in MarketCard is left as a placeholder — data visualisation added when real price data is available (T06).
   - Countdown ring in RoundTicket uses a hardcoded 60-second circumference; actual timer logic added in T06.
 - Commit: `chore: scaffold Yarn monorepo, Hunch design system and 9 fixture states`
+
+### T03
+
+- Status: Awaiting manual verification.
+- What changed:
+  - `packages/contracts/src/index.ts` — Zod schemas and types for direction, prediction status, outcome, decimal prices, players, predictions (including `resolutionTradeTime`), create-player token response, `GET /me`, `GET /market`, create-prediction request, history, wait reasons and errors.
+  - `packages/contracts/src/evaluator.ts` — pure `evaluate()`. Caller supplies both timestamps. Price comparison uses scaled `BigInt`. Default wait is 60 seconds.
+  - `packages/contracts/src/evaluator.test.ts` — 8 deterministic cases.
+  - `packages/contracts/package.json` — `vitest` and `test` script.
+  - `apps/web/src/fixtures/index.ts` — fixture rounds and results use `Direction`, `Outcome`, `PriceString` and `WaitReason`.
+  - `apps/web/src/components/RoundTicket.tsx` — wait copy follows `WaitReason`.
+  - `apps/web/tsconfig.json` — dropped the contracts project reference so `tsc --noEmit` typechecks the contracts source. A reference required a built `dist/` that this repo does not commit.
+  - `docs/architecture.md` — Contracts section.
+- Checks run and results:
+  - `yarn workspace contracts test` — 8/8 passed.
+  - `yarn workspace contracts typecheck` — exit 0.
+  - `yarn workspace web typecheck` — exit 0.
+  - `yarn workspace web test` — 5/5 passed.
+  - `yarn lint` — exit 0.
+- Manual verification: Pending. Mario explains which price is compared and why a move inside the first minute does not settle.
+- Decision or tradeoff:
+  - No decimal library. Scaled `BigInt` comparison is enough for positive decimal strings.
+  - `waitReason` is a field on `GET /me`, not something the client derives from the display quote.
+  - Lost `POST /predictions` responses are recovered by resending the same idempotency key and direction.
+- Remaining limitations:
+  - Schemas are not wired to Lambda handlers yet (T04–T08).
+  - `evaluate` is not called by a resolver yet. Nothing here fetches Coinbase or writes DynamoDB.
+  - `minimumWaitMs` exists so tests can name the threshold. Production callers must leave it unset.
+- Commit: `feat: define prediction contracts and tested scoring rules`
 
 ### Future entry template
 
