@@ -120,7 +120,7 @@ chore: add verified Cursor skills and planning decisions
 
 ## T02 — Scaffold TypeScript projects
 
-Status: Awaiting manual verification
+Status: Complete
 Dependencies: T01.
 
 Tasks:
@@ -142,9 +142,9 @@ Acceptance:
 - [x] Lint passes (`yarn lint`).
 - [x] Tests pass — 5/5 (`yarn workspace web test`).
 - [x] Production build succeeds (`yarn workspace web build`).
-- [ ] Local dev server opens in browser (`yarn dev`).
-- [ ] Fixture states render correctly at http://localhost:5173/?fixture=ready (and each other fixture name).
-- [ ] No game functionality is claimed yet.
+- [x] Local dev server opens in browser (`yarn dev`).
+- [x] Fixture states render correctly.
+- [x] No game functionality is claimed yet.
 
 Manual checkpoint:
 Run the documented commands from the repository root.
@@ -632,7 +632,7 @@ If time runs short:
 
 ### T02
 
-- Status: Awaiting manual verification.
+- Status: Complete. Verified by Mario 2026-10-07.
 - What changed:
   - `package.json` (root) — Yarn workspace config, root scripts (`dev`, `build`, `typecheck`, `lint`, `test`, `check`), ESLint 9 + TypeScript ESLint + react-hooks plugin in devDependencies.
   - `tsconfig.json` (root) — project references to all three workspaces; no files compiled at root.
