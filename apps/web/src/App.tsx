@@ -5,6 +5,7 @@ import { HttpError, readJson } from './api'
 import { AppHeader } from './components/AppHeader'
 import { HowItWorks } from './components/HowItWorks'
 import { MarketCard } from './components/MarketCard'
+import { ResultReceipt } from './components/ResultReceipt'
 import { RoundTicket } from './components/RoundTicket'
 import { StatusNotice } from './components/StatusNotice'
 import {
@@ -61,7 +62,7 @@ function PlayerStatus() {
     queryKey: ['player', baseUrl],
     enabled: baseUrl.length > 0 && !storageBlocked,
     retry: false,
-    refetchInterval: (query) => (query.state.data?.me.activePrediction ? 5_000 : false),
+    refetchInterval: (query) => (query.state.data?.me.activePrediction ? 2_000 : false),
     queryFn: async () => {
       const receivedAt = Date.now()
       const existing = readSession()
@@ -83,12 +84,23 @@ function PlayerStatus() {
   })
   const rejected = player.error instanceof HttpError && player.error.status === 401
   const market = useMarket(baseUrl)
-  const active = me?.activePrediction ?? prediction.placed
+  const active =
+    me?.activePrediction ??
+    (prediction.placed && prediction.placed.predictionId !== me?.latestResolvedPrediction?.predictionId
+      ? prediction.placed
+      : null)
+  const settled = !active ? me?.latestResolvedPrediction : null
   const remaining = active && me && snapshot
     ? secondsRemaining(active.dueAt, me.serverTime, snapshot.receivedAt, nowMs)
     : 0
-  const roundState =
-    !active ? null : remaining <= 0 || me?.waitReason === 'CHECKING_PRICE' ? 'CHECKING_PRICE' : 'WAITING_FOR_DEADLINE'
+  const reported = me?.waitReason
+  const roundState = !active
+    ? null
+    : reported === 'EQUAL_PRICE' || reported === 'PROVIDER_HOLD'
+      ? reported
+      : remaining <= 0 || reported === 'CHECKING_PRICE'
+        ? 'CHECKING_PRICE'
+        : 'WAITING_FOR_DEADLINE'
   const showPrediction = Boolean(me) && !active && market.status === 'live'
 
   const activeId = active?.predictionId
@@ -114,6 +126,19 @@ function PlayerStatus() {
                 showPrediction={showPrediction}
                 onPredict={(direction) => prediction.submit(direction, market.price)}
                 isSubmitting={prediction.isSubmitting}
+              />
+            )}
+            {settled?.outcome && settled.resolutionPrice && settled.resolutionTradeTime && settled.resolvedAt && (
+              <ResultReceipt
+                outcome={settled.outcome}
+                direction={settled.direction}
+                entryPrice={settled.entryPrice}
+                resolutionPrice={settled.resolutionPrice}
+                entryTime={new Date(settled.entryTradeTime)}
+                resolutionTime={new Date(settled.resolutionTradeTime)}
+                fetchedAt={settled.resolutionFetchedAt ? new Date(settled.resolutionFetchedAt) : undefined}
+                settledAt={new Date(settled.resolvedAt)}
+                predictionId={settled.predictionId}
               />
             )}
             {active && roundState && (

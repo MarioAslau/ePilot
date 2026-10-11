@@ -7,6 +7,22 @@ import type { PredictionRecord } from '../prediction.js'
 import { predictionResponse } from './createPrediction.js'
 import { dynamoPredictionStore, type PredictionStore } from '../predictionStore.js'
 
+const CHECK_FRESH_MS = 30_000
+
+export function waitReasonFor(active: PredictionRecord | null, now: Date) {
+  if (!active || active.status === 'RESOLVED') return null
+  if (now.getTime() < new Date(active.dueAt).getTime()) return 'WAITING_FOR_DEADLINE'
+  const check = active.lastCheck
+  if (
+    check &&
+    (check.reason === 'EQUAL_PRICE' || check.reason === 'PROVIDER_HOLD') &&
+    now.getTime() - new Date(check.at).getTime() < CHECK_FRESH_MS
+  ) {
+    return check.reason
+  }
+  return 'CHECKING_PRICE'
+}
+
 export async function handleMe(
   header: string | undefined,
   requestId: string,
@@ -30,11 +46,11 @@ export async function handleMe(
   if (record.activePredictionId && deps.predictions) {
     active = await deps.predictions.getPrediction(auth.playerId, record.activePredictionId)
   }
-  const waitReason = !active
-    ? null
-    : clock.getTime() < new Date(active.dueAt).getTime()
-      ? 'WAITING_FOR_DEADLINE'
-      : 'CHECKING_PRICE'
+  let latest: PredictionRecord | null = null
+  if (record.latestResolvedPredictionId && deps.predictions) {
+    latest = await deps.predictions.getPrediction(auth.playerId, record.latestResolvedPredictionId)
+  }
+  const waitReason = waitReasonFor(active, clock)
 
   return json(
     200,
@@ -44,7 +60,7 @@ export async function handleMe(
       wins: record.wins,
       losses: record.losses,
       activePrediction: active ? predictionResponse(active) : null,
-      latestResolvedPrediction: null,
+      latestResolvedPrediction: latest?.status === 'RESOLVED' ? predictionResponse(latest) : null,
       waitReason,
       serverTime: clock.toISOString(),
     }),

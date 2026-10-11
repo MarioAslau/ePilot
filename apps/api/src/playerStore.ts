@@ -14,6 +14,7 @@ export interface PlayerRecord {
   losses: number
   createdAt: string
   activePredictionId?: string
+  latestResolvedPredictionId?: string
 }
 
 export interface PlayerStore {
@@ -74,6 +75,9 @@ export function dynamoPlayerStore(tableName = process.env.TABLE_NAME): PlayerSto
         createdAt: String(item.createdAt),
         ...(item.activePredictionId
           ? { activePredictionId: String(item.activePredictionId) }
+          : {}),
+        ...(item.latestResolvedPredictionId
+          ? { latestResolvedPredictionId: String(item.latestResolvedPredictionId) }
           : {}),
       }
     },

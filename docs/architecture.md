@@ -2,7 +2,7 @@
 
 ## Status
 
-T07 is complete in the repo. `POST /predictions` records one pending round from an uncached Coinbase entry quote. `GET /me` returns that round. Settlement and Step Functions are not implemented; a round stays pending after the deadline. The hosted site does not include this until the API deploy and the Amplify rebuild of `release`.
+T08 is awaiting manual verification. The repo settles one pending round after the real 60-second deadline, including from the local in-process loop. `GET /me` returns the result and the updated score. Step Functions, the scanner, and the `pending-by-due` index are defined and packaged. They are not deployed. The hosted site does not include this until the API deploy and the Amplify rebuild of `release`.
 
 ## Product goal
 
@@ -249,9 +249,9 @@ Only `PROVIDER_UNAVAILABLE` is in `RECOVERABLE_ERROR_CODES`.
 
 ## Proposed data model
 
-Use one DynamoDB table named `hunch-<stage>`. Partition key `pk` and sort key `sk` are strings. Billing is on-demand. Streams are off. No GSI yet; player history must not scan the table, and its index waits until history is implemented. The dev table is retained if the stack is deleted. TTL is enabled on `expiresAt` and is set only on idempotency items, 24 hours after creation. The health and market Lambdas cannot read or write the table. Player Lambdas can `GetItem` and `PutItem` only. The prediction Lambda can `GetItem`, `PutItem`, `UpdateItem`, and `TransactWriteItems`.
+Use one DynamoDB table named `hunch-<stage>`. Partition key `pk` and sort key `sk` are strings. Billing is on-demand. Streams are off. The first index is the sparse GSI `pending-by-due`: hash `pendingKey`, range `pendingDueAt`, keys only. Pending predictions set `pendingKey = PENDING` and `pendingDueAt = dueAt`. Settlement removes both. Player history still has no index and must not scan the table. The dev table is retained if the stack is deleted. TTL is enabled on `expiresAt` and is set only on idempotency items, 24 hours after creation. The health and market Lambdas cannot read or write the table. Player Lambdas can `GetItem` and `PutItem` only. The prediction Lambda can `GetItem`, `PutItem`, `UpdateItem`, and `TransactWriteItems`, and can `states:StartExecution` on `hunch-<stage>-resolution`. The resolver can `GetItem`, `UpdateItem`, and `TransactWriteItems` on the table. It cannot query or scan. The recovery Lambda can `Query` only `pending-by-due`, plus `StartExecution` and `DescribeExecution` on that machine.
 
-A player item uses `pk = PLAYER#<playerId>` and `sk = PLAYER`. The raw access token is not stored. `GET /me` loads `activePrediction` when `activePredictionId` is set. `waitReason` is `WAITING_FOR_DEADLINE` before `dueAt` and `CHECKING_PRICE` at or after `dueAt`. `latestResolvedPrediction` stays `null` until settlement exists.
+A player item uses `pk = PLAYER#<playerId>` and `sk = PLAYER`. The raw access token is not stored. `GET /me` loads `activePrediction` when `activePredictionId` is set. `waitReason` is `WAITING_FOR_DEADLINE` before `dueAt`. After `dueAt` it is `EQUAL_PRICE` or `PROVIDER_HOLD` only when `lastCheck` is less than 30 seconds old. Otherwise it is `CHECKING_PRICE`. `latestResolvedPrediction` is loaded from `latestResolvedPredictionId` when that prediction is `RESOLVED`.
 
 Player:
 - playerId
@@ -260,6 +260,7 @@ Player:
 - wins          (count of correct predictions; displayed in ScoreCard at MVP)
 - losses        (count of incorrect predictions; displayed in ScoreCard at MVP)
 - activePredictionId
+- latestResolvedPredictionId
 - createdAt
 
 Prediction item: `pk = PLAYER#<playerId>`, `sk = PREDICTION#<predictionId>`. `predictionId` is `p_`, a 13-digit epoch millisecond value, `_`, and 8 hex characters.
@@ -269,7 +270,10 @@ Prediction:
 - playerId
 - direction (`UP` or `DOWN`)
 - mode (`STANDARD`)
-- status (`PENDING` until settlement)
+- status (`PENDING` or `RESOLVED`)
+- pendingKey (`PENDING` while unresolved; removed on settlement; not an API field)
+- pendingDueAt (same instant as `dueAt` while unresolved; removed on settlement; not an API field)
+- lastCheck (`EQUAL_PRICE` or `PROVIDER_HOLD`, plus the check time; removed on settlement)
 - createdAt
 - dueAt
 - entryPrice
@@ -278,7 +282,7 @@ Prediction:
 - resolvedAt
 - resolutionPrice
 - resolutionTradeTime   (exchange timestamp of the compared trade, from the Coinbase ticker `time` field)
-- resolutionQuoteMetadata
+- resolutionFetchedAt
 - outcome
 - scoreDelta
 - parentPredictionId, optional
@@ -361,36 +365,23 @@ A failed idempotency condition is a duplicate key and returns the stored predict
 
 ### Settlement transaction
 
-The DynamoDB transaction applies all of the following atomically, or none:
-- Condition: prediction status is not yet resolved.
-- Condition: player's `activePredictionId` matches this prediction.
-- Write: outcome, resolution price, `resolutionTradeTime` and quote metadata.
-- Write: score delta on Player record.
-- Write: increment `wins` or `losses` on Player record depending on outcome.
-- Write: clear `activePredictionId` on Player record.
+Implemented as one `TransactWriteItems`, or none of it:
+- Update the prediction only while `status` is `PENDING`. Set `RESOLVED`, the outcome, `scoreDelta`, `resolutionPrice`, `resolutionTradeTime`, `resolutionFetchedAt`, and `resolvedAt`. Remove `pendingKey`, `pendingDueAt`, and `lastCheck`.
+- Update the player only while `activePredictionId` is this prediction. Add `score` and either `wins` or `losses`. Set `latestResolvedPredictionId`. Remove `activePredictionId`.
 
-Transactions either apply all changes or none.
-Duplicate settlement calls return the stored outcome without re-applying
-the score delta.
+A cancelled transaction means the round was already settled. The handler returns the stored outcome and does not apply the score again. If the player lock no longer matches, the resolver clears the index attributes and does not score. The in-memory store used by tests and `yarn dev:local` performs the same check and both writes with no await between them.
 
 ## Workflow startup and recovery
 
-T07 does not call `StartExecution`. After the deadline, `GET /me` reports `CHECKING_PRICE` and the round stays pending until T08.
+After a newly stored round, createPrediction calls `sfn:StartExecution` with the name `prediction-{predictionId}` and input `{ playerId, predictionId, dueAt }`. `ExecutionAlreadyExists` is success. Any other start failure is logged as `prediction.workflow_start_failed` and the handler still returns 201. An idempotent replay of the create request does not start a second workflow. If the Lambda crashes after the write and before the start, no execution exists until the scanner runs.
 
-Planned for T08: after writing the Prediction record, createPrediction calls
-`sfn:StartExecution` synchronously with the execution name
-`prediction-{predictionId}`. If the call fails or the Lambda crashes
-after the DB write, the execution is never started. This window is
-narrow but real.
+The machine is `hunch-<stage>-resolution`. It waits until `dueAt`, then invokes the resolver. `SETTLED`, `ALREADY_SETTLED`, and `ORPHANED` succeed. `EQUAL_PRICE` waits 5 seconds and tries again. `PROVIDER_HOLD` waits 15 seconds. `TOO_EARLY` returns to the deadline wait. Lambda task failures retry with backoff, at most 6 times. The execution timeout is 21600 seconds (6 hours). Resolution calls `fetchTicker`, not the display cache. The clock is checked against `dueAt` before any quote. A provider error or a trade older than 10 seconds is `PROVIDER_HOLD`, never a loss. `evaluate()` uses the exchange trade time as `resolvedAt`, so that trade must itself be at least 60 seconds after `createdAt`.
 
-Recovery path: a scheduled recoverStuckPredictions Lambda runs every
-five minutes. It queries for Prediction records in status `pending`
-whose `dueAt` is more than two minutes in the past and for which no
-active Step Functions execution exists. For each, it calls
-`StartExecution` with the same deterministic name.
+`yarn dev:local` does not call AWS. After a local create it waits until `dueAt` and runs the same resolver in process, with the same 5-second and 15-second waits. The production wait stays 60 seconds.
 
-`StartExecution` with the same execution name is idempotent: Step
-Functions returns the existing execution without creating a duplicate.
+Recovery: `recoverStuckPredictions` runs every five minutes. It queries `pending-by-due` for `pendingDueAt` before now minus 2 minutes. It does not scan the table and it does not write a score. A missing execution starts under `prediction-{predictionId}`. A running execution is skipped. A succeeded execution is skipped. A failed, timed-out, or aborted execution cannot be restarted under the same name, because Step Functions keeps a finished name for 90 days, so the scanner starts `prediction-{predictionId}-r{epochMinutes}`. Settlement stays conditional, so a second execution cannot score twice.
+
+Worst case, a round whose workflow never starts becomes eligible 2 minutes after `dueAt` and is seen on the next 5-minute tick, about 7 minutes after `dueAt` and under 5 minutes after it became eligible. The schedule is not tighter than that.
 
 This replaces the originally proposed DynamoDB Streams approach.
 Streams provided near-automatic recovery at the cost of a stream
@@ -768,16 +759,25 @@ the market response. The next deploy is what proves the AWS settings.
 
 ## Operational runbook
 
-Populate with actual resource names and commands after deployment.
+These names exist after the T08 deploy of stage `dev` in `eu-north-1`. They are defined in the packaged template and are not in the account until that deploy.
+
+- Table `hunch-dev`, index `pending-by-due`.
+- State machine `hunch-dev-resolution`.
+- Functions `hunch-dev-resolvePrediction` and `hunch-dev-recoverStuckPredictions`.
+- Roles `hunch-dev-predictions`, `hunch-dev-resolver`, `hunch-dev-recovery`, `hunch-dev-resolution`.
+- Topic `hunch-dev-alerts`. Email subscription only when deploy passes `--param alarmEmail=...`. Confirm that email or the alarms have no subscriber.
+- Alarms, all to that topic, period 300 seconds, threshold 1, missing data does not breach: `hunch-dev-resolution-failed`, `hunch-dev-resolution-timed-out`, `hunch-dev-resolver-errors`, `hunch-dev-recovery-errors`.
+
+`hunch-dev-resolution-failed` means an execution reached the Fail state, which is an unexpected resolver status. `hunch-dev-resolution-timed-out` means an execution ran for 6 hours. The resolver and recovery alarms mean that Lambda reported Errors. A provider hold does not fail the execution and does not raise these alarms.
 
 Investigation:
-1. Identify prediction ID.
-2. Inspect prediction and player state.
-3. Find workflow execution and correlated logs.
-4. Determine provider, startup or settlement failure.
-5. Correct the cause.
-6. Redrive/replay through the supported recovery mechanism.
-7. Confirm one recorded outcome and one score effect.
+1. Identify the prediction ID from the player item or the receipt.
+2. Read the player item and `PREDICTION#<id>`. A settled player has no `activePredictionId`. A pending item still has `pendingKey`.
+3. In Step Functions, open `prediction-<id>`. A recovered failure is `prediction-<id>-r<epochMinutes>`.
+4. Read CloudWatch for `prediction.settled`, `prediction.check`, `prediction.workflow_start_failed`, and `prediction.recovery`. Logs do not contain the access token.
+5. To stop a live execution: `aws stepfunctions stop-execution --execution-arn <arn>`. Stopping it does not score the round. After `dueAt` plus about 7 minutes the scanner starts one replacement execution.
+6. Starting `prediction-<id>` again after it succeeded returns the existing execution and does not score again.
+7. Confirm one `RESOLVED` prediction and one score change. There is no in-app cancel. To unlock a player by hand, delete the `PREDICTION#` item and remove `activePredictionId`. Do not do that for a round the workflow may still settle.
 
 Security:
 - Keep credentials out of Git.
@@ -840,12 +840,21 @@ at second 60.
 **Decision.**
 After writing the Prediction to DynamoDB, the createPrediction Lambda calls
 `sfn:StartExecution` synchronously using the execution name
-`prediction-{predictionId}`. A separate recoverStuckPredictions Lambda runs
-every five minutes on a CloudWatch schedule. It finds any Prediction in
-status `pending` whose `dueAt` is more than two minutes past and for which
-no active execution exists, then calls `StartExecution` with the same
-deterministic name. `StartExecution` is idempotent on a given execution
-name, so duplicate calls are safe.
+`prediction-{predictionId}`. `ExecutionAlreadyExists` is treated as success.
+A separate recoverStuckPredictions Lambda runs every five minutes. It queries
+the `pending-by-due` index for pending predictions whose `dueAt` is more than
+two minutes past. A missing execution uses the base name. A running or
+succeeded execution is skipped. A failed, timed-out, or aborted execution is
+restarted as `prediction-{predictionId}-r{epochMinutes}`.
+
+**Correction, recorded with T08.**
+The earlier wording said the same execution name can always be started again.
+That is true only while the execution is still running, or for the
+`ExecutionAlreadyExists` response on a second start of a live name. After the
+execution finishes, Step Functions keeps that name for 90 days and rejects a
+restart. The scanner therefore uses a new name for a finished failure. The
+settlement transaction, not the execution name, is what prevents a second
+score change.
 
 **Reason.**
 The original design used a DynamoDB Stream to decouple the DB write from
@@ -863,12 +872,13 @@ scanner rather than infrastructure plumbing.
   test locally, and more moving parts to explain.
 
 **Tradeoff or limitation.**
-A prediction stuck in `pending` is not recovered until the next scanner
-run (up to five minutes). During that window the player's UI will show the
-round as active past the deadline. The scanner must be monitored and its
-failures alerted. This is an operationally acceptable tradeoff at MVP
-scale; revert to a stream-based approach if throughput or recovery-latency
-requirements increase.
+A prediction whose workflow never starts is not recovered until it is more
+than two minutes past `dueAt` and the next scanner run sees it. That is
+about 7 minutes after `dueAt` in the worst case, and under 5 minutes after
+the round becomes eligible. During that window the UI keeps the round active.
+The scanner and the workflow are alarmed. An execution that is still running
+at 6 hours times out, the alarm fires, and the next scanner starts a new
+named execution. This is an operationally acceptable tradeoff at MVP scale.
 
 ---
 

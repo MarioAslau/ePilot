@@ -7,6 +7,8 @@ interface Props {
   resolutionPrice: string
   entryTime: Date
   resolutionTime: Date
+  fetchedAt?: Date
+  settledAt?: Date
   predictionId: string
 }
 
@@ -25,6 +27,11 @@ function formatTime(d: Date): string {
  * Shows outcome (WIN/LOSS), point delta, and the two prices used in the comparison.
  * The resolutionTime comes from the Coinbase ticker `time` field (D1).
  */
+function elapsed(from: Date, to: Date): string {
+  const seconds = Math.max(0, Math.round((to.getTime() - from.getTime()) / 1000))
+  return `${seconds}s`
+}
+
 export function ResultReceipt({
   outcome,
   direction,
@@ -32,20 +39,20 @@ export function ResultReceipt({
   resolutionPrice,
   entryTime,
   resolutionTime,
+  fetchedAt,
+  settledAt,
   predictionId,
 }: Props) {
   const isWin  = outcome === 'WIN'
   const isUp   = direction === 'UP'
+  const sameDisplay = formatPrice(entryPrice) === formatPrice(resolutionPrice) && entryPrice !== resolutionPrice
+  const finishedAt = settledAt ?? resolutionTime
 
   return (
     <aside className={`receipt ${isWin ? 'win' : 'loss'}`} aria-label={`Result: ${outcome}`}>
       <div className="rc-top">
-        <div className="rc-badge" aria-hidden="true">
-          {isWin ? '🎉' : '😬'}
-        </div>
-
         <div>
-          <p className="rc-title">{isWin ? 'Correct call!' : 'Wrong call'}</p>
+          <p className="rc-title">{isWin ? 'Correct' : 'Not this time'}</p>
           <p className="rc-sub">
             {isUp
               ? <><ChevronUp className="ic" size={12} aria-hidden="true" /> Predicted Up</>
@@ -68,20 +75,31 @@ export function ResultReceipt({
         <div>
           <dt>Resolution price</dt>
           <dd className="num">{formatPrice(resolutionPrice)}</dd>
+          {sameDisplay && <dd className="fine">Exact {entryPrice} vs {resolutionPrice}</dd>}
         </div>
         <div>
-          <dt>Predicted at</dt>
+          <dt>Entry trade</dt>
           <dd>{formatTime(entryTime)}</dd>
         </div>
         <div>
-          <dt>Settled at</dt>
+          <dt>Compared trade</dt>
           <dd>{formatTime(resolutionTime)}</dd>
+        </div>
+        {fetchedAt && (
+          <div>
+            <dt>Fetched</dt>
+            <dd>{formatTime(fetchedAt)}</dd>
+          </div>
+        )}
+        <div>
+          <dt>Settled</dt>
+          <dd>{formatTime(finishedAt)}</dd>
         </div>
       </dl>
 
       <p className="fine">
-        Prices from Coinbase Exchange. Resolution price is the first trade at or after the deadline that
-        differs from the entry price. Round #{predictionId.slice(-6).toUpperCase()}.
+        Compared {elapsed(entryTime, resolutionTime)} after the entry trade. Exact prices decide the result, not the rounded display.
+        Round #{predictionId.slice(-6).toUpperCase()}.
       </p>
     </aside>
   )

@@ -4,17 +4,31 @@ export const ROUND_MS = 60_000
 export const ENTRY_MAX_TRADE_AGE_MS = 10_000
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000
 
+export interface LastCheck {
+  reason: 'EQUAL_PRICE' | 'PROVIDER_HOLD'
+  at: string
+}
+
 export interface PredictionRecord {
   predictionId: string
   playerId: string
   direction: Direction
   mode: 'STANDARD'
-  status: 'PENDING'
+  status: 'PENDING' | 'RESOLVED'
   createdAt: string
   dueAt: string
   entryPrice: string
   entryTradeTime: string
   entryFetchedAt: string
+  pendingKey?: 'PENDING'
+  pendingDueAt?: string
+  lastCheck?: LastCheck
+  outcome?: 'WIN' | 'LOSS'
+  scoreDelta?: 1 | -1
+  resolutionPrice?: string
+  resolutionTradeTime?: string
+  resolutionFetchedAt?: string
+  resolvedAt?: string
 }
 
 export interface IdempotencyRecord {
@@ -56,6 +70,8 @@ export function buildPrediction(input: {
       entryPrice: input.entryPrice,
       entryTradeTime: input.entryTradeTime,
       entryFetchedAt: input.entryFetchedAt,
+      pendingKey: 'PENDING',
+      pendingDueAt: dueAt,
     },
     idempotency: {
       playerId: input.playerId,
@@ -70,4 +86,8 @@ export function buildPrediction(input: {
 
 export function tradeIsEntryFresh(tradeTime: string, now: Date): boolean {
   return now.getTime() - new Date(tradeTime).getTime() <= ENTRY_MAX_TRADE_AGE_MS
+}
+
+export function workflowExecutionName(predictionId: string): string {
+  return `prediction-${predictionId}`
 }

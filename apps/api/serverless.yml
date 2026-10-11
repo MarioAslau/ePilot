@@ -89,12 +89,36 @@ functions:
     description: Record one pending prediction for the authenticated player
     role:
       Fn::GetAtt: [PredictionLambdaRole, Arn]
+    environment:
+      STATE_MACHINE_ARN: arn:aws:states:${aws:region}:${aws:accountId}:stateMachine:hunch-${sls:stage}-resolution
     events:
       - httpApi:
           path: /predictions
           method: POST
+  resolvePrediction:
+    handler: src/handlers/resolvePrediction.handler
+    description: Settle one prediction after its deadline
+    timeout: 15
+    role:
+      Fn::GetAtt: [ResolverLambdaRole, Arn]
+  recoverStuckPredictions:
+    handler: src/handlers/recoverStuckPredictions.handler
+    description: Restart a resolution workflow that never started or stopped
+    timeout: 30
+    role:
+      Fn::GetAtt: [RecoveryLambdaRole, Arn]
+    environment:
+      STATE_MACHINE_ARN: arn:aws:states:${aws:region}:${aws:accountId}:stateMachine:hunch-${sls:stage}-resolution
+    events:
+      - schedule: rate(5 minutes)
 
 resources:
+  Conditions:
+    HasAlarmEmail:
+      Fn::Not:
+        - Fn::Equals:
+            - ${param:alarmEmail, ''}
+            - ''
   Resources:
     GameTable:
       Type: AWS::DynamoDB::Table
@@ -107,6 +131,10 @@ resources:
             AttributeType: S
           - AttributeName: sk
             AttributeType: S
+          - AttributeName: pendingKey
+            AttributeType: S
+          - AttributeName: pendingDueAt
+            AttributeType: S
         KeySchema:
           - AttributeName: pk
             KeyType: HASH
@@ -115,6 +143,15 @@ resources:
         TimeToLiveSpecification:
           AttributeName: expiresAt
           Enabled: true
+        GlobalSecondaryIndexes:
+          - IndexName: pending-by-due
+            KeySchema:
+              - AttributeName: pendingKey
+                KeyType: HASH
+              - AttributeName: pendingDueAt
+                KeyType: RANGE
+            Projection:
+              ProjectionType: KEYS_ONLY
         Tags:
           - Key: project
             Value: hunch
@@ -190,3 +227,206 @@ resources:
                     - logs:PutLogEvents
                   Resource:
                     Fn::Sub: arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/hunch-${sls:stage}-*:*:*
+                - Effect: Allow
+                  Action:
+                    - states:StartExecution
+                  Resource:
+                    Fn::Sub: arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:hunch-${sls:stage}-resolution
+    ResolverLambdaRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: hunch-${sls:stage}-resolver
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: resolver-table
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - dynamodb:GetItem
+                    - dynamodb:UpdateItem
+                    - dynamodb:TransactWriteItems
+                  Resource:
+                    Fn::GetAtt: [GameTable, Arn]
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogStream
+                    - logs:CreateLogGroup
+                    - logs:TagResource
+                  Resource:
+                    Fn::Sub: arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/hunch-${sls:stage}-*:*
+                - Effect: Allow
+                  Action:
+                    - logs:PutLogEvents
+                  Resource:
+                    Fn::Sub: arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/hunch-${sls:stage}-*:*:*
+    RecoveryLambdaRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: hunch-${sls:stage}-recovery
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: recovery-index
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - dynamodb:Query
+                  Resource:
+                    Fn::Join:
+                      - ''
+                      - - Fn::GetAtt:
+                            - GameTable
+                            - Arn
+                        - /index/pending-by-due
+                - Effect: Allow
+                  Action:
+                    - states:StartExecution
+                  Resource:
+                    Fn::Sub: arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:hunch-${sls:stage}-resolution
+                - Effect: Allow
+                  Action:
+                    - states:DescribeExecution
+                  Resource:
+                    Fn::Sub: arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:hunch-${sls:stage}-resolution:*
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogStream
+                    - logs:CreateLogGroup
+                    - logs:TagResource
+                  Resource:
+                    Fn::Sub: arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/hunch-${sls:stage}-*:*
+                - Effect: Allow
+                  Action:
+                    - logs:PutLogEvents
+                  Resource:
+                    Fn::Sub: arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/hunch-${sls:stage}-*:*:*
+    ResolutionStateMachineRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: hunch-${sls:stage}-resolution
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: states.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: invoke-resolver
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - lambda:InvokeFunction
+                  Resource:
+                    Fn::GetAtt: [ResolvePredictionLambdaFunction, Arn]
+    ResolutionStateMachine:
+      Type: AWS::StepFunctions::StateMachine
+      Properties:
+        StateMachineName: hunch-${sls:stage}-resolution
+        RoleArn:
+          Fn::GetAtt: [ResolutionStateMachineRole, Arn]
+        DefinitionString:
+          Fn::Join:
+            - Fn::GetAtt: [ResolvePredictionLambdaFunction, Arn]
+            - Fn::Split:
+                - RESOLVE_FUNCTION_ARN
+                - ${file(src/workflow/resolution.asl)}
+    AlertTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: hunch-${sls:stage}-alerts
+    AlertEmailSubscription:
+      Type: AWS::SNS::Subscription
+      Condition: HasAlarmEmail
+      Properties:
+        Protocol: email
+        TopicArn:
+          Ref: AlertTopic
+        Endpoint: ${param:alarmEmail, ''}
+    ResolutionFailedAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: hunch-${sls:stage}-resolution-failed
+        Namespace: AWS/States
+        MetricName: ExecutionsFailed
+        Dimensions:
+          - Name: StateMachineArn
+            Value:
+              Ref: ResolutionStateMachine
+        Statistic: Sum
+        Period: 300
+        EvaluationPeriods: 1
+        Threshold: 1
+        ComparisonOperator: GreaterThanOrEqualToThreshold
+        TreatMissingData: notBreaching
+        AlarmActions:
+          - Ref: AlertTopic
+    ResolutionTimedOutAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: hunch-${sls:stage}-resolution-timed-out
+        Namespace: AWS/States
+        MetricName: ExecutionsTimedOut
+        Dimensions:
+          - Name: StateMachineArn
+            Value:
+              Ref: ResolutionStateMachine
+        Statistic: Sum
+        Period: 300
+        EvaluationPeriods: 1
+        Threshold: 1
+        ComparisonOperator: GreaterThanOrEqualToThreshold
+        TreatMissingData: notBreaching
+        AlarmActions:
+          - Ref: AlertTopic
+    ResolverErrorsAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: hunch-${sls:stage}-resolver-errors
+        Namespace: AWS/Lambda
+        MetricName: Errors
+        Dimensions:
+          - Name: FunctionName
+            Value: hunch-${sls:stage}-resolvePrediction
+        Statistic: Sum
+        Period: 300
+        EvaluationPeriods: 1
+        Threshold: 1
+        ComparisonOperator: GreaterThanOrEqualToThreshold
+        TreatMissingData: notBreaching
+        AlarmActions:
+          - Ref: AlertTopic
+    RecoveryErrorsAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: hunch-${sls:stage}-recovery-errors
+        Namespace: AWS/Lambda
+        MetricName: Errors
+        Dimensions:
+          - Name: FunctionName
+            Value: hunch-${sls:stage}-recoverStuckPredictions
+        Statistic: Sum
+        Period: 300
+        EvaluationPeriods: 1
+        Threshold: 1
+        ComparisonOperator: GreaterThanOrEqualToThreshold
+        TreatMissingData: notBreaching
+        AlarmActions:
+          - Ref: AlertTopic

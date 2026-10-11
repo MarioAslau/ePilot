@@ -424,6 +424,7 @@ button { font: inherit; color: inherit }
 }
 .ticket.up   { border-top: 3px solid var(--up) }
 .ticket.down { border-top: 3px solid var(--down) }
+.ticket.hold { border-top-color: var(--warn) }
 .tk-head {
   display: flex; justify-content: space-between; align-items: center;
   padding: var(--s4) var(--s4) 0;
