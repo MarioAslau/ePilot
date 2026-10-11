@@ -349,10 +349,18 @@ resources:
           Fn::GetAtt: [ResolutionStateMachineRole, Arn]
         DefinitionString:
           Fn::Join:
-            - Fn::GetAtt: [ResolvePredictionLambdaFunction, Arn]
-            - Fn::Split:
-                - RESOLVE_FUNCTION_ARN
-                - ${file(src/workflow/resolution.asl)}
+            - ''
+            - - Fn::Select:
+                  - '0'
+                  - Fn::Split:
+                      - RESOLVE_FUNCTION_ARN
+                      - ${file(src/workflow/resolution.asl)}
+              - Fn::GetAtt: [ResolvePredictionLambdaFunction, Arn]
+              - Fn::Select:
+                  - '1'
+                  - Fn::Split:
+                      - RESOLVE_FUNCTION_ARN
+                      - ${file(src/workflow/resolution.asl)}
     AlertTopic:
       Type: AWS::SNS::Topic
       Properties:

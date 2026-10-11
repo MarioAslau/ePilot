@@ -1290,7 +1290,7 @@ If time runs short:
   - `apps/web/e2e/critical-journey.spec.ts` — one Chromium journey with a stubbed API and a test clock. Production still waits 60 seconds.
   - `apps/web/src/test/App.test.tsx` — a failed create offers Retry and does not create a new player. Stale market, equal-price, provider hold, and a seen-result remount were already covered.
   - `recoverStuckPredictions` — skips a prediction when a `prediction-<id>` or `prediction-<id>-r…` execution is still running. Logs one `prediction.recovery` line per prediction, then the summary. `prediction.created` includes `executionName`.
-  - `serverless.yml` — metric filter and alarm `hunch-<stage>-workflow-start-failed`. The recovery role can `states:ListExecutions` on the state machine.
+  - `serverless.yml` — metric filter and alarm `hunch-<stage>-workflow-start-failed`. The recovery role can `states:ListExecutions` on the state machine. The state-machine definition joins the resolver ARN between the two halves of the workflow file. CloudFormation rejected the earlier form because `Fn::Join` cannot use a function as its delimiter.
   - `.github/workflows/ci.yml` — jobs `check`, `dynamo`, and `e2e`. `serverless package` stays local.
 - Checks run and results:
   - `yarn typecheck` — exit 0.
