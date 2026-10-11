@@ -1,13 +1,15 @@
 import { useQuery, useQueryClient, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { CreatePlayerResponseSchema, MeResponseSchema, type MeResponse } from 'contracts'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { HttpError, readJson } from './api'
 import { AppHeader } from './components/AppHeader'
 import { HowItWorks } from './components/HowItWorks'
 import { MarketCard } from './components/MarketCard'
 import { ResultReceipt } from './components/ResultReceipt'
 import { RoundTicket } from './components/RoundTicket'
+import { HistoryPlaceholder, ScoreCard } from './components/ScoreCard'
 import { StatusNotice } from './components/StatusNotice'
+import { announcement, pollInterval, roundView, clockOffset, type RoundPhase } from './round'
 import {
   clearSession,
   readSession,
@@ -15,12 +17,14 @@ import {
   writeSession,
   type Session,
 } from './session'
+import { markSeenResult, shouldAnimate } from './seenResults'
 import { useMarket } from './useMarket'
 import { usePrediction } from './usePrediction'
 
 const SCORE_COPY = 'Your score is saved on our server. This browser remembers your anonymous player.'
 const STORAGE_LIMIT =
   'Clearing this browser’s storage, or opening the game on another device, starts a new player. The old score stays on the server and cannot be opened from here.'
+const TICKET_PHASES = new Set<RoundPhase>(['active', 'checking', 'equal', 'hold'])
 
 function apiBaseUrl(): string {
   return (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
@@ -36,13 +40,9 @@ async function fetchMe(baseUrl: string, session: Session): Promise<MeResponse> {
     headers: {
       Authorization: `Bearer ${session.playerId}.${session.accessToken}`,
     },
+    signal: AbortSignal.timeout(8_000),
   })
   return MeResponseSchema.parse(await readJson(response))
-}
-
-function secondsRemaining(dueAt: string, serverTime: string, receivedAt: number, nowMs: number): number {
-  const offset = new Date(serverTime).getTime() - receivedAt
-  return Math.max(0, Math.ceil((new Date(dueAt).getTime() - (nowMs + offset)) / 1000))
 }
 
 function PlayerStatus() {
@@ -57,14 +57,29 @@ function PlayerStatus() {
     }
   })
   const [nowMs, setNowMs] = useState(() => Date.now())
+  const [live, setLive] = useState('')
+  const [flash, setFlash] = useState<'win' | 'loss' | null>(null)
+  const prevPhase = useRef<RoundPhase | null>(null)
 
   const player = useQuery({
     queryKey: ['player', baseUrl],
     enabled: baseUrl.length > 0 && !storageBlocked,
     retry: false,
-    refetchInterval: (query) => (query.state.data?.me.activePrediction ? 2_000 : false),
+    refetchOnWindowFocus: 'always',
+    refetchIntervalInBackground: false,
+    refetchInterval: (query) => {
+      const data = query.state.data
+      if (!data) return false
+      return pollInterval({
+        hasActive: Boolean(data.me.activePrediction),
+        dueAt: data.me.activePrediction?.dueAt,
+        offsetMs: data.offsetMs,
+        nowMs: Date.now(),
+        waitReason: data.me.waitReason,
+      })
+    },
     queryFn: async () => {
-      const receivedAt = Date.now()
+      const startedAt = Date.now()
       const existing = readSession()
       const me = existing
         ? await fetchMe(baseUrl, existing)
@@ -72,47 +87,77 @@ function PlayerStatus() {
             writeSession(created)
             return fetchMe(baseUrl, created)
           })
-      return { me, receivedAt }
+      return { me, offsetMs: clockOffset(me.serverTime, startedAt, Date.now()) }
     },
   })
 
   const snapshot = player.data
   const me = snapshot?.me
   const session = me ? readSession() : null
-  const prediction = usePrediction(baseUrl, session, () => {
+  const refreshPlayer = () => {
     void queryClient.invalidateQueries({ queryKey: ['player', baseUrl] })
-  })
+  }
+  const prediction = usePrediction(baseUrl, session, refreshPlayer, refreshPlayer)
   const rejected = player.error instanceof HttpError && player.error.status === 401
+  const stalePlayer = Boolean(player.isError && player.data && !rejected)
   const market = useMarket(baseUrl)
-  const active =
-    me?.activePrediction ??
-    (prediction.placed && prediction.placed.predictionId !== me?.latestResolvedPrediction?.predictionId
-      ? prediction.placed
-      : null)
-  const settled = !active ? me?.latestResolvedPrediction : null
-  const remaining = active && me && snapshot
-    ? secondsRemaining(active.dueAt, me.serverTime, snapshot.receivedAt, nowMs)
-    : 0
-  const reported = me?.waitReason
-  const roundState = !active
+  const view = roundView({
+    me,
+    placed: prediction.placed,
+    submitPhase: prediction.phase,
+    offsetMs: snapshot?.offsetMs ?? 0,
+    nowMs,
+  })
+  const showPrediction = Boolean(me) && !view.active
+  const marketLive = market.status === 'live'
+  const buttonsDisabled = !marketLive || stalePlayer || prediction.phase !== 'idle'
+  const buttonReason = prediction.phase === 'recording'
     ? null
-    : reported === 'EQUAL_PRICE' || reported === 'PROVIDER_HOLD'
-      ? reported
-      : remaining <= 0 || reported === 'CHECKING_PRICE'
-        ? 'CHECKING_PRICE'
-        : 'WAITING_FOR_DEADLINE'
-  const showPrediction = Boolean(me) && !active && market.status === 'live'
+    : stalePlayer
+      ? 'Reconnecting to your player'
+      : !marketLive
+        ? 'Waiting for a live price'
+        : null
 
-  const activeId = active?.predictionId
+  const activeId = view.active?.predictionId
   useEffect(() => {
     if (!activeId) return
     const id = window.setInterval(() => setNowMs(Date.now()), 1_000)
     return () => window.clearInterval(id)
   }, [activeId])
 
+  useEffect(() => {
+    const from = prevPhase.current
+    prevPhase.current = view.phase
+    if (view.phase === 'result' && from && TICKET_PHASES.has(from)) {
+      document.getElementById('receipt-heading')?.focus()
+    }
+    if (view.phase === 'result' && me && view.settled?.outcome && view.settled.predictionId) {
+      const predictionId = view.settled.predictionId
+      const outcome = view.settled.outcome
+      if (!shouldAnimate(me.playerId, predictionId)) return
+      setFlash(outcome === 'WIN' ? 'win' : 'loss')
+      setLive(announcement(from, 'result', { outcome, score: me.score }) ?? '')
+      const timer = window.setTimeout(() => markSeenResult(me.playerId, predictionId), 0)
+      return () => window.clearTimeout(timer)
+    }
+    const text = announcement(from, view.phase, {
+      direction: view.active?.direction,
+      entryPrice: view.active?.entryPrice,
+    })
+    if (text) setLive(text)
+  }, [view.phase, view.settled, view.active, me])
+
+  const ticketState =
+    view.phase === 'equal' ? 'EQUAL_PRICE'
+    : view.phase === 'hold' ? 'PROVIDER_HOLD'
+    : view.phase === 'checking' ? 'CHECKING_PRICE'
+    : 'WAITING_FOR_DEADLINE'
+
   return (
     <>
-      <AppHeader score={me?.score ?? null} playerId={me?.playerId} />
+      <AppHeader score={me?.score ?? null} playerId={me?.playerId} stale={stalePlayer} />
+      <div className="sr-only" aria-live="polite">{live}</div>
       <main>
         <div className="layout">
           <div className="col">
@@ -125,32 +170,36 @@ function PlayerStatus() {
                 now={market.now}
                 showPrediction={showPrediction}
                 onPredict={(direction) => prediction.submit(direction, market.price)}
-                isSubmitting={prediction.isSubmitting}
+                isSubmitting={prediction.phase === 'recording'}
+                predictionDisabled={buttonsDisabled}
+                predictionReason={buttonReason}
               />
             )}
-            {settled?.outcome && settled.resolutionPrice && settled.resolutionTradeTime && settled.resolvedAt && (
+            {view.settled?.outcome && view.settled.resolutionPrice && view.settled.resolutionTradeTime && view.settled.resolvedAt && (
               <ResultReceipt
-                outcome={settled.outcome}
-                direction={settled.direction}
-                entryPrice={settled.entryPrice}
-                resolutionPrice={settled.resolutionPrice}
-                entryTime={new Date(settled.entryTradeTime)}
-                resolutionTime={new Date(settled.resolutionTradeTime)}
-                fetchedAt={settled.resolutionFetchedAt ? new Date(settled.resolutionFetchedAt) : undefined}
-                settledAt={new Date(settled.resolvedAt)}
-                predictionId={settled.predictionId}
+                outcome={view.settled.outcome}
+                direction={view.settled.direction}
+                entryPrice={view.settled.entryPrice}
+                resolutionPrice={view.settled.resolutionPrice}
+                entryTime={new Date(view.settled.entryTradeTime)}
+                resolutionTime={new Date(view.settled.resolutionTradeTime)}
+                fetchedAt={view.settled.resolutionFetchedAt ? new Date(view.settled.resolutionFetchedAt) : undefined}
+                settledAt={new Date(view.settled.resolvedAt)}
+                predictionId={view.settled.predictionId}
               />
             )}
-            {active && roundState && (
+            {view.active && (
               <RoundTicket
-                key={active.predictionId}
-                direction={active.direction}
-                entryPrice={active.entryPrice}
-                entryTime={new Date(active.entryTradeTime)}
-                deadline={new Date(active.dueAt)}
-                predictionId={active.predictionId}
-                state={roundState}
-                secondsRemaining={remaining}
+                key={view.active.predictionId}
+                direction={view.active.direction}
+                entryPrice={view.active.entryPrice}
+                entryTime={new Date(view.active.entryTradeTime)}
+                deadline={new Date(view.active.dueAt)}
+                predictionId={view.active.predictionId}
+                state={ticketState}
+                secondsRemaining={view.remaining}
+                latestPrice={market.price ?? undefined}
+                autoFocus={prediction.placed?.predictionId === view.active.predictionId}
                 note={
                   prediction.serverPriced
                     ? 'The server recorded its own entry price.'
@@ -158,7 +207,7 @@ function PlayerStatus() {
                 }
               />
             )}
-            {prediction.notice && prediction.notice !== 'Recording entry' && (
+            {prediction.notice && prediction.notice !== 'Recording entry' && view.phase !== 'active' && view.phase !== 'checking' && view.phase !== 'equal' && view.phase !== 'hold' && (
               <StatusNotice
                 kind={prediction.phase === 'unknown' ? 'info' : 'error'}
                 message={prediction.notice}
@@ -189,7 +238,7 @@ function PlayerStatus() {
                 message="This browser could not save your player."
               />
             )}
-            {baseUrl && !storageBlocked && player.isPending && (
+            {baseUrl && !storageBlocked && player.isPending && !me && (
               <StatusNotice kind="info" message="Restoring your player…" />
             )}
             {baseUrl && !storageBlocked && player.isError && rejected && (
@@ -206,7 +255,7 @@ function PlayerStatus() {
                 }}
               />
             )}
-            {baseUrl && !storageBlocked && player.isError && !rejected && (
+            {baseUrl && !storageBlocked && player.isError && !rejected && !me && (
               <StatusNotice
                 kind="error"
                 message="Could not reach the server."
@@ -214,13 +263,26 @@ function PlayerStatus() {
                 action={{ label: 'Retry', onClick: () => void player.refetch() }}
               />
             )}
-            {me && (
-              <p className="label" aria-label={`Score: ${me.score}`}>
-                Score <strong className="num">{me.score}</strong>
-              </p>
+            {stalePlayer && (
+              <StatusNotice
+                kind="warn"
+                message="Could not refresh your player."
+                detail="Showing the last confirmed score."
+                action={{ label: 'Retry', onClick: () => void player.refetch() }}
+              />
             )}
           </div>
           <div className="col">
+            {me && (
+              <ScoreCard
+                score={me.score}
+                wins={me.wins}
+                losses={me.losses}
+                flash={flash}
+                stale={stalePlayer}
+              />
+            )}
+            <HistoryPlaceholder />
             <HowItWorks />
           </div>
         </div>

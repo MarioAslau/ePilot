@@ -4,14 +4,16 @@ interface Props {
   price: string | null
   onPredict?: (direction: 'UP' | 'DOWN') => void
   isSubmitting: boolean
+  disabled?: boolean
+  reason?: string | null
 }
 
 /**
  * Headline copy + direction buttons section inside MarketCard.
  * Disabled when price is unavailable or a submission is in flight.
  */
-export function PredictionPanel({ price, onPredict, isSubmitting }: Props) {
-  const disabled = price === null || isSubmitting
+export function PredictionPanel({ price, onPredict, isSubmitting, disabled, reason }: Props) {
+  const locked = disabled ?? (price === null || isSubmitting)
 
   return (
     <div>
@@ -22,10 +24,11 @@ export function PredictionPanel({ price, onPredict, isSubmitting }: Props) {
 
       <DirectionButtons
         onPredict={onPredict}
-        disabled={disabled}
+        disabled={locked}
         isSubmitting={isSubmitting}
       />
       {isSubmitting && <p className="play-sub">Recording entry</p>}
+      {!isSubmitting && reason && <p className="play-sub">{reason}</p>}
 
       <div className="payout">
         <span><b>+1</b> point for a correct call</span>

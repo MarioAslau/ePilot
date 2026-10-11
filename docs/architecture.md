@@ -2,7 +2,7 @@
 
 ## Status
 
-T08 is awaiting manual verification. The repo settles one pending round after the real 60-second deadline, including from the local in-process loop. `GET /me` returns the result and the updated score. Step Functions, the scanner, and the `pending-by-due` index are defined and packaged. They are not deployed. The hosted site does not include this until the API deploy and the Amplify rebuild of `release`.
+T09 is complete in the repo. A round settles after the real 60-second deadline, including from the local in-process loop. The page shows the score card, accuracy after the first settled round, hold copy, and a receipt until the next round. The score flashes once per result. Step Functions, the scanner, and the `pending-by-due` index are defined and packaged. They are not deployed. The hosted site does not include this until the API deploy and the Amplify rebuild of `release`. The manual list for that deploy is under T14 in the implementation plan.
 
 ## Product goal
 
@@ -616,10 +616,13 @@ anonymous access.
 ### Polling and data freshness
 
 Market polling: approximately 5 s interval, configurable.
-Player-state polling: approximately 2 s while a round is active,
-approximately 3 s otherwise; approximately 1 s near the deadline.
-Refetch on window focus return and after mutations.
-Avoid overlapping requests.
+Player-state polling, as built: 2 s while a round is active, 3 s when idle, and 1 s when the round is within 5 s of `dueAt` or the server reports checking, an equal price, or a provider hold. Polling pauses while the tab is in the background. Focus always refetches `/me`. TanStack Query does not start a second interval fetch for that query while one is in flight. `/me` aborts after 8 seconds.
+
+The countdown offset is `serverTime − (t0 + t1) / 2`, where `t0` and `t1` are the client times just before and just after `/me`. The ring uses `Date.now() + offset`.
+
+If `/me` fails after a player has loaded, the score is labelled Last confirmed, Up and Down stay disabled, and a warn notice offers Retry. Polling continues. A first load with no player yet keeps the existing retry notice. A rejected token still offers a new player.
+
+One polite live region announces a placement, the end of the minimum wait, an equal-price or provider hold, and a result with the new score. It does not announce price ticks or countdown seconds. The score flash and the result announcement run once per prediction. The browser stores that id at `hunch.seenResult.<playerId>`. If storage throws, the marker stays in memory for the page. The receipt stays on screen until the next round is placed.
 
 Status labels:
 - Live feed: "Latest available" or "Updated X seconds ago · Coinbase"

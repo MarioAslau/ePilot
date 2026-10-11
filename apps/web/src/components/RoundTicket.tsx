@@ -1,5 +1,5 @@
 import type { Direction, WaitReason } from 'contracts'
-import { ChevronDown, ChevronUp, Clock } from 'lucide-react'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useEffect, useRef } from 'react'
 
 interface Props {
@@ -12,6 +12,8 @@ interface Props {
   /** Seconds remaining until deadline (computed by parent) */
   secondsRemaining?: number
   note?: string
+  latestPrice?: string
+  autoFocus?: boolean
 }
 
 function formatPrice(raw: string): string {
@@ -24,33 +26,54 @@ function formatTime(d: Date): string {
   return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
+function formatDelta(entry: string, latest: string): string {
+  const delta = Number(latest) - Number(entry)
+  if (!Number.isFinite(delta)) return ''
+  const body = Math.abs(delta).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  if (delta > 0) return `+${body}`
+  if (delta < 0) return `−${body}`
+  return body
+}
+
 function stateLabel(state: WaitReason): string {
-  if (state === 'WAITING_FOR_DEADLINE') return 'Waiting for deadline'
-  if (state === 'CHECKING_PRICE')       return 'Checking price…'
-  if (state === 'EQUAL_PRICE')          return 'Price unchanged — retrying'
-  if (state === 'PROVIDER_HOLD')        return 'Provider hold — retrying'
-  return ''
+  if (state === 'WAITING_FOR_DEADLINE') return 'Minimum wait'
+  if (state === 'EQUAL_PRICE') return 'Still waiting'
+  if (state === 'PROVIDER_HOLD') return 'On hold'
+  return 'Comparing prices'
 }
 
 function stateDetail(state: WaitReason): string {
-  if (state === 'WAITING_FOR_DEADLINE') return 'Your prediction locks in at the entry price. Resolution checks begin after the deadline.'
-  if (state === 'CHECKING_PRICE')       return 'Fetching the resolution price from Coinbase. This happens automatically in the background.'
-  if (state === 'EQUAL_PRICE')          return 'The current price equals your entry price. Waiting for the market to move before settling.'
-  if (state === 'PROVIDER_HOLD')        return "The price provider is temporarily unavailable. We'll retry automatically."
+  if (state === 'WAITING_FOR_DEADLINE') return "Minimum wait — Not final. Moves during this minute don't count."
+  if (state === 'CHECKING_PRICE') return "Minimum wait complete. We're checking the latest price."
+  if (state === 'EQUAL_PRICE') return 'The latest price equals your entry price. Still waiting.'
+  if (state === 'PROVIDER_HOLD') return 'Our price source is temporarily unavailable. Your round is on hold, and an outage never counts as a loss.'
   return ''
 }
 
 /**
  * Active-round tracking card shown after a prediction is submitted.
- * Displays direction, entry price, deadline and live state copy.
+ * The latest price is the display quote. It does not settle the round.
  */
-export function RoundTicket({ direction, entryPrice, entryTime, deadline, predictionId, state = 'WAITING_FOR_DEADLINE', secondsRemaining, note }: Props) {
+export function RoundTicket({
+  direction,
+  entryPrice,
+  entryTime,
+  deadline,
+  predictionId,
+  state = 'WAITING_FOR_DEADLINE',
+  secondsRemaining,
+  note,
+  latestPrice,
+  autoFocus = false,
+}: Props) {
   const heading = useRef<HTMLHeadingElement>(null)
   useEffect(() => {
-    heading.current?.focus()
-  }, [])
+    if (autoFocus) heading.current?.focus()
+  }, [autoFocus])
   const isUp = direction === 'UP'
   const onHold = state === 'EQUAL_PRICE' || state === 'PROVIDER_HOLD'
+  const counting = secondsRemaining != null && secondsRemaining > 0 && state === 'WAITING_FOR_DEADLINE'
+  const comparing = state !== 'WAITING_FOR_DEADLINE'
 
   const progress = secondsRemaining != null
     ? Math.max(0, Math.min(1, 1 - secondsRemaining / 60))
@@ -59,7 +82,7 @@ export function RoundTicket({ direction, entryPrice, entryTime, deadline, predic
   const offset = circumference * (1 - progress)
 
   return (
-    <div className={`ticket ${isUp ? 'up' : 'down'}${onHold ? ' hold' : ''}`} aria-live="polite">
+    <div className={`ticket ${onHold ? 'hold' : isUp ? 'up' : 'down'}`}>
       <h2 id="round-heading" className="play-title" tabIndex={-1} ref={heading}>
         Your prediction
       </h2>
@@ -73,21 +96,26 @@ export function RoundTicket({ direction, entryPrice, entryTime, deadline, predic
         <span className="tk-id fine">#{predictionId.slice(-6).toUpperCase()}</span>
       </div>
 
-      {/* Progress steps */}
       <ol className="steps" aria-label="Round progress">
-        <li className="done">Predicted</li>
+        <li className="done">Placed</li>
         <li className={state === 'WAITING_FOR_DEADLINE' ? 'cur' : 'done'}>Waiting</li>
-        <li className={state === 'WAITING_FOR_DEADLINE' ? '' : 'cur'}>Resolving</li>
-        <li>Settled</li>
+        <li className={comparing ? 'cur' : ''}>Comparing</li>
+        <li>Result</li>
       </ol>
 
-      {/* Prices */}
       <dl className="tk-prices">
         <div>
           <dt className="k">Entry price</dt>
           <dd className="v num">{formatPrice(entryPrice)}</dd>
           <dd className="d fine">Trade {formatTime(entryTime)}</dd>
         </div>
+        {latestPrice && (
+          <div>
+            <dt className="k">Latest price</dt>
+            <dd className="v num">{formatPrice(latestPrice)}</dd>
+            <dd className="d fine">not final {formatDelta(entryPrice, latestPrice)}</dd>
+          </div>
+        )}
         <div>
           <dt className="k">Resolution after</dt>
           <dd className="v num">{formatTime(deadline)}</dd>
@@ -95,11 +123,9 @@ export function RoundTicket({ direction, entryPrice, entryTime, deadline, predic
         </div>
       </dl>
 
-      {/* Wait / state section */}
       <div className="tk-body">
         <div className="tk-wait">
-          {secondsRemaining != null && secondsRemaining > 0 ? (
-            /* Countdown ring */
+          {counting ? (
             <div className="ring" aria-hidden="true">
               <svg width="76" height="76">
                 <circle className="ring-bg" cx="38" cy="38" r="34" />
@@ -114,7 +140,7 @@ export function RoundTicket({ direction, entryPrice, entryTime, deadline, predic
             </div>
           ) : (
             <div className="state-ic">
-              <Clock aria-hidden="true" size={16} />
+              <span className="spin" aria-hidden="true" />
             </div>
           )}
 

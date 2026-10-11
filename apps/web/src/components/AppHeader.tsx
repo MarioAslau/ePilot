@@ -1,13 +1,14 @@
 interface Props {
   score: number | null
   playerId?: string
+  stale?: boolean
 }
 
 /**
  * Top navigation bar: Hunch wordmark + score chip (mobile-only, hidden at desk breakpoint).
  * Matches the appbar + wordmark + chip pattern in the design system.
  */
-export function AppHeader({ score, playerId }: Props) {
+export function AppHeader({ score, playerId, stale = false }: Props) {
   return (
     <header className="appbar">
       <a href="/" className="wordmark" aria-label="Hunch — home">
@@ -26,8 +27,8 @@ export function AppHeader({ score, playerId }: Props) {
           </span>
         )}
         {/* Score chip — visible on mobile, hidden at 960 px (shown in ScoreCard on desktop) */}
-        <div className="chip chip-score" aria-label={score === null ? 'Score: loading' : `Score: ${score}`}>
-          <span className="chip-long">Score</span>
+        <div className="chip chip-score" aria-label={score === null ? 'Score: loading' : stale ? `Last confirmed score: ${score}` : `Score: ${score}`}>
+          <span className="chip-long">{stale ? 'Last confirmed' : 'Score'}</span>
           <strong className="num">{score === null ? '…' : score}</strong>
         </div>
       </div>

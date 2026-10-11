@@ -16,7 +16,7 @@ import { HowItWorks } from './components/HowItWorks'
 import { MarketCard } from './components/MarketCard'
 import { ResultReceipt } from './components/ResultReceipt'
 import { RoundTicket } from './components/RoundTicket'
-import { ScoreCard } from './components/ScoreCard'
+import { HistoryPlaceholder, ScoreCard } from './components/ScoreCard'
 import { StatusNotice } from './components/StatusNotice'
 import { type FixtureName, FIXTURE_NAMES, fixtures } from './fixtures'
 
@@ -88,6 +88,7 @@ export function FixtureApp() {
                   predictionId={state.activeRound.predictionId}
                   state={state.activeRound.state}
                   secondsRemaining={state.activeRound.secondsRemaining}
+                  latestPrice={state.price ?? undefined}
                 />
               )}
 
@@ -123,6 +124,7 @@ export function FixtureApp() {
                 losses={state.losses}
                 flash={state.flash}
               />
+              <HistoryPlaceholder />
               <HowItWorks />
             </div>
           </div>

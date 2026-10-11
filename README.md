@@ -5,7 +5,7 @@ or lower after at least one minute.
 
 ## Implementation status
 
-T00 through T07 are complete. T08 is awaiting manual verification. `yarn dev:local` records one Up or Down prediction and settles it after the real 60 seconds, even if the tab is closed while that command is still running. The hosted site does not include this until the API deploy and the Amplify rebuild.
+T00 through T09 are complete. `yarn dev:local` records one Up or Down prediction and settles it after the real 60 seconds. The page then shows the score card, accuracy after the first settled round, and a receipt until the next round. The score flashes once per result. The hosted site does not include this until the API deploy and the Amplify rebuild. The full manual list is in the T14 section of `docs/implementation-plan.md`.
 
 ## Links
 
@@ -186,6 +186,8 @@ Deployed, only after that local check is confirmed:
 7. Starting that same execution name again does not create a second score change.
 8. Stop the execution, wait for the scanner after `dueAt` plus about 7 minutes, and confirm one `prediction-<id>-r…` execution settles the round once.
 9. Place a second round with the same player.
+
+For the T09 local check, restart `yarn dev:local` and start a new player. `http://localhost:5173/?fixture=win` and `?fixture=loss` show the two receipts without waiting. A real round still takes the minute. Near the end, `/me` polls about every second. At 0 the ticket says Comparing prices. The score flashes once. Refreshing the receipt does not flash again. `equal-price` and `resolution-provider-down` still use the fault switch above. The hold ticket is amber and says an outage never counts as a loss. If the market request is blocked, Up and Down stay visible and disabled, with “Waiting for a live price”.
 
 ## Deployment
 

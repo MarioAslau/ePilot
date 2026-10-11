@@ -195,7 +195,8 @@ describe('App player restore', () => {
     expect(screen.getByText('Price updates are delayed. Showing the last known price.')).toBeInTheDocument()
     expect(screen.getByLabelText('Bitcoin price: 65,432.10 US dollars')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Retry' }).length).toBeGreaterThan(0)
-    expect(screen.queryByRole('button', { name: /up/i })).not.toBeInTheDocument()
+    expect(screen.getByText('Waiting for a live price')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /up/i })).toBeDisabled()
   })
 })
 
@@ -295,6 +296,7 @@ describe('App predictions', () => {
       await vi.advanceTimersByTimeAsync(0)
     })
     expect(screen.getByText('Checking whether your prediction was recorded…')).toBeInTheDocument()
+    expect(screen.queryByText(/not placed/i)).not.toBeInTheDocument()
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_000)
@@ -368,7 +370,7 @@ describe('App predictions', () => {
     }))
 
     render(<App />)
-    expect(await screen.findByText('Checking price…')).toBeInTheDocument()
+    expect(await screen.findByText('Comparing prices')).toBeInTheDocument()
     expect(screen.queryByText(/you won|you lost|score changed/i)).not.toBeInTheDocument()
     expect(screen.getAllByLabelText('Score: 0').length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: /up/i })).not.toBeInTheDocument()
@@ -404,7 +406,7 @@ describe('App predictions', () => {
     }))
 
     render(<App />)
-    expect(await screen.findByText('Correct')).toBeInTheDocument()
+    expect(await screen.findByText('Correct', { selector: '#receipt-heading' })).toBeInTheDocument()
     expect(screen.getByText('Exact 65000.101 vs 65000.104')).toBeInTheDocument()
     expect(screen.getAllByLabelText('Score: 1').length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: /up/i })).toBeEnabled()
@@ -452,7 +454,170 @@ describe('App predictions', () => {
 
     render(<App />)
     expect(await screen.findByText(/temporarily unavailable/)).toBeInTheDocument()
+    expect(screen.getAllByText(/never counts as a loss/).length).toBeGreaterThan(0)
     expect(screen.queryByText('Not this time')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Your prediction' }).parentElement).toHaveClass('hold')
+    expect(screen.getByRole('heading', { name: 'Your prediction' }).parentElement).not.toHaveClass('down')
     expect(screen.getAllByLabelText('Score: 0').length).toBeGreaterThan(0)
+  })
+
+  it('does not focus a restored round and does not announce the countdown', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://example.test')
+    savedPlayer()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval'] })
+    const recorded = pendingPrediction('65432.10', new Date(Date.now() + 60_000).toISOString())
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
+      if (String(url).endsWith('/me')) {
+        return jsonResponse(200, {
+          ...meBody,
+          serverTime: new Date().toISOString(),
+          activePrediction: recorded,
+          waitReason: 'WAITING_FOR_DEADLINE',
+        })
+      }
+      throw new Error(String(url))
+    }))
+
+    render(<App />)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    const heading = screen.getByRole('heading', { name: 'Your prediction' })
+    expect(document.activeElement).not.toBe(heading)
+    const live = document.querySelector('[aria-live="polite"]')
+    expect(live?.textContent).toBe('')
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000)
+    })
+    expect(live?.textContent).toBe('')
+    expect(screen.queryByRole('button', { name: /up/i })).not.toBeInTheDocument()
+  })
+
+  it('keeps the last score and disables new calls when a refresh fails', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://example.test')
+    savedPlayer()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval'] })
+    let meCalls = 0
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
+      if (String(url).endsWith('/me')) {
+        meCalls += 1
+        if (meCalls > 1) throw new Error('offline')
+        return jsonResponse(200, { ...meBody, score: 4, serverTime: new Date().toISOString() })
+      }
+      throw new Error(String(url))
+    }))
+
+    render(<App />)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(screen.getAllByLabelText('Score: 4').length).toBeGreaterThan(0)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_000)
+    })
+
+    expect(screen.getAllByText('Last confirmed').length).toBeGreaterThan(0)
+    expect(screen.getByText('Reconnecting to your player')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /up/i })).toBeDisabled()
+    expect(screen.getAllByRole('button', { name: 'Retry' }).length).toBeGreaterThan(0)
+  })
+
+  it('shows accuracy only after a settled round, including a negative score', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://example.test')
+    savedPlayer()
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
+      if (String(url).endsWith('/me')) {
+        return jsonResponse(200, {
+          ...meBody,
+          score: -2,
+          wins: 0,
+          losses: 2,
+          serverTime: new Date().toISOString(),
+        })
+      }
+      throw new Error(String(url))
+    }))
+
+    const { unmount } = render(<App />)
+    expect(await screen.findByText('0%')).toBeInTheDocument()
+    expect(screen.getAllByLabelText('Score: -2').length).toBeGreaterThan(0)
+    unmount()
+
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
+      if (String(url).endsWith('/me')) return jsonResponse(200, meBody)
+      throw new Error(String(url))
+    }))
+    render(<App />)
+    expect(await screen.findByText('Make your first prediction to start scoring.')).toBeInTheDocument()
+    expect(screen.queryByText('Accuracy')).not.toBeInTheDocument()
+  })
+
+  it('flashes and announces a result once', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://example.test')
+    savedPlayer()
+    const settled = {
+      ...pendingPrediction('83000.001', '2026-10-11T15:01:00.000Z'),
+      status: 'RESOLVED',
+      outcome: 'WIN',
+      scoreDelta: 1,
+      resolutionPrice: '83000.004',
+      resolutionTradeTime: '2026-10-11T15:02:00.000Z',
+      resolvedAt: '2026-10-11T15:02:03.000Z',
+    }
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
+      if (String(url).endsWith('/me')) {
+        return jsonResponse(200, {
+          ...meBody,
+          score: 1,
+          wins: 1,
+          serverTime: new Date().toISOString(),
+          latestResolvedPrediction: settled,
+        })
+      }
+      throw new Error(String(url))
+    }))
+
+    const first = render(<App />)
+    expect(await screen.findByText('Correct', { selector: '#receipt-heading' })).toBeInTheDocument()
+    expect(screen.getByText('Exact 83000.001 vs 83000.004')).toBeInTheDocument()
+    expect(document.querySelector('.flash-win')).toBeTruthy()
+    expect(screen.getByText('Correct. Score 1.')).toBeInTheDocument()
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    first.unmount()
+
+    render(<App />)
+    expect(await screen.findByText('Correct', { selector: '#receipt-heading' })).toBeInTheDocument()
+    expect(document.querySelector('.flash-win')).toBeNull()
+    expect(screen.queryByText('Correct. Score 1.')).not.toBeInTheDocument()
+  })
+
+  it('focuses the round heading after a new prediction, not after restore', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://example.test')
+    savedPlayer()
+    const recorded = pendingPrediction('65432.10', new Date(Date.now() + 60_000).toISOString())
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
+      if (String(url).endsWith('/me')) {
+        return jsonResponse(200, {
+          ...meBody,
+          serverTime: new Date().toISOString(),
+          activePrediction: recorded,
+          waitReason: 'WAITING_FOR_DEADLINE',
+        })
+      }
+      throw new Error(String(url))
+    }))
+
+    render(<App />)
+    const heading = await screen.findByRole('heading', { name: 'Your prediction' })
+    expect(document.activeElement).not.toBe(heading)
   })
 })

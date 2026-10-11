@@ -8,10 +8,10 @@ Then add optional features that demonstrate product judgment.
 
 ## Current progress
 
-- Active ticket: T08
-- Status: Awaiting manual verification
+- Active ticket: T09
+- Status: Complete
 
-- Local resolution is in the repo. A round settles after the real 60 seconds while `yarn dev:local` is running. The hosted site does not include this until deploy.
+- The page shows the score card, the hold copy, and a one-time result flash. A round settles after the real 60 seconds while `yarn dev:local` is running. The hosted site does not include T08 or T09 until deploy. The full manual list is under T14.
 
 ## Working agreement
 
@@ -129,9 +129,9 @@ A local fixture view helps test presentation without waiting for markets. It is 
 
 - [x] T07 — Create predictions safely
 
-- [ ] T08 — Implement durable resolution and playable core loop
+- [x] T08 — Implement durable resolution and playable core loop
 
-- [ ] T09 — Complete frontend states and interaction polish
+- [x] T09 — Complete frontend states and interaction polish
 
 - [ ] T10 — Verify and freeze the MVP
 
@@ -546,7 +546,7 @@ feat: create predictions with concurrency and retry protection
 
 ## T08 — Implement durable resolution and playable core loop
 
-Status: Awaiting manual verification
+Status: Complete
 
 Dependencies: T07.
 
@@ -620,7 +620,7 @@ feat: resolve predictions durably and update scores atomically
 
 ## T09 — Complete frontend states and interaction polish
 
-Status: Not started
+Status: Complete
 
 Dependencies: T08.
 
@@ -970,6 +970,41 @@ Walkthrough:
 
 7. What to measure or improve next.
 
+## Final manual test
+
+Run this once before submission. Local steps use `yarn dev:local` and a new player at `http://localhost:5173`. Each real round takes the minute. The hosted steps come after the API deploy and the Amplify rebuild of `release`.
+
+A normal round already covers settlement. The fault steps below are easy to miss. `equal-price` turns the ticket amber for about 5 seconds, then the next check uses a real price and the round settles as usual. `resolution-provider-down` holds for two failed quotes, about 15 seconds apart, then settles. If the curl does not hit the server the page is using, the round is normal. Send the curl, then place the round, and watch the ticket as the countdown hits 0.
+
+VoiceOver is the Mac screen reader, Command-F5. It is an accessibility check, not part of the game. Skip it if you are not listening to the page.
+
+Local:
+
+1. Empty storage, then start. Score is 0. Refresh and reopen the tab. The same player returns. A private window gets a different player. Restart `yarn dev:local` and refresh. The saved player is rejected. Start a new player.
+2. The price, Live, and Coinbase Exchange are shown. The chart draws on this page. Block `/market`. The price dims, the pill says Delayed, and Up and Down stay visible but disabled, with “Waiting for a live price”. Unblock it and they work again.
+3. Choose Up. Both buttons lock, then the ticket shows the server entry price, a not-final latest price, and a countdown. Focus is on “Your prediction”. Refresh. The same ticket returns. The score stays 0. A second tab shows that same round. Its buttons are gone.
+4. `curl -X POST http://localhost:5173/api/__dev/next-prediction -H 'Content-Type: application/json' -d '{"mode":"drop-response"}'`, then choose Down. The page says it is checking whether the prediction was recorded, then shows one ticket.
+5. Arm `{"mode":"provider-down"}` with no round active. The page says the prediction was not placed. The buttons return. The score stays 0.
+6. Wait out a normal round. At 0 the ticket says Comparing prices. The receipt says Correct or Not this time, with the point change, both prices, and both trade times. The header score and the score card change once. Accuracy appears after this first settled round. Up and Down return. The receipt stays until the next round.
+7. Arm `{"mode":"equal-price"}`, then place a round. At 0 the ticket is amber and says the latest price equals the entry. The score does not change. About 5 seconds later it can settle.
+8. Arm `{"mode":"resolution-provider-down"}`, then place a round. The ticket says the price source is unavailable and that an outage never counts as a loss. The score does not drop. It then settles.
+9. Refresh on a receipt. The receipt remains and the score does not flash again. Close the tab during a round and reopen after about 70 seconds. An unseen result flashes once.
+10. Block `/api/me` during a round. The score says Last confirmed, Retry is there, and Up and Down stay disabled. Unblock it and the page recovers.
+11. Keyboard only: Tab to Up and press Enter. Focus is on the round heading. After settlement, focus is on the receipt.
+12. Optional. Command-F5 starts VoiceOver. One round should speak the placement, “Minimum wait complete”, and the result with the new score. It should not speak every second. Command-F5 turns it off.
+13. System Settings, Accessibility, Reduce motion. The ring and the score flash do not animate. The words still show the state.
+14. At 375px width there is no horizontal scroll. The score is visible in the header.
+
+`http://localhost:5173/?fixture=win` and `?fixture=loss` show both receipts without waiting. They are previews, not a played round.
+
+Hosted, after deploy from `apps/api` with `--param amplifyOrigin=https://release.d2yczmbttcpoe9.amplifyapp.com --param alarmEmail=<email>`, confirming the SNS email, and pushing the frontend to `release`:
+
+15. Before that deploy, `aws dynamodb scan --table-name hunch-dev --filter-expression "begins_with(sk,:p)" --expression-attribute-values '{":p":{"S":"PREDICTION#"}}' --select COUNT`. Expect 0. If it is not 0, delete that `PREDICTION#` item and remove `activePredictionId` first. Adding the index can take several minutes.
+16. Place a round, close the browser, and reopen after more than 90 seconds. The receipt and the new score are there. The player item has no `activePredictionId`. The score changed once.
+17. In Step Functions, `prediction-<id>` shows Wait, then Resolve, then Succeed, at or after `dueAt`. Starting that same name again does not score twice.
+18. Stop that execution. After `dueAt` plus about 7 minutes, one `prediction-<id>-r…` execution settles the round once. No email is expected for a manual stop.
+19. Place a second round with the same player.
+
 Suggested commit:
 
 docs: complete release handover and walkthrough
@@ -1198,7 +1233,7 @@ If time runs short:
 
 ### T08
 
-- Status: Awaiting manual verification. Mario has not confirmed the local round yet. Do not mark this complete.
+- Status: Complete. Mario marked T08 complete on 2026-10-11. The hosted site has not been updated.
 - What changed:
   - `packages/contracts` — `Prediction` may include `resolutionFetchedAt`. No other contract change.
   - `apps/api` — `decide()` refuses a quote before `dueAt`. A missing quote or a trade older than 10 seconds is `PROVIDER_HOLD` and does not change the score. `evaluate()` compares the fresh trade, using the exchange trade time as `resolvedAt`. Settlement is one `TransactWriteItems`: the prediction must still be `PENDING`, and the player lock must still be this prediction. It writes the outcome, both prices, the trade times, the fetch time, and the settled time, adds the score, increments wins or losses, sets `latestResolvedPredictionId`, and removes the lock and the index attributes. A cancelled transaction is `already_settled`. Pending items carry `pendingKey = PENDING` and `pendingDueAt = dueAt` for the sparse `pending-by-due` index. Settlement removes both.
@@ -1216,10 +1251,30 @@ If time runs short:
   - `yarn lint` — exit 0.
   - `yarn workspace web build` — exit 0.
   - `yarn serverless package --stage dev --region eu-north-1` — exit 0. The template has state machine `hunch-dev-resolution` with the resolver ARN joined into the definition, GSI `pending-by-due`, schedule `rate(5 minutes)`, roles `hunch-dev-resolver`, `hunch-dev-recovery`, and `hunch-dev-resolution`, and `states:StartExecution` on the prediction role. It has no `dynamodb:Scan`. Lambda still reports the known `nodejs20.x` deprecation warning.
-- Manual verification: Not yet confirmed by Mario. During implementation, a local round on `http://127.0.0.1:5174` went from the ticket at score 0 to a receipt reading Correct, entry 83,718.83, compared 83,748.27, both trade times, fetched and settled times, and 62 seconds elapsed. The header score became 1 and Up and Down returned. Mario still needs to run the local steps below.
+- Manual verification: Mario marked T08 complete on 2026-10-11. During implementation, a local round on `http://127.0.0.1:5174` went from the ticket at score 0 to a receipt reading Correct, entry 83,718.83, compared 83,748.27, both trade times, fetched and settled times, and 62 seconds elapsed. The header score became 1 and Up and Down returned.
 - Decision or tradeoff: Step Functions keeps a finished execution name for 90 days, so a failed execution is not restarted under `prediction-{id}`. The scanner uses a new name. Settlement stays conditional, so a second execution cannot score twice. The scanner can leave a round pending until about 7 minutes after `dueAt`. A provider failure is never a loss. Real DynamoDB races stay for the later AWS check.
-- Remaining limitation: The hosted site is unchanged until deploy. Adding the GSI can take several minutes. The SNS email must be confirmed or alarms have nowhere to go. There is no in-app cancel. A round whose workflow never starts stays pending until the scanner runs. The execution gives up after 6 hours and the scanner starts another one.
+- Remaining limitation: The hosted site is unchanged until deploy. Adding the GSI can take several minutes. The SNS email must be confirmed or alarms have nowhere to go. There is no in-app cancel. A round whose workflow never starts stays pending until the scanner runs. The execution gives up after 6 hours and the scanner starts another one. The hosted browser-close check was not done in T08. It is in the T09 manual steps.
 - Commit: Pending. Suggested message: `feat: resolve predictions durably and update scores atomically`
+
+### T09
+
+- Status: Complete. Mario marked T09 complete on 2026-10-11. The hosted site has not been updated.
+- What changed:
+  - `apps/web` — `/me` polls every 1 second in the last 5 seconds or during a hold, every 2 seconds for the rest of an active round, and every 3 seconds when idle. It refetches when the window focuses and does not poll in a background tab. The countdown uses the midpoint of the `/me` request, so a slow response does not shorten the minute. A failed refresh keeps the last score, labels it Last confirmed, and disables Up and Down.
+  - The ticket steps are Placed, Waiting, Comparing, and Result. The copy matches the architecture, including that a price move during the minute is not final and that an outage is not a loss. The latest display price is shown with its delta and is not a settlement. Focus moves to the round heading only after this browser places the round.
+  - One polite live region announces a placement, the end of the wait, a hold, and a result. It does not announce each second. The score flash and that announcement happen once per prediction, stored at `hunch.seenResult.<playerId>`. The receipt stays until the next round.
+  - ScoreCard is in the right column. Accuracy, wins, and losses appear after the first settled round. A history card says settled predictions will appear here. When the market is not live, Up and Down stay visible and disabled, with the reason.
+- Checks run and results:
+  - `yarn workspace web test` — 46/46 passed.
+  - `yarn workspace api test` — 59/59 passed.
+  - `yarn workspace contracts test` — 8/8 passed.
+  - `yarn typecheck` — exit 0 for api, web, and contracts.
+  - `yarn lint` — exit 0.
+  - `yarn workspace web build` — exit 0.
+- Manual verification: Mario marked T09 complete on 2026-10-11. A normal local round settled and the score changed. Some fault checks looked like a normal round: `equal-price` only holds for about 5 seconds, and a curl that misses the running server does nothing. Those checks are written out again under T14. During implementation, `?fixture=win` showed Correct and `?fixture=loss` showed Not this time. A local Up round focused “Your prediction”, showed the not-final delta, then a receipt: Not this time, entry 83,863.46, compared 83,812.58, 62 seconds, score −1 with one flash, accuracy visible, and Up returned. Focus landed on the receipt. At 375px the page did not scroll sideways and the header showed the score. Reduced motion set the score animation to 0s.
+- Decision or tradeoff: Idle polling stays at 3 seconds, as the architecture already said, rather than 15 seconds. No `ExecutionsAborted` alarm was added. A stopped execution is an operator action, and the scanner still recovers it. T08 stays Complete. The hosted checks are the manual steps below, not a reason to reopen T08.
+- Remaining limitation: The hosted site is unchanged until deploy. History is still a placeholder. There is no in-app cancel.
+- Commit: Pending. Suggested message: `feat: complete prediction countdown and result experience`
 
 ### Future entry template
 

@@ -4,6 +4,7 @@ interface Props {
   losses: number
   /** Flash class applied briefly after settlement: 'win' | 'loss' | null */
   flash?: 'win' | 'loss' | null
+  stale?: boolean
 }
 
 /**
@@ -11,7 +12,7 @@ interface Props {
  * Shows total score + win/loss counts + accuracy percentage (after ≥1 settled round).
  * Accuracy % is display-only; score is the game currency.
  */
-export function ScoreCard({ score, wins, losses, flash }: Props) {
+export function ScoreCard({ score, wins, losses, flash, stale = false }: Props) {
   const settled = wins + losses
   const accuracy = settled > 0
     ? Math.round((wins / settled) * 100)
@@ -26,15 +27,13 @@ export function ScoreCard({ score, wins, losses, flash }: Props) {
 
   return (
     <section className="card" aria-label="Your score">
-      <p className="label">Your score</p>
+      <p className="label">{stale ? 'Last confirmed' : 'Your score'}</p>
 
       <div className="score-row">
         <div>
           <div
             className={scoreClass}
-            aria-live="polite"
-            aria-atomic="true"
-            aria-label={`Score: ${score} point${score === 1 ? '' : 's'}`}
+            aria-label={stale ? `Last confirmed score: ${score}` : `Score: ${score}`}
           >
             {score > 0 ? `+${score}` : score}
           </div>
@@ -63,6 +62,15 @@ export function ScoreCard({ score, wins, losses, flash }: Props) {
           Make your first prediction to start scoring.
         </p>
       )}
+    </section>
+  )
+}
+
+export function HistoryPlaceholder() {
+  return (
+    <section className="card" aria-label="Prediction history">
+      <p className="label">History</p>
+      <p>Your settled predictions will appear here.</p>
     </section>
   )
 }
