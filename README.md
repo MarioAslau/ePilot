@@ -1,326 +1,296 @@
-# BTC Prediction Game
+# Hunch — BTC/USD higher or lower
 
-An epilot coding assignment: predict whether BTC/USD will be higher
-or lower after at least one minute.
+A small web game built for the epilot coding assignment. You guess whether the Bitcoin price (BTC/USD) will be higher or lower after at least one minute. The server records your entry price, waits, compares prices fairly and keeps your score, even if you close the browser.
 
-## Implementation status
+- **Play it:** https://release.d2yczmbttcpoe9.amplifyapp.com
+- **Repository:** https://github.com/MarioAslau/ePilot
+- **API health check:** https://6n3p7430tg.execute-api.eu-north-1.amazonaws.com/health
+- **More detail:** [architecture and decisions](docs/architecture.md) · [ticket plan and diary](docs/implementation-plan.md)
 
-T00 through T12 are complete. T13, Redemption, is implemented locally and awaiting manual verification. It is not deployed. Mario marked the local Double Down check done on 2026-10-11. The hosted site at `https://release.d2yczmbttcpoe9.amplifyapp.com` calls the deployed API and does not include history, Double Down, or Redemption until the next API deploy and Amplify rebuild. A deploy leaves Double Down off unless it passes `--param doubleDown=on`, and leaves Redemption off unless it passes `--param redemption=on`. On 2026-10-11 a hosted Up round was still running when the tab was closed, and after 5 minutes it had settled as a loss. The fuller pass before submission is the T14 section of `docs/implementation-plan.md`.
+> **Hosted build pending redeploy with both optional modes on.** Delete this line after the deploy in [Deploy your own copy](#deploy-your-own-copy) has been run with `--param doubleDown=on --param redemption=on` and checked.
 
-## Links
+## Brief requirements
 
-- Deployed application: https://release.d2yczmbttcpoe9.amplifyapp.com
-- Health check: https://6n3p7430tg.execute-api.eu-north-1.amazonaws.com/health
-- Public repository: https://github.com/MarioAslau/ePilot
+| Requirement from the brief | How it is met |
+|---|---|
+| The player always sees their current score and the latest BTC/USD price | The header and score card show the server score from `GET /me`. The market card polls `GET /market` (Coinbase Exchange BTC-USD ticker) about every 5 seconds and shows its age, with Live / Delayed / Unavailable. |
+| The player can guess "up" or "down" | Up and Down buttons call `POST /predictions`. The server fetches its own entry price at that moment; it never trusts a price sent by the browser. |
+| No new guess until the current one is resolved; one guess at a time | A DynamoDB transaction sets `activePredictionId` on the player only when it is empty. Two tabs or a double click cannot open a second round (`409 ACTIVE_ROUND`). The buttons stay locked in the UI as well. |
+| Resolved when the price has changed **and** at least 60 seconds have passed | A Step Functions workflow waits until the stored deadline (entry + 60 s), then compares a fresh Coinbase trade with the entry price. If the price is equal, it waits 5 seconds and checks again. The compared trade's exchange timestamp must itself be at least 60 s after the entry. |
+| Correct +1, incorrect −1 | `evaluate()` in `packages/contracts/src/evaluator.ts` compares decimal strings exactly (no floating point). Settlement adds the result to the score in one conditional transaction, so it can only happen once. |
+| New players start at 0 | `POST /players` creates an anonymous player with score 0. |
+| Resolved fairly with third-party price data | Coinbase Exchange public BTC-USD ticker. Responses are validated, requests time out after 3 s, and a quote older than 10 s is not used. If the provider fails, the round waits; an outage never counts as a loss. Each receipt shows both prices and both trade times. |
+| Score persisted in a backend store (AWS preferred) | Amazon DynamoDB, written by AWS Lambda behind API Gateway. |
+| Link to the deployed solution | https://release.d2yczmbttcpoe9.amplifyapp.com (AWS Amplify Hosting + the API in `eu-north-1`). |
+| Optional: close the browser and come back | The browser keeps an anonymous id and secret token in `localStorage`. On return, `GET /me` restores the score, any running round and the latest result. Rounds keep resolving on the server while the browser is closed. |
+| Testing encouraged | Unit, handler, component, DynamoDB integration and Playwright browser tests, run in GitHub Actions. See [Tests](#tests). |
 
-## Standard functionality
+## How to play
 
-Implemented:
-- Anonymous player starts with score 0.
-- The browser restores that player and shows the server score.
-- The page shows the latest validated BTC-USD price, its source, its age, and a chart collected on this page.
-- Predict Up or Down. The server records the entry price and a 60-second deadline.
-- One active prediction per player, enforced by the backend.
-- After 60 seconds the server compares a fresh Coinbase trade with the entry price. A win adds 1. A loss subtracts 1. An equal price or a price-source failure stays pending and is not a loss.
-- The page shows that result and then offers Up and Down again.
-- After the first settled round, the score card shows wins, losses, and accuracy for all settled rounds.
-- Settled rounds are listed for that player, 20 at a time, up to 50 per request. The list shows direction, both prices, the point change, and the trade times. Pending rounds stay on the ticket, not in the list.
+1. Open the site. You get an anonymous player at score 0. There is no sign-up.
+2. Watch the live price and chart, then press **Up** or **Down**.
+3. The server locks a fresh entry price and starts a 60-second minimum wait. Moves during that minute do not count.
+4. When the countdown ends, the round shows **Comparing prices** until the server confirms a result.
+5. The receipt shows **Correct** or **Not this time**, the point change, the entry and compared prices, and the trade times. Your score updates once.
+6. Your settled rounds are listed under **Your rounds**. Close the tab at any time: the round still settles, and your score is there when you come back in the same browser.
 
-## Optional features
+Two optional extras are switched on in the hosted build (see [Optional modes](#optional-modes)).
 
-Planned after the verified MVP:
-- Fairness explanation.
-- Momentum Double Down.
-- Redemption Round.
+## Screenshots
 
-Optional modes do not change standard scoring.
-Their precise rules and availability will be documented when implemented.
+Captured from the hosted site.
 
-## Proposed stack
+| | |
+|---|---|
+| ![Ready to play: price, chart, score and Up/Down](docs/screenshots/ready.png) | ![A running round with the 60-second countdown](docs/screenshots/active.png) |
+| Ready to play | A running round |
+| ![Result receipt with entry and compared prices](docs/screenshots/result.png) | ![Your rounds history list](docs/screenshots/history.png) |
+| Result receipt | History |
 
-- React, TypeScript and Vite.
-- Tailwind CSS and Lucide.
-- TanStack Query and Zod.
-- API Gateway HTTP API.
-- TypeScript AWS Lambda.
-- DynamoDB.
-- Step Functions Standard.
-- Serverless Framework.
-- Coinbase Exchange public BTC-USD data.
-- AWS Amplify Hosting.
-- Vitest, React Testing Library and Playwright.
-- CloudWatch and GitHub Actions.
+![Mobile layout at 375px](docs/screenshots/mobile.png)
 
-## Repository structure
+## How it works
 
-- .cursor/rules/project-workflow.mdc: agent working instructions.
-- docs/implementation-plan.md: tickets, checkpoints and diary.
-- docs/architecture.md: design, decisions and recovery guidance.
-- apps/web: React frontend.
-- apps/api: Lambda handlers and Serverless infrastructure.
-- packages/contracts: shared Zod schemas, types and the scoring evaluator.
-- .cursor/skills: verified project skills.
+```
+Browser (React, AWS Amplify Hosting)
+   │  polls GET /market (~5 s) and GET /me (1–3 s)
+   ▼
+API Gateway HTTP API ──► Lambda handlers ──► DynamoDB (players, rounds, offers)
+                              │
+          POST /predictions   │  1. fetch a fresh Coinbase entry price
+                              │  2. one transaction: save round + lock player
+                              │  3. start a Step Functions execution
+                              ▼
+                 Step Functions Standard: wait until deadline
+                              │
+                              ▼
+                 Resolver Lambda: fresh Coinbase trade
+                   · equal price      → wait 5 s, try again
+                   · provider failure → wait 15 s, try again (never a loss)
+                   · differs          → one transaction: result + score + unlock
 
-## Prerequisites
-
-Exact supported versions will be recorded during scaffolding.
-
-Expected:
-- Node.js and npm.
-- Git.
-- AWS CLI and an AWS account for deployment.
-- Serverless Framework authentication where required.
-
-Never commit AWS credentials or anonymous player tokens.
-
-## Local development
-
-Install dependencies once from the repository root:
-
-```bash
-yarn install
+EventBridge schedule (every 5 min) ──► recovery Lambda restarts any round whose workflow is missing
 ```
 
-Run the frontend with a development-only in-memory player API:
+**Fairness.** The server owns every price and timestamp. The browser's displayed price is only for display. The entry is the Coinbase trade fetched when the guess is accepted. The result uses the first fresh trade after the deadline whose price differs from the entry. Prices are compared as exact decimal strings, so display rounding can never decide a result.
+
+**Reliability.**
+- One active round per player is enforced by a DynamoDB transaction condition, not by application code.
+- Each guess carries a browser-generated idempotency key, so retrying a lost request returns the same round instead of creating a second one.
+- Settlement is conditional: a duplicate or recovered execution cannot change the score twice.
+- CloudWatch alarms cover failed or timed-out executions, Lambda errors and a failed workflow start.
+
+**Identity.** There are no accounts. `POST /players` returns a random 256-bit token once. The server stores only its SHA-256 hash and compares hashes with `timingSafeEqual`.
+
+The full design, data model, API contract, runbook and decision log (D1–D8) are in [docs/architecture.md](docs/architecture.md).
+
+### Stack
+
+React, TypeScript, Vite, Tailwind CSS, TanStack Query, Zod · AWS Lambda (TypeScript), API Gateway HTTP API, DynamoDB, Step Functions, EventBridge, CloudWatch, SNS · Serverless Framework v4 · AWS Amplify Hosting · Vitest, React Testing Library, Playwright · GitHub Actions.
+
+## Optional modes
+
+These go beyond the brief. Each is behind its own deploy flag, off by default, and both are on in the hosted build. Standard rounds always score +1 / −1.
+
+- **Momentum Double Down.** After a standard win, you may play one bonus round in the **same direction**: +2 if right, −2 if wrong. The original +1 is kept, so the pair totals +3 or −1.
+- **Redemption.** After a standard loss, you may play one round in a **direction you choose**: +4 if right, −2 if wrong. The original −1 stands, so the pair totals +3 or −3.
+
+Both offers last 10 seconds. **Need more time?** adds 20 seconds, up to 10 times, for accessibility. A follow-on round never creates another offer. Starting a normal round, declining or letting the offer expire ends it. A follow-on round still waits at least 60 seconds and settles the same way as a standard round.
+
+Redemption's +4/−2 comes from the ticket. At roughly even odds, accepting is worth about +1 point on average, so declining is never the better score. That trade-off is recorded as decision D8.
+
+## Run locally
+
+**Prerequisites:** Node.js 20 or newer (built with 20.20), Yarn Classic 1.22 (`npm install -g yarn`, or `corepack enable`), and Git. **No AWS account is needed to run the game locally.**
 
 ```bash
+git clone https://github.com/MarioAslau/ePilot.git
+cd ePilot
+yarn install
 yarn dev:local
 ```
 
-Open `http://localhost:5173`. The local API runs the player, market, and
-prediction handlers in memory. `GET /api/market` calls the public Coinbase
-BTC-USD ticker, and so does an Up or Down click. Records do not need AWS
-credentials, a deployment, or DynamoDB.
+Open http://localhost:5173.
 
-A development-only fault switch is available while this command is running.
-It is not part of the deployed API.
+`yarn dev:local` runs the real API handlers in memory inside the Vite dev server:
+- prices come from the real Coinbase ticker
+- rounds take the real 60 seconds and settle automatically
+- both optional modes are on (set `FEATURE_DOUBLE_DOWN=off` or `FEATURE_REDEMPTION=off` before the command to hide one)
+- players and scores are lost when the command stops; the browser then says its saved player was rejected, and **Start a new player** fixes it
+
+To run the frontend against a deployed API instead, copy `.env.example` to `.env`, set `VITE_API_BASE_URL` to the API Gateway URL, and run `yarn dev`.
+
+### Previews without waiting
+
+In development, `?fixture=<name>` renders a single screen with fixed data, using the real components. Examples:
+- http://localhost:5173/?fixture=win
+- `?fixture=loss`, `?fixture=history`, `?fixture=dd-offer`, `?fixture=rd-offer`
+
+The banner on a fixture page lists every name. Fixtures are not included in the production build.
+
+### Local fault switch
+
+While `yarn dev:local` runs, you can arm a fault for the next request to see the failure states. This route exists only in the local dev server, never on API Gateway.
 
 ```bash
 curl -X POST http://localhost:5173/api/__dev/next-prediction \
   -H 'Content-Type: application/json' \
-  -d '{"mode":"provider-down"}'
+  -d '{"mode":"equal-price"}'
 ```
 
-`provider-down` makes the next prediction quote fail. `drop-response`
-records the next prediction and then drops the HTTP response.
-`equal-price` makes the next resolution quote use the entry price.
-`resolution-provider-down` fails the next two resolution quotes.
-Restarting the command clears in-memory rounds. There is no cancel button.
-To leave a locked local round behind, choose **Start a new player** in a new
-browser profile, or restart `yarn dev:local` and start again.
+| Mode | Effect on the next round |
+|---|---|
+| `provider-down` | The entry price fetch fails, so the guess is not placed and the score is unchanged. |
+| `drop-response` | The guess is saved but the HTTP response is dropped. The page retries with the same key and shows the one round. |
+| `equal-price` | The first resolution check sees the entry price, so the round stays pending and checks again. |
+| `resolution-provider-down` | The first two resolution checks fail. The round is held, not lost, then settles. |
+| `next-resolution-win` | The round resolves as a win (shows the Double Down offer). |
+| `next-resolution-loss` | The round resolves as a loss (shows the Redemption offer). |
 
-After deploy, a round that is still pending can be unlocked by deleting its
-`PREDICTION#` item and removing `activePredictionId`. Do that only when no
-workflow is about to settle it. Idempotency items expire after 24 hours.
-Do not add a reset control to the game.
-
-Refresh or close and reopen the browser while the command is still running
-to verify restoration. An incognito window creates a different player.
-Restarting `yarn dev:local` clears the in-memory players; the browser will
-then show that its saved player was rejected. Choose **Start a new player**
-to recover.
-
-This adapter checks the browser flow. Automated API tests cover the
-production handlers and token hashing. DynamoDB, IAM and API Gateway are
-proven by the next deploy, not by this local process.
-
-To run the frontend against the deployed API instead, copy `.env.example`
-to `.env`, set `VITE_API_BASE_URL`, and run:
-
-```bash
-yarn dev
-```
-
-## Testing
-
-Run all currently implemented automated checks:
+## Tests
 
 ```bash
 yarn check
 ```
 
-For the T05 local manual check:
+`yarn check` runs typecheck, lint, all unit and component tests, and the production build across the three workspaces:
+- `packages/contracts`: schemas and the decimal-safe `evaluate()` scoring rules (60-second rule, equal price, ±1)
+- `apps/api`: handler tests with injected clocks and price quotes: identity and token hashing, prediction creation and idempotency, resolution and settlement, recovery scanner, history, offers, and a check that logs never contain tokens
+- `apps/web`: React Testing Library tests for loading, stale price, active round, holds, results, history and offers, and pure tests for countdown and polling logic
 
-1. Remove `hunch.session` in DevTools under Application → Local Storage.
-2. Run `yarn dev:local` and open `http://localhost:5173`.
-3. Confirm a player ID is shown with score 0.
-4. Refresh, then close and reopen the tab. Confirm the same ID returns.
-5. Open an incognito window. Confirm it receives a different ID.
-6. Stop and restart `yarn dev:local`, then refresh the original tab.
-7. Confirm the rejected-player message appears. Choose **Start a new
-   player** and confirm a new score-0 identity appears.
-
-For the T06 local price check, with `yarn dev:local` still running:
-
-1. Confirm the price, **Live**, **Coinbase Exchange · BTC-USD**, and an age that counts up and resets about every 5 seconds.
-2. Confirm the chart starts at **Collecting recent prices**, then draws a line. The 1-minute change waits about 60 seconds.
-3. In DevTools, block the `/market` request. Within about 15 seconds the price dims, the pill says **Delayed**, and **Retry** appears. Unblock it and choose **Retry**. It returns to Live.
-4. Hard-refresh while `/market` is still blocked. The pill says **Unavailable** and the page invents no price.
-5. Refresh normally. The chart starts empty again.
-6. Confirm the player ID and score still restore. On the current build a Live price also shows Up and Down. That is the T07 behaviour below.
-
-For the T07 local prediction check, restart `yarn dev:local` and use a new player:
-
-1. With a Live price, choose **Up**. Both buttons lock, then a ticket shows the server entry price, the trade time, and a countdown. The buttons disappear.
-2. Refresh the tab. The same ticket returns. The score stays 0.
-3. Double-click **Up** on a new player. One ticket appears.
-4. Open the same player in a second tab after the first tab has a ticket. The second tab shows that same round immediately, and its buttons are gone.
-5. `curl -X POST http://localhost:5173/api/__dev/next-prediction -H 'Content-Type: application/json' -d '{"mode":"drop-response"}'`, then choose **Down**. The page says it is checking whether the prediction was recorded, then shows the ticket.
-6. Arm `{"mode":"provider-down"}` and choose a direction on a player with no round. The page says **Not placed. The price source is unavailable.** and the buttons return.
-7. Wait until the countdown reaches 0. On the T07 build the ticket said **Checking price** and did not settle. Mario confirmed that local check on 2026-10-11.
-
-For the T08 local check, restart `yarn dev:local` and start a new player. Each round takes the real minute.
-
-1. Choose **Up**. After the countdown the receipt says **Correct** or **Not this time**, the point change, both prices, and both trade times. The header score changes once. Up and Down return.
-2. `curl -X POST http://localhost:5173/api/__dev/next-prediction -H 'Content-Type: application/json' -d '{"mode":"equal-price"}'`, then place a round. After 60 seconds the ticket says the price still equals the entry and stays amber. The next check can settle it.
-3. Arm `{"mode":"resolution-provider-down"}` and place a round. The ticket says the price source is unavailable and the score does not drop. It then settles.
-
-Deployed, only after that local check is confirmed:
-
-4. From `apps/api`, deploy with `--param amplifyOrigin=https://release.d2yczmbttcpoe9.amplifyapp.com --param alarmEmail=<your email>`. Adding the index can take several minutes. Confirm the SNS email. Push the frontend to `release`.
-5. Place a round, close the browser, and reopen after more than 90 seconds. The receipt and the new score are there. The player item has no `activePredictionId`.
-6. In Step Functions, execution `prediction-<id>` shows Wait, then Resolve, then Succeed, at or after `dueAt`.
-7. Starting that same execution name again does not create a second score change.
-8. Stop the execution, wait for the scanner after `dueAt` plus about 7 minutes, and confirm one `prediction-<id>-r…` execution settles the round once.
-9. Place a second round with the same player.
-
-For the T09 local check, restart `yarn dev:local` and start a new player. `http://localhost:5173/?fixture=win` and `?fixture=loss` show the two receipts without waiting. A real round still takes the minute. Near the end, `/me` polls about every second. At 0 the ticket says Comparing prices. The score flashes once. Refreshing the receipt does not flash again. `equal-price` and `resolution-provider-down` still use the fault switch above. The hold ticket is amber and says an outage never counts as a loss. If the market request is blocked, Up and Down stay visible and disabled, with “Waiting for a live price”.
-
-For the T11 local check, restart `yarn dev:local` and start a new player. Your rounds is empty before the first result. After a settled round, the row appears without a refresh and is still there after a reload. `http://localhost:5173/?fixture=history` and `?fixture=history-empty` show the list and the empty copy without waiting. Accuracy says all settled rounds. A page holds 20 rounds. Load older rounds appears only when another page exists. The hosted site still shows the placeholder until the API and the Amplify app are deployed again.
-
-For the T12 local check, `yarn dev:local` turns Double Down on. Set `FEATURE_DOUBLE_DOWN=off` before that command to hide it. Arm the next settlement as a win, then place a round:
+**Browser journey (Playwright).** It uses a mocked API and a simulated clock, so it runs in seconds:
 
 ```bash
-curl -X POST http://localhost:5173/api/__dev/next-prediction \
-  -H 'Content-Type: application/json' \
-  -d '{"mode":"next-resolution-win"}'
+yarn workspace web exec playwright install chromium   # first time only
+yarn workspace web e2e
 ```
 
-That fault is local only. It is not on API Gateway. After the receipt, the offer shows +1 kept, the same direction, +2 for a pair total of +3, and −2 for a pair total of −1. Need more time adds 20 seconds, up to 10 times. The offer ends after the deadline. No thanks keeps the +1. Up or Down while it is open starts a normal round and ends the offer. A bonus win does not offer another bonus. `http://localhost:5173/?fixture=dd-offer` shows the offer without waiting. The other `dd-` names are in the preview banner. Hosted checks wait for a deploy with `--param doubleDown=on`.
-
-For the T13 local check, `yarn dev:local` turns Redemption on when `FEATURE_REDEMPTION` is unset. Set `FEATURE_REDEMPTION=off` before that command to hide it. The two flags are independent. Arm the next settlement as a loss, then place a round:
+**Real DynamoDB conditions.** These tests run the real transactions: two concurrent creates leave one round, a settlement that runs twice changes the score once, and an offer accept racing a normal round leaves one round. They need DynamoDB Local (Docker) and are skipped when `DYNAMODB_ENDPOINT` is not set:
 
 ```bash
-curl -X POST http://localhost:5173/api/__dev/next-prediction \
-  -H 'Content-Type: application/json' \
-  -d '{"mode":"next-resolution-loss"}'
+docker run --rm -p 8000:8000 amazon/dynamodb-local
+DYNAMODB_ENDPOINT=http://localhost:8000 AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local AWS_REGION=eu-north-1 \
+  yarn workspace api test:int
 ```
 
-That fault is local only. It is not on API Gateway. After the loss receipt, the offer shows −1 kept, Play Up and Play Down, +4 for a pair total of +3, and −2 for a pair total of −3. Need more time adds 20 seconds, up to 10 times. The offer ends after the deadline and the −1 stands. No thanks keeps the −1. The main Up or Down while it is open starts a normal round and ends the offer with no notice. A Redemption win or loss does not offer another round. `http://localhost:5173/?fixture=rd-offer` shows the offer without waiting. The other `rd-` names are in the preview banner, including `rd-second-call`. Hosted checks wait for a deploy with `--param redemption=on`. A deploy with `redemption=off` leaves Double Down and standard play unchanged. A Redemption round still takes at least 60 seconds. At roughly even odds, accepting is worth about +1, so declining is never the better score.
+**CI.** `.github/workflows/ci.yml` runs three jobs on every push and pull request:
+1. `check`, which also confirms dev-only code is absent from the production bundle
+2. `dynamo`, the DynamoDB Local race tests
+3. `e2e`, the Playwright journey
 
-## Deployment
+The full manual checklist used before release, including deployed checks, is the **Final manual test** section of [docs/implementation-plan.md](docs/implementation-plan.md).
 
-The dev API and website are deployed in `eu-north-1`, stage `dev`.
+## Deploy your own copy
 
-- Website: `https://release.d2yczmbttcpoe9.amplifyapp.com`
-- Health check: `https://6n3p7430tg.execute-api.eu-north-1.amazonaws.com/health` returns `{"status":"ok"}`. That URL is public. It is not an AWS access key.
+### Prerequisites
 
-The hosted page is the game. It records an Up or Down prediction and the API settles it after the minute, including when the tab is closed.
+- An AWS account and the AWS CLI configured with a non-root IAM user (`aws sts get-caller-identity` should work).
+- Serverless Framework v4 login. It is installed as a dev dependency. Run `yarn serverless login` from `apps/api` once, or set `SERVERLESS_ACCESS_KEY`.
+- A fork of this repository, for AWS Amplify Hosting.
 
-This project account is locked to Europe (Stockholm). These steps assume an AWS account and a configured CLI. They do not create the account.
+### 1. Backend
 
-Backend, from `apps/api`:
+From `apps/api`:
 
 ```bash
-yarn serverless package --stage dev --region eu-north-1
-yarn serverless deploy --stage dev --region eu-north-1
+cd apps/api
+yarn serverless deploy --stage dev --region eu-north-1 \
+  --param amplifyOrigin=https://<your-amplify-domain> \
+  --param alarmEmail=<you@example.com> \
+  --param doubleDown=on \
+  --param redemption=on
 ```
 
-Frontend: connect Amplify Hosting to this repository. Set the app root to the repository root so `amplify.yml` can build the Yarn workspace. Set `VITE_API_BASE_URL` to the API Gateway URL before the Amplify build. Add a rewrite that sends unknown paths to `/index.html` with status 200.
+The default region is `eu-north-1`; pass `--region` to use another. The output prints the API URL (`https://<id>.execute-api.<region>.amazonaws.com`). It creates:
+- the DynamoDB table `hunch-<stage>`
+- the Lambdas
+- the HTTP API
+- the state machine `hunch-<stage>-resolution`
+- the 5-minute recovery schedule
+- the alarms and SNS topic
 
-After Amplify has a URL, redeploy the API so the browser on that site is allowed. Until that redeploy, `curl` of `/health` can return `{"status":"ok"}` while the hosted page shows **Backend unreachable.** The browser blocks the call because the Amplify address is not on the allowed list yet. `http://localhost:5173` is the only origin allowed by the first deploy.
+| Param | Default | Purpose |
+|---|---|---|
+| `amplifyOrigin` | `http://localhost:5173` | Website origin allowed by CORS. `http://localhost:5173` is always allowed. |
+| `alarmEmail` | none | Email subscription for alarms. Confirm the email AWS sends, or alarms have no recipient. |
+| `doubleDown` | `off` | `on` enables Momentum Double Down. |
+| `redemption` | `off` | `on` enables Redemption. |
+
+`yarn serverless package --stage dev --region eu-north-1` builds and validates the template without deploying.
+
+### 2. Frontend (AWS Amplify Hosting)
+
+1. In the Amplify console, create an app from your fork and branch.
+2. Keep the app root at the repository root. `amplify.yml` builds the Yarn workspace and publishes `apps/web/dist`. If Amplify asks for a monorepo root, use `.` (`AMPLIFY_MONOREPO_APP_ROOT=.`).
+3. Add the environment variable `VITE_API_BASE_URL` = the API URL from step 1 (no trailing slash).
+4. Add the single-page-app rewrite (Hosting → Rewrites and redirects): source `</^[^.]+$|\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json|webp)$)([^.]+$)/>`, target `/index.html`, type `200 (Rewrite)`.
+5. Build. Amplify gives you `https://<branch>.<id>.amplifyapp.com`.
+
+### 3. Allow the website origin
+
+If the Amplify domain was not known in step 1, redeploy the backend with `--param amplifyOrigin=https://<your-amplify-domain>`. Without it, `/health` still answers `curl`, but the browser blocks the calls and the page shows **Backend unreachable**.
+
+### 4. Check it
 
 ```bash
-yarn serverless deploy --stage dev --region eu-north-1 --param amplifyOrigin=https://<amplify-host> --param alarmEmail=<email>
+curl https://<api-id>.execute-api.<region>.amazonaws.com/health   # {"status":"ok"}
 ```
 
-`alarmEmail` creates an email subscription on topic `hunch-<stage>-alerts`. Leave it out and `serverless package` still works; the topic exists and has no email. Confirm the subscription email after deploy or the resolution alarms have no recipient. T10 still reviews the wider alarm set.
+Open the site, play a round, close the tab, reopen it after a minute and confirm the result and score are there.
 
-`http://localhost:5173` is already allowed, so a local `yarn dev` can call the same public API. Copy `.env.example` to `.env` and paste the API Gateway URL into `VITE_API_BASE_URL`.
+### Remove it
 
-To remove the dev stack later: `yarn serverless remove --stage dev --region eu-north-1`. The DynamoDB table is retained. Delete `hunch-dev` in the DynamoDB console if it should go too.
+```bash
+cd apps/api
+yarn serverless remove --stage dev --region eu-north-1
+```
 
-## How resolution works
+The DynamoDB table is retained on purpose. Delete `hunch-dev` in the DynamoDB console if you no longer need the data.
 
-When a prediction is accepted, the backend records an entry quote and a
-deadline at least 60 seconds later, then starts a workflow named
-`prediction-{predictionId}`. The workflow waits until that deadline and
-fetches a fresh Coinbase trade. It does not use the display-price cache.
+**Cost.** Everything is pay-per-use: on-demand DynamoDB, Lambda, Step Functions Standard (a few state transitions per round), and 14-day log retention. Light use stays within free-tier or near-zero cost.
 
-If the trade price differs, one transaction records the result and changes
-the score by 1. If the price is equal, it waits 5 seconds and tries again.
-If the price source fails, or the trade is older than 10 seconds, it waits
-15 seconds and tries again. That is not a loss. The receipt shows both
-prices, both trade times, when the quote was fetched, and when it was settled.
+## Configuration
 
-Movements during the first minute do not settle the prediction.
-If the workflow fails to start, the scanner looks every 5 minutes for
-rounds more than 2 minutes past their deadline. A missing execution uses
-the original name. A finished failure uses a new name, because Step
-Functions keeps a completed name for 90 days. The worst case is about
-7 minutes after the deadline. The local `yarn dev:local` loop does the
-same wait and the same comparison without calling AWS. Closing the browser
-does not stop it while that process is running. On AWS, closing the
-browser does not stop the Step Functions execution.
+| Name | Where | Default | Meaning |
+|---|---|---|---|
+| `VITE_API_BASE_URL` | frontend build (`.env` locally, Amplify env var) | empty | API Gateway URL. `yarn dev:local` sets it to `/api` automatically. |
+| `amplifyOrigin` | deploy param | `http://localhost:5173` | Allowed browser origin (CORS). |
+| `alarmEmail` | deploy param | none | Alarm email subscription. |
+| `doubleDown` → `FEATURE_DOUBLE_DOWN` | deploy param → Lambda env | `off` | Momentum Double Down. Locally on unless set to `off`. |
+| `redemption` → `FEATURE_REDEMPTION` | deploy param → Lambda env | `off` | Redemption. Locally on unless set to `off`. |
+| `TABLE_NAME` | Lambda env (set by the template) | `hunch-<stage>` | DynamoDB table. |
 
-## Anonymous persistence
+No secrets are needed in the repository. Never commit AWS credentials. The player token lives only in the player's browser.
 
-No account or login required. On first visit `POST /players` creates a player
-at score 0 and returns a random secret token (256-bit, cryptographically random)
-once. The browser saves the player id and token in `localStorage` under
-`hunch.session`. The backend stores only a SHA-256 hash of that token.
+## Repository structure
 
-On every return visit the browser sends `Authorization: Bearer <playerId>.<accessToken>`
-to `GET /me`. The backend hashes the token, compares it with `timingSafeEqual`,
-and restores the score, any active round, and the latest settled result.
-A failed restore keeps the saved session and offers retry. It does not create
-a replacement player. A rejected token stays saved until you choose to start again.
+```
+apps/web             React frontend (Vite); local in-memory API wired in vite.config.ts
+apps/api             Lambda handlers, DynamoDB stores, serverless.yml
+  src/workflow       Step Functions definition (resolution.asl)
+  src/integration    DynamoDB Local race tests
+packages/contracts   Shared Zod schemas and types, evaluate() scoring rules
+docs/                architecture.md, implementation-plan.md, design/
+.github/workflows    CI
+```
 
-Clearing browser storage loses access to that player. The DynamoDB record remains.
-Another device, or a private window, creates a different player. The token is
-exposed if the page has an XSS flaw. This is anonymous continuity, not an account.
+## Known limitations and trade-offs
 
-## Product rationale
+- **Anonymous, per-browser identity.** Clearing browser storage or switching device starts a new player; the old score stays on the server but cannot be reopened. A token in `localStorage` is exposed if the page ever had an XSS flaw.
+- **Polling, not WebSockets.** It is simpler and enough for one-minute rounds. Results appear within about 1–3 seconds of settlement.
+- **The compared trade can be a few seconds after the deadline.** The resolver checks shortly after the deadline and uses the first valid differing trade, not the exact trade at second 60.
+- **Recovery is not instant.** If a round's workflow fails to start, the scheduled scanner restarts it, which can take up to about 7 minutes after the deadline. No score is lost or doubled.
+- **No in-app cancel** for a running round.
+- **Public, unauthenticated `/market` and `/health`.** Cost abuse is an accepted risk at this scale.
+- **Redemption favours accepting** (see [Optional modes](#optional-modes)).
+- **One stage and region** (`dev`, `eu-north-1`). Lambdas use `nodejs20.x`, which AWS stops accepting for new functions on 2027-02-01.
 
-Prioritise clarity, fairness and reliable completion.
-History supports transparency.
-Optional modes test whether voluntary continuation improves engagement.
+## How this was built (AI assistance)
 
-Commercial value is a hypothesis, not a demonstrated outcome.
+The work was split into tickets T00–T14 in [docs/implementation-plan.md](docs/implementation-plan.md). Each ticket was planned, implemented, checked and manually verified before the next began. The diary records the checks run and what was verified by hand.
 
-## Known limitations
+AI coding assistants (Claude and Cursor) were used for planning, implementation and review. Every change was reviewed and verified by the author, and architecture decisions were agreed explicitly and recorded in the decision log.
 
-- The hosted site settles rounds after the real minute. Closing the tab does not cancel that round.
-- A round whose workflow never starts can stay pending until about 7 minutes after the deadline. An execution gives up after 6 hours, and the scanner starts another one.
-- There is no in-app cancel.
-- Anonymous identity is browser-specific. Clearing storage or using another device loses access.
-- Deploy player routes with `--param amplifyOrigin=https://release.d2yczmbttcpoe9.amplifyapp.com`, or the hosted site loses permission to call the API.
-- Market sampling and provider availability affect resolution time.
-- Optional game-mode rules remain proposed until confirmed.
-
-## AI assistance and skills
-
-AI assistance is used for planning, implementation and review.
-Changes are reviewed and verified by the author.
-
-Two project-scoped skills are installed:
-
-- **Grill Me** — structured architecture review, one question at a time.
-  Invoke explicitly with `/grill-me`. Cannot be invoked automatically by
-  the model (`disable-model-invocation: true`).
-  Located at `.cursor/skills/grill-me/SKILL.md`.
-
-- **Ponytail** — enforces minimal, lazy solutions during coding.
-  Located at `.cursor/skills/ponytail/SKILL.md`.
-  Full source preserved at `vendor/ponytail/` (unmodified).
-
-Ponytail hooks are installed in `.cursor/hooks.json` and activate
-automatically at session start and before each prompt. The hook file
-contains **absolute paths specific to this machine**. On any other
-machine, re-run the Ponytail hook installation script from `vendor/ponytail/`
-before the hooks will activate. Do not commit the regenerated hooks.json
-without checking the paths are correct for the target machine.
-
-## Screenshots
-
-Add screenshots of implemented functionality before submission.
+Two project skills supported that process:
+- **Grill Me** (`.cursor/skills/grill-me`): a structured, one-question-at-a-time architecture review, used before writing application code.
+- **Ponytail** (`.cursor/skills/ponytail`, source in `vendor/ponytail`): pushes for the simplest working solution during coding and review. Its Cursor hooks in `.cursor/hooks.json` contain machine-specific paths; re-run its install script from `vendor/ponytail/` on another machine.

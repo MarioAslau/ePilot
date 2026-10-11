@@ -153,6 +153,9 @@ test('plays one round and can place another', async ({ page }) => {
   await page.clock.runFor(3_000)
   await expect(page.locator('#receipt-heading')).toHaveText('Correct')
   await expect(score).toContainText('+1')
+  // The receipt render schedules the history refetch with setTimeout(0).
+  // The page clock is paused, so that timer does not run until the clock moves.
+  await page.clock.runFor(1_000)
   const rounds = page.getByRole('region', { name: 'Your rounds' })
   await expect(rounds).toContainText('70,000.50 to 70,100.00')
   await expect(rounds).toContainText('+1')

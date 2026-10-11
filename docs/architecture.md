@@ -2,7 +2,7 @@
 
 ## Status
 
-T11 and T12 are complete locally. T13, Redemption, is implemented locally and awaiting manual verification. It is not deployed. Mario confirmed history on 2026-10-11 and marked Double Down done the same day. Both optional flags default off. `yarn dev:local` defaults each one on when its variable is unset. The hosted site `https://release.d2yczmbttcpoe9.amplifyapp.com` still shows the T10 build until the next API deploy and Amplify rebuild. History, Double Down, and Redemption are in the packaged template and are not in the account until that deploy. A deploy leaves Double Down off unless it passes `--param doubleDown=on`, and leaves Redemption off unless it passes `--param redemption=on`. T10's hosted check still stands: on 2026-10-11 Mario pressed Up, closed the tab while the round was running, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14.
+T11, T12, and T13 are complete locally. Redemption is not deployed. Mario confirmed history on 2026-10-11 and marked Double Down done the same day. Both optional flags default off. `yarn dev:local` defaults each one on when its variable is unset. The hosted site `https://release.d2yczmbttcpoe9.amplifyapp.com` still shows the T10 build until the next API deploy and Amplify rebuild. History, Double Down, and Redemption are in the packaged template and are not in the account until that deploy. A deploy leaves Double Down off unless it passes `--param doubleDown=on`, and leaves Redemption off unless it passes `--param redemption=on`. T10's hosted check still stands: on 2026-10-11 Mario pressed Up, closed the tab while the round was running, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14.
 
 ## Product goal
 
@@ -742,7 +742,7 @@ Implemented locally. A `STANDARD` win creates one offer only when `FEATURE_DOUBL
 
 ### Redemption Round
 
-Implemented locally, awaiting manual verification. A `STANDARD` loss creates one offer only when `FEATURE_REDEMPTION` is `on`. The offer has no direction. The original −1 is already settled and is not rewritten. The window, the extension, and the single-use accept are the same offer path as Double Down. Accept starts `REDEMPTION` in the direction the player sends. `scoreFor` maps a win to +4 and a loss to −2. The pair totals are +3 and −3. Decline, expiry, and a replacement standard round leave the −1. A Redemption settlement creates no further offer. The visible name is the constant `REDEMPTION_NAME` in `apps/web/src/featureNames.ts`, currently `Redemption`. See D8.
+Implemented locally. Mario marked the local check done on 2026-10-11. A `STANDARD` loss creates one offer only when `FEATURE_REDEMPTION` is `on`. The offer has no direction. The original −1 is already settled and is not rewritten. The window, the extension, and the single-use accept are the same offer path as Double Down. Accept starts `REDEMPTION` in the direction the player sends. `scoreFor` maps a win to +4 and a loss to −2. The pair totals are +3 and −3. Decline, expiry, and a replacement standard round leave the −1. A Redemption settlement creates no further offer. The visible name is the constant `REDEMPTION_NAME` in `apps/web/src/featureNames.ts`, currently `Redemption`. See D8.
 
 Both:
 - Backend owns eligibility and expiry.
