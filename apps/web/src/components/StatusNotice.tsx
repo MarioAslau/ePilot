@@ -7,6 +7,7 @@ interface Props {
   kind: Kind
   message: ReactNode
   detail?: ReactNode
+  action?: { label: string; onClick: () => void }
   onDismiss?: () => void
 }
 
@@ -26,13 +27,20 @@ const roles: Record<Kind, string> = {
  * Inline status notice: loading, stale-data, error, or info states.
  * Uses semantic roles: `status` for info, `alert` for warn/error.
  */
-export function StatusNotice({ kind, message, detail, onDismiss }: Props) {
+export function StatusNotice({ kind, message, detail, action, onDismiss }: Props) {
   return (
     <div className={`notice ${kind}`} role={roles[kind]}>
       {icons[kind]}
       <div style={{ flex: 1, minWidth: 0 }}>
         <p>{message}</p>
         {detail && <p style={{ marginTop: 4 }}>{detail}</p>}
+        {action && (
+          <div className="actions">
+            <button type="button" className="btn" onClick={action.onClick}>
+              {action.label}
+            </button>
+          </div>
+        )}
       </div>
       {onDismiss && (
         <button
