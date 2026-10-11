@@ -53,6 +53,8 @@ export const PredictionSchema = z.object({
   resolutionPrice: PriceStringSchema.optional(),
   /** Exchange timestamp of the compared trade (Coinbase ticker `time`). */
   resolutionTradeTime: z.string().datetime().optional(),
+  /** When this server fetched the compared ticker. Not the exchange trade time. */
+  resolutionFetchedAt: z.string().datetime().optional(),
   outcome: OutcomeSchema.optional(),
   scoreDelta: z.union([z.literal(1), z.literal(-1)]).optional(),
 })

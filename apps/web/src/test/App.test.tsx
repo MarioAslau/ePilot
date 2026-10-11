@@ -373,4 +373,86 @@ describe('App predictions', () => {
     expect(screen.getAllByLabelText('Score: 0').length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: /up/i })).not.toBeInTheDocument()
   })
+
+  it('shows the server receipt and lets the player go again', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://example.test')
+    savedPlayer()
+    const settled = {
+      ...pendingPrediction('65000.101', '2026-10-11T15:01:00.000Z'),
+      status: 'RESOLVED',
+      outcome: 'WIN',
+      scoreDelta: 1,
+      resolutionPrice: '65000.104',
+      resolutionTradeTime: '2026-10-11T15:02:00.000Z',
+      resolutionFetchedAt: '2026-10-11T15:02:03.000Z',
+      resolvedAt: '2026-10-11T15:02:03.000Z',
+    }
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
+      if (String(url).endsWith('/me')) {
+        return jsonResponse(200, {
+          ...meBody,
+          score: 1,
+          wins: 1,
+          serverTime: new Date().toISOString(),
+          activePrediction: null,
+          latestResolvedPrediction: settled,
+          waitReason: null,
+        })
+      }
+      throw new Error(String(url))
+    }))
+
+    render(<App />)
+    expect(await screen.findByText('Correct')).toBeInTheDocument()
+    expect(screen.getByText('Exact 65000.101 vs 65000.104')).toBeInTheDocument()
+    expect(screen.getAllByLabelText('Score: 1').length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: /up/i })).toBeEnabled()
+  })
+
+  it('shows an equal-price hold from the server reason', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://example.test')
+    savedPlayer()
+    const recorded = pendingPrediction('65432.10', new Date(Date.now() - 1_000).toISOString())
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
+      if (String(url).endsWith('/me')) {
+        return jsonResponse(200, {
+          ...meBody,
+          serverTime: new Date().toISOString(),
+          activePrediction: recorded,
+          waitReason: 'EQUAL_PRICE',
+        })
+      }
+      throw new Error(String(url))
+    }))
+
+    render(<App />)
+    expect(await screen.findByText(/equals your entry price/)).toBeInTheDocument()
+    expect(screen.queryByText('Not this time')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /up/i })).not.toBeInTheDocument()
+  })
+
+  it('shows a provider hold without calling it a loss', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://example.test')
+    savedPlayer()
+    const recorded = pendingPrediction('65432.10', new Date(Date.now() - 1_000).toISOString())
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
+      if (String(url).endsWith('/me')) {
+        return jsonResponse(200, {
+          ...meBody,
+          serverTime: new Date().toISOString(),
+          activePrediction: recorded,
+          waitReason: 'PROVIDER_HOLD',
+        })
+      }
+      throw new Error(String(url))
+    }))
+
+    render(<App />)
+    expect(await screen.findByText(/temporarily unavailable/)).toBeInTheDocument()
+    expect(screen.queryByText('Not this time')).not.toBeInTheDocument()
+    expect(screen.getAllByLabelText('Score: 0').length).toBeGreaterThan(0)
+  })
 })

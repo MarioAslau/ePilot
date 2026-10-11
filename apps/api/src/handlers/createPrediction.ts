@@ -13,8 +13,9 @@ import {
 } from '../http.js'
 import { readPlayerAuthorization, tokenMatches } from '../player.js'
 import { dynamoPlayerStore, type PlayerStore } from '../playerStore.js'
-import { buildPrediction, tradeIsEntryFresh, type PredictionRecord } from '../prediction.js'
+import { buildPrediction, tradeIsEntryFresh, workflowExecutionName, type PredictionRecord } from '../prediction.js'
 import { dynamoPredictionStore, type PredictionStore } from '../predictionStore.js'
+import { startPredictionWorkflow } from '../workflowClient.js'
 
 export function predictionResponse(record: PredictionRecord) {
   return PredictionSchema.parse({
@@ -27,6 +28,16 @@ export function predictionResponse(record: PredictionRecord) {
     dueAt: record.dueAt,
     entryPrice: record.entryPrice,
     entryTradeTime: record.entryTradeTime,
+    ...(record.status === 'RESOLVED'
+      ? {
+          resolvedAt: record.resolvedAt,
+          resolutionPrice: record.resolutionPrice,
+          resolutionTradeTime: record.resolutionTradeTime,
+          resolutionFetchedAt: record.resolutionFetchedAt,
+          outcome: record.outcome,
+          scoreDelta: record.scoreDelta,
+        }
+      : {}),
   })
 }
 
@@ -44,6 +55,7 @@ export async function handleCreatePrediction(
     now?: () => Date
     nextBytes?: (size: number) => Buffer
     quote?: () => Promise<TickerQuote>
+    startWorkflow?: (input: { playerId: string; predictionId: string; dueAt: string }) => Promise<void>
   },
 ) {
   const now = deps.now ?? (() => new Date())
@@ -126,6 +138,24 @@ export async function handleCreatePrediction(
     playerId: auth.playerId,
     predictionId: built.prediction.predictionId,
   })
+  if (deps.startWorkflow) {
+    try {
+      await deps.startWorkflow({
+        playerId: auth.playerId,
+        predictionId: built.prediction.predictionId,
+        dueAt: built.prediction.dueAt,
+      })
+    } catch (error) {
+      if (!(error instanceof Error) || error.name !== 'ExecutionAlreadyExists') {
+        log('prediction.workflow_start_failed', {
+          requestId,
+          playerId: auth.playerId,
+          predictionId: built.prediction.predictionId,
+          executionName: workflowExecutionName(built.prediction.predictionId),
+        })
+      }
+    }
+  }
   return json(201, predictionResponse(built.prediction))
 }
 
@@ -137,5 +167,6 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) =>
     {
       players: dynamoPlayerStore(),
       predictions: dynamoPredictionStore(),
+      startWorkflow: startPredictionWorkflow,
     },
   )

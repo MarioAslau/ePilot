@@ -8,10 +8,10 @@ Then add optional features that demonstrate product judgment.
 
 ## Current progress
 
-- Active ticket: T07
-- Status: Complete
+- Active ticket: T08
+- Status: Awaiting manual verification
 
-- Pending predictions are complete in the repo. A round stays unresolved until T08. The hosted site does not include this until deploy.
+- Local resolution is in the repo. A round settles after the real 60 seconds while `yarn dev:local` is running. The hosted site does not include this until deploy.
 
 ## Working agreement
 
@@ -546,7 +546,7 @@ feat: create predictions with concurrency and retry protection
 
 ## T08 — Implement durable resolution and playable core loop
 
-Status: Not started
+Status: Awaiting manual verification
 
 Dependencies: T07.
 
@@ -576,7 +576,7 @@ Tasks:
 
 - Store resolution quote and timestamps, including `resolutionTradeTime` from the Coinbase ticker `time` field (D1). Show the trade timestamp on the result receipt alongside the fetch timestamp so the player can verify the 60-second rule was satisfied.
 
-- Implement recoverStuckPredictions Lambda on a five-minute CloudWatch schedule. Query for Prediction records in status `pending` with `dueAt` more than two minutes past and no active execution. Call StartExecution with the same deterministic name for each. Alert on scanner failure (D2).
+- Implement recoverStuckPredictions Lambda on a five-minute CloudWatch schedule. Query the `pending-by-due` index for pending predictions whose `dueAt` is more than two minutes past. A missing execution starts as `prediction-{predictionId}`. A failed, timed-out, or aborted execution restarts as `prediction-{predictionId}-r{epochMinutes}`, because Step Functions keeps a finished name for 90 days. A running or succeeded execution is skipped. The scanner never writes a score. Alert on scanner and workflow failure (D2).
 - Connect active-state polling and the minimum result receipt now, so this ticket produces a playable real core loop. Do not defer all result UI until T09.
 - Return the latest persisted result through `/me` for browser-return display; add the basic score update and repeat-play transition.
 
@@ -1195,6 +1195,31 @@ If time runs short:
 - Decision or tradeoff: The one-active-prediction rule is the transaction condition. The in-memory store used by tests performs that check and write synchronously so two overlapping calls cannot both succeed. A real DynamoDB race is left for the later AWS check. Entry freshness is 10 seconds. Display freshness stays 60 seconds. `TransactWriteItems` is its own IAM action. A T07 round never settles.
 - Remaining limitation: There is no production cancel. A local round stays locked until the dev server restarts or the browser starts another player. After deploy, a dev player stays locked until the prediction item is deleted and `activePredictionId` is removed. Idempotency rows expire through TTL. The hosted site is unchanged until deploy.
 - Commit: Pending. Suggested message: `feat: create predictions with concurrency and retry protection`
+
+### T08
+
+- Status: Awaiting manual verification. Mario has not confirmed the local round yet. Do not mark this complete.
+- What changed:
+  - `packages/contracts` — `Prediction` may include `resolutionFetchedAt`. No other contract change.
+  - `apps/api` — `decide()` refuses a quote before `dueAt`. A missing quote or a trade older than 10 seconds is `PROVIDER_HOLD` and does not change the score. `evaluate()` compares the fresh trade, using the exchange trade time as `resolvedAt`. Settlement is one `TransactWriteItems`: the prediction must still be `PENDING`, and the player lock must still be this prediction. It writes the outcome, both prices, the trade times, the fetch time, and the settled time, adds the score, increments wins or losses, sets `latestResolvedPredictionId`, and removes the lock and the index attributes. A cancelled transaction is `already_settled`. Pending items carry `pendingKey = PENDING` and `pendingDueAt = dueAt` for the sparse `pending-by-due` index. Settlement removes both.
+  - Workflow — after a new round is stored, create starts `prediction-{predictionId}` with `{ playerId, predictionId, dueAt }`. `ExecutionAlreadyExists` is success. Any other start failure is logged and the handler still returns 201. The machine waits until `dueAt`, then resolves. Equal price waits 5 seconds. Provider hold waits 15 seconds. A trade that is still inside the minute returns to the deadline wait. The execution timeout is 6 hours. The definition is `apps/api/src/workflow/resolution.asl`, loaded as a string so Serverless does not parse it as JSON.
+  - Scanner — `recoverStuckPredictions` runs every 5 minutes and queries `pendingDueAt` before now minus 2 minutes. It does not scan the table and it does not write a score. A finished execution cannot be restarted under the same name for 90 days, so a failed, timed-out, or aborted execution restarts as `prediction-{id}-r{epochMinutes}`.
+  - `GET /me` — returns `latestResolvedPrediction` when the latest resolved id points at a resolved round. `EQUAL_PRICE` or `PROVIDER_HOLD` is reported only when `lastCheck` is less than 30 seconds old. Otherwise, after `dueAt`, the reason is `CHECKING_PRICE`.
+  - `apps/web` — polls `/me` every 2 seconds while a round is active. The ticket shows the server hold reason. After settlement it shows Correct or Not this time, the point change, both prices, both trade times, the fetch time, the settled time, and the elapsed duration, until the next round is placed. Up and Down then return.
+  - `yarn dev:local` — after a local create, an in-process loop waits until `dueAt` and runs the same resolver. `equal-price` makes the next resolution quote use the entry price. `resolution-provider-down` fails the next two resolution quotes. Production wait stays 60 seconds. These modes are not on API Gateway.
+  - `serverless.yml` — resolver and recovery functions, the state machine, the GSI, four roles, and alarms on topic `hunch-<stage>-alerts`. The email subscription is created only when deploy passes `--param alarmEmail=...`. `serverless package` works without that parameter.
+- Checks run and results:
+  - `yarn workspace contracts test` — 8/8 passed.
+  - `yarn workspace api test` — 59/59 passed.
+  - `yarn workspace web test` — 28/28 passed.
+  - `yarn typecheck` — exit 0 for api, web, and contracts.
+  - `yarn lint` — exit 0.
+  - `yarn workspace web build` — exit 0.
+  - `yarn serverless package --stage dev --region eu-north-1` — exit 0. The template has state machine `hunch-dev-resolution` with the resolver ARN joined into the definition, GSI `pending-by-due`, schedule `rate(5 minutes)`, roles `hunch-dev-resolver`, `hunch-dev-recovery`, and `hunch-dev-resolution`, and `states:StartExecution` on the prediction role. It has no `dynamodb:Scan`. Lambda still reports the known `nodejs20.x` deprecation warning.
+- Manual verification: Not yet confirmed by Mario. During implementation, a local round on `http://127.0.0.1:5174` went from the ticket at score 0 to a receipt reading Correct, entry 83,718.83, compared 83,748.27, both trade times, fetched and settled times, and 62 seconds elapsed. The header score became 1 and Up and Down returned. Mario still needs to run the local steps below.
+- Decision or tradeoff: Step Functions keeps a finished execution name for 90 days, so a failed execution is not restarted under `prediction-{id}`. The scanner uses a new name. Settlement stays conditional, so a second execution cannot score twice. The scanner can leave a round pending until about 7 minutes after `dueAt`. A provider failure is never a loss. Real DynamoDB races stay for the later AWS check.
+- Remaining limitation: The hosted site is unchanged until deploy. Adding the GSI can take several minutes. The SNS email must be confirmed or alarms have nowhere to go. There is no in-app cancel. A round whose workflow never starts stays pending until the scanner runs. The execution gives up after 6 hours and the scanner starts another one.
+- Commit: Pending. Suggested message: `feat: resolve predictions durably and update scores atomically`
 
 ### Future entry template
 

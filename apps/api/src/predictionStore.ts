@@ -2,10 +2,12 @@ import { DynamoDBClient, TransactionCanceledException } from '@aws-sdk/client-dy
 import {
   DynamoDBDocumentClient,
   GetCommand,
+  QueryCommand,
   TransactWriteCommand,
+  UpdateCommand,
 } from '@aws-sdk/lib-dynamodb'
 import { playerKeys } from './player.js'
-import type { IdempotencyRecord, PredictionRecord } from './prediction.js'
+import type { IdempotencyRecord, LastCheck, PredictionRecord } from './prediction.js'
 
 export interface PredictionStore {
   getPrediction(playerId: string, predictionId: string): Promise<PredictionRecord | null>
@@ -14,6 +16,32 @@ export interface PredictionStore {
     prediction: PredictionRecord
     idempotency: IdempotencyRecord
   }): Promise<'created' | 'active_round' | 'duplicate_key'>
+  settle(input: SettlementInput): Promise<'settled' | 'already_settled'>
+  recordCheck(
+    playerId: string,
+    predictionId: string,
+    reason: LastCheck['reason'],
+    at: string,
+  ): Promise<'recorded' | 'already_settled'>
+  listOverdue(before: string): Promise<OverduePrediction[]>
+  clearPending(playerId: string, predictionId: string): Promise<void>
+}
+
+export interface SettlementInput {
+  playerId: string
+  predictionId: string
+  outcome: 'WIN' | 'LOSS'
+  scoreDelta: 1 | -1
+  resolutionPrice: string
+  resolutionTradeTime: string
+  resolutionFetchedAt: string
+  resolvedAt: string
+}
+
+export interface OverduePrediction {
+  playerId: string
+  predictionId: string
+  dueAt: string
 }
 
 export function classifyCancellation(
@@ -33,18 +61,48 @@ function idempotencyKey(playerId: string, key: string) {
 }
 
 function asPrediction(item: Record<string, unknown>): PredictionRecord {
+  const check = item.lastCheck
+  const lastCheck =
+    check && typeof check === 'object' && 'reason' in check && 'at' in check
+      ? {
+          reason: (check as LastCheck).reason === 'PROVIDER_HOLD' ? 'PROVIDER_HOLD' as const : 'EQUAL_PRICE' as const,
+          at: String((check as LastCheck).at),
+        }
+      : undefined
+  const resolved = item.status === 'RESOLVED'
   return {
     predictionId: String(item.predictionId),
     playerId: String(item.playerId),
     direction: item.direction === 'DOWN' ? 'DOWN' : 'UP',
     mode: 'STANDARD',
-    status: 'PENDING',
+    status: resolved ? 'RESOLVED' : 'PENDING',
     createdAt: String(item.createdAt),
     dueAt: String(item.dueAt),
     entryPrice: String(item.entryPrice),
     entryTradeTime: String(item.entryTradeTime),
     entryFetchedAt: String(item.entryFetchedAt),
+    ...(item.pendingKey === 'PENDING' && item.pendingDueAt
+      ? { pendingKey: 'PENDING' as const, pendingDueAt: String(item.pendingDueAt) }
+      : {}),
+    ...(lastCheck ? { lastCheck } : {}),
+    ...(resolved && (item.outcome === 'WIN' || item.outcome === 'LOSS')
+      ? {
+          outcome: item.outcome,
+          scoreDelta: item.scoreDelta === -1 ? -1 as const : 1 as const,
+          resolutionPrice: String(item.resolutionPrice),
+          resolutionTradeTime: String(item.resolutionTradeTime),
+          resolutionFetchedAt: String(item.resolutionFetchedAt),
+          resolvedAt: String(item.resolvedAt),
+        }
+      : {}),
   }
+}
+
+function cancelled(error: unknown): boolean {
+  return (
+    error instanceof TransactionCanceledException ||
+    (error instanceof Error && error.name === 'TransactionCanceledException')
+  )
 }
 
 function asIdempotency(item: Record<string, unknown>): IdempotencyRecord {
@@ -132,6 +190,111 @@ export function dynamoPredictionStore(
           const outcome = classifyCancellation(reasons)
           if (outcome !== 'other') return outcome
         }
+        throw error
+      }
+    },
+
+    async settle(input) {
+      const scoreField = input.outcome === 'WIN' ? 'wins' : 'losses'
+      try {
+        await doc.send(
+          new TransactWriteCommand({
+            TransactItems: [
+              {
+                Update: {
+                  TableName: tableName,
+                  Key: predictionKey(input.playerId, input.predictionId),
+                  UpdateExpression:
+                    'SET #status = :status, outcome = :outcome, scoreDelta = :delta, resolutionPrice = :price, resolutionTradeTime = :trade, resolutionFetchedAt = :fetched, resolvedAt = :at REMOVE pendingKey, pendingDueAt, lastCheck',
+                  ConditionExpression: '#status = :pending',
+                  ExpressionAttributeNames: { '#status': 'status' },
+                  ExpressionAttributeValues: {
+                    ':status': 'RESOLVED',
+                    ':pending': 'PENDING',
+                    ':outcome': input.outcome,
+                    ':delta': input.scoreDelta,
+                    ':price': input.resolutionPrice,
+                    ':trade': input.resolutionTradeTime,
+                    ':fetched': input.resolutionFetchedAt,
+                    ':at': input.resolvedAt,
+                  },
+                },
+              },
+              {
+                Update: {
+                  TableName: tableName,
+                  Key: playerKeys(input.playerId),
+                  UpdateExpression: `ADD score :delta, ${scoreField} :one SET latestResolvedPredictionId = :id REMOVE activePredictionId`,
+                  ConditionExpression: 'activePredictionId = :id',
+                  ExpressionAttributeValues: {
+                    ':delta': input.scoreDelta,
+                    ':one': 1,
+                    ':id': input.predictionId,
+                  },
+                },
+              },
+            ],
+          }),
+        )
+        return 'settled'
+      } catch (error) {
+        if (cancelled(error)) return 'already_settled'
+        throw error
+      }
+    },
+
+    async recordCheck(playerId, predictionId, reason, at) {
+      try {
+        await doc.send(
+          new UpdateCommand({
+            TableName: tableName,
+            Key: predictionKey(playerId, predictionId),
+            UpdateExpression: 'SET lastCheck = :check',
+            ConditionExpression: '#status = :pending',
+            ExpressionAttributeNames: { '#status': 'status' },
+            ExpressionAttributeValues: {
+              ':check': { reason, at },
+              ':pending': 'PENDING',
+            },
+          }),
+        )
+        return 'recorded'
+      } catch (error) {
+        if (error instanceof Error && error.name === 'ConditionalCheckFailedException') {
+          return 'already_settled'
+        }
+        throw error
+      }
+    },
+
+    async listOverdue(before) {
+      const result = await doc.send(
+        new QueryCommand({
+          TableName: tableName,
+          IndexName: 'pending-by-due',
+          KeyConditionExpression: 'pendingKey = :pending AND pendingDueAt < :before',
+          ExpressionAttributeValues: { ':pending': 'PENDING', ':before': before },
+        }),
+      )
+      return (result.Items ?? []).map((item) => ({
+        playerId: String(item.pk).replace(/^PLAYER#/, ''),
+        predictionId: String(item.sk).replace(/^PREDICTION#/, ''),
+        dueAt: String(item.pendingDueAt),
+      }))
+    },
+
+    async clearPending(playerId, predictionId) {
+      try {
+        await doc.send(
+          new UpdateCommand({
+            TableName: tableName,
+            Key: predictionKey(playerId, predictionId),
+            UpdateExpression: 'REMOVE pendingKey, pendingDueAt',
+            ConditionExpression: 'attribute_exists(pk)',
+          }),
+        )
+      } catch (error) {
+        if (error instanceof Error && error.name === 'ConditionalCheckFailedException') return
         throw error
       }
     },

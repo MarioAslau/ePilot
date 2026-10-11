@@ -5,7 +5,7 @@ or lower after at least one minute.
 
 ## Implementation status
 
-T00 through T07 are complete in the repo. `yarn dev:local` can record one pending Up or Down prediction. That round does not settle. The hosted site does not include it until the API deploy and the Amplify rebuild.
+T00 through T07 are complete. T08 is awaiting manual verification. `yarn dev:local` records one Up or Down prediction and settles it after the real 60 seconds, even if the tab is closed while that command is still running. The hosted site does not include this until the API deploy and the Amplify rebuild.
 
 ## Links
 
@@ -21,17 +21,12 @@ Implemented:
 - The page shows the latest validated BTC-USD price, its source, its age, and a chart collected on this page.
 - Predict Up or Down. The server records the entry price and a 60-second deadline.
 - One active prediction per player, enforced by the backend.
+- After 60 seconds the server compares a fresh Coinbase trade with the entry price. A win adds 1. A loss subtracts 1. An equal price or a price-source failure stays pending and is not a loss.
+- The page shows that result and then offers Up and Down again.
 
 Planned:
 - Display accuracy stats.
-- Backend waits at least 60 seconds, then settles the round.
-- Equal entry/resolution price keeps the round pending.
-- Correct prediction adds 1 point.
-- Incorrect prediction subtracts 1 point.
-- Backend persists score, wins, losses and predictions.
-- Browser reopening restores identity and active state.
-- Backend resolution continues when the browser is closed.
-- Result receipt shows entry price, compared price and trade timestamp.
+- The hosted site settles rounds only after the T08 deploy.
 
 ## Optional features
 
@@ -110,15 +105,17 @@ curl -X POST http://localhost:5173/api/__dev/next-prediction \
 ```
 
 `provider-down` makes the next prediction quote fail. `drop-response`
-records the next prediction and then drops the HTTP response. Restarting
-the command clears in-memory rounds. There is no cancel button. To leave
-a locked local round behind, choose **Start a new player** in a new
+records the next prediction and then drops the HTTP response.
+`equal-price` makes the next resolution quote use the entry price.
+`resolution-provider-down` fails the next two resolution quotes.
+Restarting the command clears in-memory rounds. There is no cancel button.
+To leave a locked local round behind, choose **Start a new player** in a new
 browser profile, or restart `yarn dev:local` and start again.
 
-After a later deploy, a dev round stays locked because settlement is not
-built yet. To unlock that player in DynamoDB, delete its `PREDICTION#`
-item and remove `activePredictionId` from the player item. Idempotency
-items expire after 24 hours. Do not add a reset control to the game.
+After deploy, a round that is still pending can be unlocked by deleting its
+`PREDICTION#` item and removing `activePredictionId`. Do that only when no
+workflow is about to settle it. Idempotency items expire after 24 hours.
+Do not add a reset control to the game.
 
 Refresh or close and reopen the browser while the command is still running
 to verify restoration. An incognito window creates a different player.
@@ -173,9 +170,22 @@ For the T07 local prediction check, restart `yarn dev:local` and use a new playe
 4. Open the same player in a second tab after the first tab has a ticket. The second tab shows that same round immediately, and its buttons are gone.
 5. `curl -X POST http://localhost:5173/api/__dev/next-prediction -H 'Content-Type: application/json' -d '{"mode":"drop-response"}'`, then choose **Down**. The page says it is checking whether the prediction was recorded, then shows the ticket.
 6. Arm `{"mode":"provider-down"}` and choose a direction on a player with no round. The page says **Not placed. The price source is unavailable.** and the buttons return.
-7. Wait until the countdown reaches 0. The ticket says **Checking price** and does not show a win or a loss.
+7. Wait until the countdown reaches 0. On the T07 build the ticket said **Checking price** and did not settle. Mario confirmed that local check on 2026-10-11.
 
-Mario confirmed this local check on 2026-10-11. A deployed round stays locked until T08.
+For the T08 local check, restart `yarn dev:local` and start a new player. Each round takes the real minute.
+
+1. Choose **Up**. After the countdown the receipt says **Correct** or **Not this time**, the point change, both prices, and both trade times. The header score changes once. Up and Down return.
+2. `curl -X POST http://localhost:5173/api/__dev/next-prediction -H 'Content-Type: application/json' -d '{"mode":"equal-price"}'`, then place a round. After 60 seconds the ticket says the price still equals the entry and stays amber. The next check can settle it.
+3. Arm `{"mode":"resolution-provider-down"}` and place a round. The ticket says the price source is unavailable and the score does not drop. It then settles.
+
+Deployed, only after that local check is confirmed:
+
+4. From `apps/api`, deploy with `--param amplifyOrigin=https://release.d2yczmbttcpoe9.amplifyapp.com --param alarmEmail=<your email>`. Adding the index can take several minutes. Confirm the SNS email. Push the frontend to `release`.
+5. Place a round, close the browser, and reopen after more than 90 seconds. The receipt and the new score are there. The player item has no `activePredictionId`.
+6. In Step Functions, execution `prediction-<id>` shows Wait, then Resolve, then Succeed, at or after `dueAt`.
+7. Starting that same execution name again does not create a second score change.
+8. Stop the execution, wait for the scanner after `dueAt` plus about 7 minutes, and confirm one `prediction-<id>-r…` execution settles the round once.
+9. Place a second round with the same player.
 
 ## Deployment
 
@@ -200,8 +210,10 @@ Frontend: connect Amplify Hosting to this repository. Set the app root to the re
 After Amplify has a URL, redeploy the API so the browser on that site is allowed. Until that redeploy, `curl` of `/health` can return `{"status":"ok"}` while the hosted page shows **Backend unreachable.** The browser blocks the call because the Amplify address is not on the allowed list yet. `http://localhost:5173` is the only origin allowed by the first deploy.
 
 ```bash
-yarn serverless deploy --stage dev --region eu-north-1 --param amplifyOrigin=https://<amplify-host>
+yarn serverless deploy --stage dev --region eu-north-1 --param amplifyOrigin=https://<amplify-host> --param alarmEmail=<email>
 ```
+
+`alarmEmail` creates an email subscription on topic `hunch-<stage>-alerts`. Leave it out and `serverless package` still works; the topic exists and has no email. Confirm the subscription email after deploy or the resolution alarms have no recipient. T10 still reviews the wider alarm set.
 
 `http://localhost:5173` is already allowed, so a local `yarn dev` can call the same public API. Copy `.env.example` to `.env` and paste the API Gateway URL into `VITE_API_BASE_URL`.
 
@@ -210,24 +222,25 @@ To remove the dev stack later: `yarn serverless remove --stage dev --region eu-n
 ## How resolution works
 
 When a prediction is accepted, the backend records an entry quote and a
-deadline (at least 60 seconds from acceptance). T07 stops there. The
-round stays pending, and the page says Checking price after the deadline.
+deadline at least 60 seconds later, then starts a workflow named
+`prediction-{predictionId}`. The workflow waits until that deadline and
+fetches a fresh Coinbase trade. It does not use the display-price cache.
 
-Planned for T08: start a Step Functions workflow using a deterministic
-execution name. The workflow waits until the deadline, then retrieves a
-fresh quote from Coinbase.
-
-If the quote price differs from the entry price, the round is settled.
-If equal, the workflow waits and retries. Provider outages pause the
-round without counting as a loss.
-
-The settlement stores the compared price and the exchange-reported trade
-timestamp, so the result receipt can prove the 60-second rule was
-satisfied independently of when the backend fetched the price.
+If the trade price differs, one transaction records the result and changes
+the score by 1. If the price is equal, it waits 5 seconds and tries again.
+If the price source fails, or the trade is older than 10 seconds, it waits
+15 seconds and tries again. That is not a loss. The receipt shows both
+prices, both trade times, when the quote was fetched, and when it was settled.
 
 Movements during the first minute do not settle the prediction.
-If the workflow fails to start (rare), a scheduled recovery scanner
-detects the stuck prediction within five minutes and restarts it.
+If the workflow fails to start, the scanner looks every 5 minutes for
+rounds more than 2 minutes past their deadline. A missing execution uses
+the original name. A finished failure uses a new name, because Step
+Functions keeps a completed name for 90 days. The worst case is about
+7 minutes after the deadline. The local `yarn dev:local` loop does the
+same wait and the same comparison without calling AWS. Closing the browser
+does not stop it while that process is running. On AWS, closing the
+browser does not stop the Step Functions execution.
 
 ## Anonymous persistence
 
@@ -238,7 +251,7 @@ once. The browser saves the player id and token in `localStorage` under
 
 On every return visit the browser sends `Authorization: Bearer <playerId>.<accessToken>`
 to `GET /me`. The backend hashes the token, compares it with `timingSafeEqual`,
-and restores the score. There is no active round yet, so that field is empty.
+and restores the score, any active round, and the latest settled result.
 A failed restore keeps the saved session and offers retry. It does not create
 a replacement player. A rejected token stays saved until you choose to start again.
 
@@ -256,8 +269,9 @@ Commercial value is a hypothesis, not a demonstrated outcome.
 
 ## Known limitations
 
-- Play is not available yet. Identity restore and the display price are in the repo. The hosted site shows them after deploy and the Amplify rebuild of `release`.
-- A new prediction is not rejected for a missing entry quote yet. That check arrives with `POST /predictions`.
+- The hosted site does not settle rounds until the T08 API deploy and the Amplify rebuild of `release`. Locally, `yarn dev:local` does.
+- A round whose workflow never starts can stay pending until about 7 minutes after the deadline. An execution gives up after 6 hours, and the scanner starts another one.
+- There is no in-app cancel.
 - Anonymous identity is browser-specific. Clearing storage or using another device loses access.
 - Deploy player routes with `--param amplifyOrigin=https://release.d2yczmbttcpoe9.amplifyapp.com`, or the hosted site loses permission to call the API.
 - Market sampling and provider availability affect resolution time.

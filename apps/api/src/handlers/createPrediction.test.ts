@@ -268,4 +268,83 @@ describe('GET /me active prediction', () => {
     expect(JSON.parse(checking.body ?? '').waitReason).toBe('CHECKING_PRICE')
     expect(JSON.parse(checking.body ?? '').latestResolvedPrediction).toBeNull()
   })
+
+  it('reports a fresh equal-price check from the resolver', async () => {
+    const { store, created } = await readyStore()
+    const response = await handleCreatePrediction(
+      header(created),
+      body('UP', 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'),
+      'req-19',
+      { players: store, predictions: store, now: () => now, quote: async () => quote },
+    )
+    const predictionId = JSON.parse(response.body ?? '').predictionId as string
+    await store.recordCheck(created.playerId, predictionId, 'EQUAL_PRICE', '2026-10-11T15:01:10.000Z')
+    const me = await handleMe(header(created), 'req-20', {
+      store,
+      predictions: store,
+      now: () => new Date('2026-10-11T15:01:20.000Z'),
+    })
+    expect(JSON.parse(me.body ?? '').waitReason).toBe('EQUAL_PRICE')
+  })
+})
+
+describe('workflow start', () => {
+  it('starts one execution and does not start another for a replay', async () => {
+    const { store, created } = await readyStore()
+    const started: Array<{ playerId: string; predictionId: string; dueAt: string }> = []
+    const deps = {
+      players: store,
+      predictions: store,
+      now: () => now,
+      quote: async () => quote,
+      startWorkflow: async (input: { predictionId: string; dueAt: string }) => {
+        started.push(input)
+      },
+    }
+    const key = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+    const createdResponse = await handleCreatePrediction(header(created), body('UP', key), 'req-21', deps)
+    await handleCreatePrediction(header(created), body('UP', key), 'req-22', deps)
+    const predictionId = JSON.parse(createdResponse.body ?? '').predictionId as string
+    expect(started).toEqual([{ playerId: created.playerId, predictionId, dueAt: '2026-10-11T15:01:00.000Z' }])
+  })
+
+  it('still returns the round when the workflow already exists or fails to start', async () => {
+    const { store, created } = await readyStore()
+    const exists = new Error('exists')
+    exists.name = 'ExecutionAlreadyExists'
+    const first = await handleCreatePrediction(
+      header(created),
+      body('UP', 'ffffffff-ffff-4fff-8fff-ffffffffffff'),
+      'req-23',
+      {
+        players: store,
+        predictions: store,
+        now: () => now,
+        quote: async () => quote,
+        startWorkflow: async () => {
+          throw exists
+        },
+      },
+    )
+    expect(first.statusCode).toBe(201)
+
+    const { store: other, created: player } = await readyStore()
+    const second = await handleCreatePrediction(
+      header(player),
+      body('DOWN', '12121212-1212-4121-8121-121212121212'),
+      'req-24',
+      {
+        players: other,
+        predictions: other,
+        now: () => now,
+        quote: async () => quote,
+        startWorkflow: async () => {
+          throw new Error('unavailable')
+        },
+      },
+    )
+    expect(second.statusCode).toBe(201)
+    const saved = JSON.parse(second.body ?? '') as { predictionId: string }
+    expect((await other.getPrediction(player.playerId, saved.predictionId))?.status).toBe('PENDING')
+  })
 })

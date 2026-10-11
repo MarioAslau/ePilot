@@ -50,6 +50,7 @@ export function RoundTicket({ direction, entryPrice, entryTime, deadline, predic
     heading.current?.focus()
   }, [])
   const isUp = direction === 'UP'
+  const onHold = state === 'EQUAL_PRICE' || state === 'PROVIDER_HOLD'
 
   const progress = secondsRemaining != null
     ? Math.max(0, Math.min(1, 1 - secondsRemaining / 60))
@@ -58,7 +59,7 @@ export function RoundTicket({ direction, entryPrice, entryTime, deadline, predic
   const offset = circumference * (1 - progress)
 
   return (
-    <div className={`ticket ${isUp ? 'up' : 'down'}`} aria-live="polite">
+    <div className={`ticket ${isUp ? 'up' : 'down'}${onHold ? ' hold' : ''}`} aria-live="polite">
       <h2 id="round-heading" className="play-title" tabIndex={-1} ref={heading}>
         Your prediction
       </h2>
