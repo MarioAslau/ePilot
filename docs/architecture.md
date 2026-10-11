@@ -2,8 +2,7 @@
 
 ## Status
 
-Proposed design. Application and infrastructure are not implemented yet.
-Update this document when implementation changes the design.
+T04 is complete. The dev API and hosted shell are deployed in `eu-north-1`. `GET /health` is live, and the site at `https://release.d2yczmbttcpoe9.amplifyapp.com` shows whether that check succeeded. Player identity, prices, predictions and settlement are not implemented yet.
 
 ## Product goal
 
@@ -764,7 +763,7 @@ Security:
 - Keep credentials out of Git.
 - Redact tokens in logs.
 - Restrict IAM to required resources.
-- Configure CORS for intended origins.
+- Configure CORS for intended origins. A missing origin makes the hosted shell show **Backend unreachable.** even when `curl` of `/health` returns `{"status":"ok"}`.
 - Treat CORS as browser policy, not authentication.
 - This dev account cannot enable root MFA without a permanent upgrade. See D6.
 
