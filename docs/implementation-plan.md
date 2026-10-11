@@ -1106,7 +1106,7 @@ If time runs short:
   - `apps/api/serverless.yml` — on-demand table `hunch-<stage>` with `pk`/`sk`, no streams, retained on delete. HTTP API CORS allows `http://localhost:5173` and an `amplifyOrigin` parameter. Health Lambda has no DynamoDB permission. `build.esbuild` is false so Serverless 4 keeps the `serverless-esbuild` plugin. Default region is `eu-north-1`.
   - `apps/web/src/App.tsx` — calls `GET /health`. Shows not configured, unreachable, or connected. No market card and no Up/Down buttons.
   - `apps/web/src/test/App.test.tsx` — those three states.
-  - `amplify.yml` — Yarn workspace build, output `apps/web/dist`.
+  - `amplify.yml` — Yarn workspace build from the repository root, output `apps/web/dist`. Uses the monorepo `applications` list because Amplify has `AMPLIFY_MONOREPO_APP_ROOT=.`.
   - `.env.example`, `README.md`, `docs/architecture.md` — public API URL, deploy commands, table keys, D6.
 - Checks run and results:
   - `yarn workspace web test` — 8/8 passed.
