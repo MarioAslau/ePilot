@@ -46,7 +46,7 @@ export function HowItWorks() {
           <ul style={{ marginTop: 6, paddingLeft: 14, listStyle: 'disc', color: 'var(--muted)', fontSize: 'var(--t-small)' }}>
             <li>One active prediction at a time.</li>
             <li>Score starts at 0. No money involved.</li>
-            <li>Your anonymous session is saved in this browser.</li>
+            <li>Your score is saved on our server. This browser remembers your anonymous player.</li>
             <li>Prices are for game purposes only — not financial advice.</li>
           </ul>
         </div>

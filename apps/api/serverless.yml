@@ -21,6 +21,10 @@ provider:
     project: hunch
     stage: ${self:provider.stage}
   # Health has no DynamoDB statements. Serverless still grants CloudWatch logs.
+  # Player functions use PlayerLambdaRole. Passing amplifyOrigin on every deploy
+  # keeps the hosted site allowed. Omitting it falls back to localhost.
+  environment:
+    TABLE_NAME: hunch-${sls:stage}
   httpApi:
     cors:
       allowedOrigins:
@@ -31,6 +35,7 @@ provider:
         - Authorization
       allowedMethods:
         - GET
+        - POST
       maxAge: 600
 
 plugins:
@@ -53,6 +58,24 @@ functions:
     events:
       - httpApi:
           path: /health
+          method: GET
+  createPlayer:
+    handler: src/handlers/createPlayer.handler
+    description: Create an anonymous player and return the raw token once
+    role:
+      Fn::GetAtt: [PlayerLambdaRole, Arn]
+    events:
+      - httpApi:
+          path: /players
+          method: POST
+  me:
+    handler: src/handlers/me.handler
+    description: Restore the authenticated player's score
+    role:
+      Fn::GetAtt: [PlayerLambdaRole, Arn]
+    events:
+      - httpApi:
+          path: /me
           method: GET
 
 resources:
@@ -78,3 +101,37 @@ resources:
             Value: hunch
           - Key: stage
             Value: ${sls:stage}
+    PlayerLambdaRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: hunch-${sls:stage}-players
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: player-table
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - dynamodb:GetItem
+                    - dynamodb:PutItem
+                  Resource:
+                    Fn::GetAtt: [GameTable, Arn]
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogStream
+                    - logs:CreateLogGroup
+                    - logs:TagResource
+                  Resource:
+                    Fn::Sub: arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/hunch-${sls:stage}-*:*
+                - Effect: Allow
+                  Action:
+                    - logs:PutLogEvents
+                  Resource:
+                    Fn::Sub: arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/hunch-${sls:stage}-*:*:*
