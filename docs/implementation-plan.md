@@ -8,10 +8,10 @@ Then add optional features that demonstrate product judgment.
 
 ## Current progress
 
-- Active ticket: T09
+- Active ticket: T10
 - Status: Complete
 
-- The page shows the score card, the hold copy, and a one-time result flash. A round settles after the real 60 seconds while `yarn dev:local` is running. The hosted site does not include T08 or T09 until deploy. The full manual list is under T14.
+- Mario pressed Up on the hosted site, closed the tab, and reopened after 5 minutes. The round had settled as a loss. T11 is not started. The fuller pass before submission remains the hosted list under T14.
 
 ## Working agreement
 
@@ -133,7 +133,7 @@ A local fixture view helps test presentation without waiting for markets. It is 
 
 - [x] T09 — Complete frontend states and interaction polish
 
-- [ ] T10 — Verify and freeze the MVP
+- [x] T10 — Verify and freeze the MVP
 
 - [ ] T11 — Add persisted history and progression
 
@@ -678,7 +678,7 @@ feat: complete prediction countdown and result experience
 
 ## T10 — Verify and freeze the MVP
 
-Status: Not started
+Status: Complete
 
 Dependencies: T09.
 
@@ -728,36 +728,36 @@ After approved changes, rerun relevant checks.
 
 MVP gate:
 
-- [ ] New player starts at 0.
+- [x] New player starts at 0.
 
-- [ ] Browser reopening restores player and score.
+- [x] Browser reopening restores player and score.
 
-- [ ] Latest available price and score are visible.
+- [x] Latest available price and score are visible.
 
-- [ ] Up/Down works.
+- [x] Up/Down works.
 
-- [ ] Only one prediction can be active.
+- [x] Only one prediction can be active.
 
-- [ ] Backend owns price and time.
+- [x] Backend owns price and time.
 
-- [ ] No settlement before 60 seconds.
+- [x] No settlement before 60 seconds.
 
-- [ ] Equal price remains pending.
+- [x] Equal price remains pending.
 
-- [ ] Correct +1/-1 settlement.
+- [x] Correct +1/-1 settlement.
 
-- [ ] Duplicate calls cannot score twice.
+- [x] Duplicate calls cannot score twice.
 
-- [ ] Closing browser does not cancel resolution.
+- [x] Closing browser does not cancel resolution.
 
-- [ ] Critical automated tests pass.
+- [x] Critical automated tests pass.
 
-- [ ] Deployed smoke test passes.
+- [x] Deployed smoke test passes.
 
-- [ ] Public repository, deployed link and README exist.
+- [x] Public repository, deployed link and README exist.
 - [ ] Responsive playable UI includes loading/recovery and fair pending states.
-- [ ] Basic rules/source/persistence explanations are available.
-- [ ] No simulated prices, speed controls or fake persistence are exposed as production functionality.
+- [x] Basic rules/source/persistence explanations are available.
+- [x] No simulated prices, speed controls or fake persistence are exposed as production functionality.
 
 Suggested commit:
 
@@ -997,13 +997,18 @@ Local:
 
 `http://localhost:5173/?fixture=win` and `?fixture=loss` show both receipts without waiting. They are previews, not a played round.
 
-Hosted, after deploy from `apps/api` with `--param amplifyOrigin=https://release.d2yczmbttcpoe9.amplifyapp.com --param alarmEmail=<email>`, confirming the SNS email, and pushing the frontend to `release`:
+Hosted checkpoint for T10. Run this once, after deploy from `apps/api` with `--param amplifyOrigin=https://release.d2yczmbttcpoe9.amplifyapp.com --param alarmEmail=<email>`, confirming the SNS email, and pushing the frontend to `release`. This is the deployed smoke test. It is not a second procedure.
 
 15. Before that deploy, `aws dynamodb scan --table-name hunch-dev --filter-expression "begins_with(sk,:p)" --expression-attribute-values '{":p":{"S":"PREDICTION#"}}' --select COUNT`. Expect 0. If it is not 0, delete that `PREDICTION#` item and remove `activePredictionId` first. Adding the index can take several minutes.
 16. Place a round, close the browser, and reopen after more than 90 seconds. The receipt and the new score are there. The player item has no `activePredictionId`. The score changed once.
 17. In Step Functions, `prediction-<id>` shows Wait, then Resolve, then Succeed, at or after `dueAt`. Starting that same name again does not score twice.
 18. Stop that execution. After `dueAt` plus about 7 minutes, one `prediction-<id>-r…` execution settles the round once. No email is expected for a manual stop.
 19. Place a second round with the same player.
+20. `curl -X POST` of `<api>/__dev/next-prediction` and `<api>/api/__dev/next-prediction` returns 404. The hosted `/?fixture=win` is the normal app.
+21. On the receipt from step 16, the compared trade time minus the entry trade time is at least 60 seconds.
+22. Two parallel `curl` creates with different keys return one 201 and one 409.
+23. `aws cloudwatch set-alarm-state --alarm-name hunch-dev-resolver-errors --state-value ALARM --state-reason "T10 delivery test"`. The email arrives. The alarm returns to OK on its next evaluation.
+24. On the hosted URL, check 375px and desktop, the keyboard path, reduced motion, Live and Delayed, and “Collecting recent prices” on a fresh load.
 
 Suggested commit:
 
@@ -1264,6 +1269,7 @@ If time runs short:
   - The ticket steps are Placed, Waiting, Comparing, and Result. The copy matches the architecture, including that a price move during the minute is not final and that an outage is not a loss. The latest display price is shown with its delta and is not a settlement. Focus moves to the round heading only after this browser places the round.
   - One polite live region announces a placement, the end of the wait, a hold, and a result. It does not announce each second. The score flash and that announcement happen once per prediction, stored at `hunch.seenResult.<playerId>`. The receipt stays until the next round.
   - ScoreCard is in the right column. Accuracy, wins, and losses appear after the first settled round. A history card says settled predictions will appear here. When the market is not live, Up and Down stay visible and disabled, with the reason.
+  - `docs/architecture.md` — added **Local memory and DynamoDB**. The store is chosen by the caller: `memoryGameStore()` in the Vite process, DynamoDB in each Lambda export.
 - Checks run and results:
   - `yarn workspace web test` — 46/46 passed.
   - `yarn workspace api test` — 59/59 passed.
@@ -1275,6 +1281,29 @@ If time runs short:
 - Decision or tradeoff: Idle polling stays at 3 seconds, as the architecture already said, rather than 15 seconds. No `ExecutionsAborted` alarm was added. A stopped execution is an operator action, and the scanner still recovers it. T08 stays Complete. The hosted checks are the manual steps below, not a reason to reopen T08.
 - Remaining limitation: The hosted site is unchanged until deploy. History is still a placeholder. There is no in-app cancel.
 - Commit: Pending. Suggested message: `feat: complete prediction countdown and result experience`
+
+### T10
+
+- Status: Complete. Mario marked T10 complete on 2026-10-11.
+- What changed:
+  - `apps/api/src/integration/dynamo.int.test.ts` — DynamoDB condition tests. The file skips unless `DYNAMODB_ENDPOINT` is set. `yarn workspace api test:int` is the command. CI runs it against DynamoDB Local.
+  - `apps/web/e2e/critical-journey.spec.ts` — one Chromium journey with a stubbed API and a test clock. Production still waits 60 seconds.
+  - `apps/web/src/test/App.test.tsx` — a failed create offers Retry and does not create a new player. Stale market, equal-price, provider hold, and a seen-result remount were already covered.
+  - `recoverStuckPredictions` — skips a prediction when a `prediction-<id>` or `prediction-<id>-r…` execution is still running. Logs one `prediction.recovery` line per prediction, then the summary. `prediction.created` includes `executionName`.
+  - `serverless.yml` — metric filter and alarm `hunch-<stage>-workflow-start-failed`. The recovery role can `states:ListExecutions` on the state machine. The state-machine definition joins the resolver ARN between the two halves of the workflow file. CloudFormation rejected the earlier form because `Fn::Join` cannot use a function as its delimiter.
+  - `.github/workflows/ci.yml` — jobs `check`, `dynamo`, and `e2e`. `serverless package` stays local.
+- Checks run and results:
+  - `yarn typecheck` — exit 0.
+  - `yarn lint` — exit 0.
+  - `yarn test` — api 61 passed and 5 skipped, web 47 passed, contracts 8 passed. The 5 skipped tests are the DynamoDB file, because `DYNAMODB_ENDPOINT` was not set.
+  - `yarn workspace api test:int` — 5 skipped. The DynamoDB cases did not run.
+  - `yarn workspace web build` — exit 0. `apps/web/dist` does not contain `__dev/next-prediction`, `FixtureApp`, or `seeded`.
+  - `yarn workspace web e2e` — 1 passed, after `playwright install chromium`. GitHub Actions then failed the same test: `fastForward` fires the 1s countdown once per call, so “Comparing prices” never appeared. The journey now uses `runFor` in 5s chunks, under the 8s `/me` abort. Re-run locally: 1 passed.
+  - `yarn serverless package --stage dev --region eu-north-1` from `apps/api` — exit 0. The template contains the metric filter, `hunch-dev-workflow-start-failed`, and `states:ListExecutions` on the recovery role.
+- Manual verification: Passed on the hosted site. On 2026-10-11 Mario pressed Up, closed the tab while the round was running, and reopened after 5 minutes. The round had settled as a loss. The API deploy of `hunch-dev` completed at 19:14, and he confirmed the SNS subscription email. The 375px layout pass was not part of this check.
+- Decision or tradeoff: DynamoDB Local is a CI service. This machine did not run those cases. The scanner lists running executions so a long provider hold does not start a second recovery execution. Settlement was already conditional. The starter alarm reads the existing log line. It does not add metric-writing code.
+- Remaining limitation: The tag `mvp-1.0` is not created. History is still a placeholder. The hosted layout pass under T14 was not repeated for this confirmation.
+- Commit: Pending. Suggested message: `test: verify MVP lifecycle and operational recovery`
 
 ### Future entry template
 

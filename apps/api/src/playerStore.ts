@@ -24,7 +24,8 @@ export interface PlayerStore {
 
 export function dynamoPlayerStore(tableName = process.env.TABLE_NAME): PlayerStore {
   if (!tableName) throw new Error('TABLE_NAME is not set')
-  const doc = DynamoDBDocumentClient.from(new DynamoDBClient({}))
+  const endpoint = process.env.AWS_ENDPOINT_URL_DYNAMODB
+  const doc = DynamoDBDocumentClient.from(new DynamoDBClient(endpoint ? { endpoint } : {}))
 
   return {
     async putNew(record) {

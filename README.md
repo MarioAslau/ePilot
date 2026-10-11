@@ -5,7 +5,7 @@ or lower after at least one minute.
 
 ## Implementation status
 
-T00 through T09 are complete. `yarn dev:local` records one Up or Down prediction and settles it after the real 60 seconds. The page then shows the score card, accuracy after the first settled round, and a receipt until the next round. The score flashes once per result. The hosted site does not include this until the API deploy and the Amplify rebuild. The full manual list is in the T14 section of `docs/implementation-plan.md`.
+T00 through T10 are complete. The hosted site at `https://release.d2yczmbttcpoe9.amplifyapp.com` calls the deployed API. On 2026-10-11 a hosted Up round was still running when the tab was closed, and after 5 minutes it had settled as a loss. The fuller pass before submission is the T14 section of `docs/implementation-plan.md`.
 
 ## Links
 
@@ -196,7 +196,7 @@ The dev API and website are deployed in `eu-north-1`, stage `dev`.
 - Website: `https://release.d2yczmbttcpoe9.amplifyapp.com`
 - Health check: `https://6n3p7430tg.execute-api.eu-north-1.amazonaws.com/health` returns `{"status":"ok"}`. That URL is public. It is not an AWS access key.
 
-The hosted page still says **Backend connected.** and **Play is not available yet.** It shows the new player flow after the T05 API deploy and the following Amplify build.
+The hosted page is the game. It records an Up or Down prediction and the API settles it after the minute, including when the tab is closed.
 
 This project account is locked to Europe (Stockholm). These steps assume an AWS account and a configured CLI. They do not create the account.
 
@@ -271,7 +271,7 @@ Commercial value is a hypothesis, not a demonstrated outcome.
 
 ## Known limitations
 
-- The hosted site does not settle rounds until the T08 API deploy and the Amplify rebuild of `release`. Locally, `yarn dev:local` does.
+- The hosted site settles rounds after the real minute. Closing the tab does not cancel that round.
 - A round whose workflow never starts can stay pending until about 7 minutes after the deadline. An execution gives up after 6 hours, and the scanner starts another one.
 - There is no in-app cancel.
 - Anonymous identity is browser-specific. Clearing storage or using another device loses access.

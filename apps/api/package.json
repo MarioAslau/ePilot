@@ -6,6 +6,7 @@
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:int": "vitest run src/integration",
     "package": "serverless package"
   },
   "dependencies": {

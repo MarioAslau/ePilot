@@ -305,6 +305,11 @@ resources:
                     Fn::Sub: arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:hunch-${sls:stage}-resolution:*
                 - Effect: Allow
                   Action:
+                    - states:ListExecutions
+                  Resource:
+                    Fn::Sub: arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:hunch-${sls:stage}-resolution
+                - Effect: Allow
+                  Action:
                     - logs:CreateLogStream
                     - logs:CreateLogGroup
                     - logs:TagResource
@@ -344,10 +349,18 @@ resources:
           Fn::GetAtt: [ResolutionStateMachineRole, Arn]
         DefinitionString:
           Fn::Join:
-            - Fn::GetAtt: [ResolvePredictionLambdaFunction, Arn]
-            - Fn::Split:
-                - RESOLVE_FUNCTION_ARN
-                - ${file(src/workflow/resolution.asl)}
+            - ''
+            - - Fn::Select:
+                  - '0'
+                  - Fn::Split:
+                      - RESOLVE_FUNCTION_ARN
+                      - ${file(src/workflow/resolution.asl)}
+              - Fn::GetAtt: [ResolvePredictionLambdaFunction, Arn]
+              - Fn::Select:
+                  - '1'
+                  - Fn::Split:
+                      - RESOLVE_FUNCTION_ARN
+                      - ${file(src/workflow/resolution.asl)}
     AlertTopic:
       Type: AWS::SNS::Topic
       Properties:
@@ -422,6 +435,30 @@ resources:
         Dimensions:
           - Name: FunctionName
             Value: hunch-${sls:stage}-recoverStuckPredictions
+        Statistic: Sum
+        Period: 300
+        EvaluationPeriods: 1
+        Threshold: 1
+        ComparisonOperator: GreaterThanOrEqualToThreshold
+        TreatMissingData: notBreaching
+        AlarmActions:
+          - Ref: AlertTopic
+    WorkflowStartFailedFilter:
+      Type: AWS::Logs::MetricFilter
+      Properties:
+        LogGroupName:
+          Ref: CreatePredictionLogGroup
+        FilterPattern: '{ $.event = "prediction.workflow_start_failed" }'
+        MetricTransformations:
+          - MetricName: WorkflowStartFailed
+            MetricNamespace: Hunch
+            MetricValue: '1'
+    WorkflowStartFailedAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: hunch-${sls:stage}-workflow-start-failed
+        Namespace: Hunch
+        MetricName: WorkflowStartFailed
         Statistic: Sum
         Period: 300
         EvaluationPeriods: 1
