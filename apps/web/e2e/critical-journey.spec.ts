@@ -127,14 +127,16 @@ test('plays one round and can place another', async ({ page }) => {
   expect(playerPosts).toBe(postsAfterCreate)
 
   serverNow = dueAt
-  for (let step = 0; step < 30; step += 1) {
-    await page.clock.fastForward(2_000)
+  // runFor repeats the 1s countdown. fastForward fires it once, so the minute never elapses.
+  // Each chunk stays under the 8s /me abort.
+  for (let step = 0; step < 12; step += 1) {
+    await page.clock.runFor(5_000)
   }
   await expect(page.getByText('Comparing prices')).toBeVisible()
   await expect(page.locator('#receipt-heading')).toHaveCount(0)
 
   phase = 'settled'
-  await page.clock.fastForward(2_000)
+  await page.clock.runFor(2_000)
   await expect(page.locator('#receipt-heading')).toHaveText('Correct')
   await expect(score).toContainText('+1')
   await expect(page.locator('.flash-win')).toBeVisible()

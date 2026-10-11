@@ -1298,7 +1298,7 @@ If time runs short:
   - `yarn test` — api 61 passed and 5 skipped, web 47 passed, contracts 8 passed. The 5 skipped tests are the DynamoDB file, because `DYNAMODB_ENDPOINT` was not set.
   - `yarn workspace api test:int` — 5 skipped. The DynamoDB cases did not run.
   - `yarn workspace web build` — exit 0. `apps/web/dist` does not contain `__dev/next-prediction`, `FixtureApp`, or `seeded`.
-  - `yarn workspace web e2e` — 1 passed, after `playwright install chromium`.
+  - `yarn workspace web e2e` — 1 passed, after `playwright install chromium`. GitHub Actions then failed the same test: `fastForward` fires the 1s countdown once per call, so “Comparing prices” never appeared. The journey now uses `runFor` in 5s chunks, under the 8s `/me` abort. Re-run locally: 1 passed.
   - `yarn serverless package --stage dev --region eu-north-1` from `apps/api` — exit 0. The template contains the metric filter, `hunch-dev-workflow-start-failed`, and `states:ListExecutions` on the recovery role.
 - Manual verification: Passed on the hosted site. On 2026-10-11 Mario pressed Up, closed the tab while the round was running, and reopened after 5 minutes. The round had settled as a loss. The API deploy of `hunch-dev` completed at 19:14, and he confirmed the SNS subscription email. The 375px layout pass was not part of this check.
 - Decision or tradeoff: DynamoDB Local is a CI service. This machine did not run those cases. The scanner lists running executions so a long provider hold does not start a second recovery execution. Settlement was already conditional. The starter alarm reads the existing log line. It does not add metric-writing code.
