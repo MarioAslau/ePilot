@@ -9,9 +9,9 @@ Then add optional features that demonstrate product judgment.
 ## Current progress
 
 - Active ticket: T10
-- Status: Awaiting manual verification
+- Status: Complete
 
-- Automated checks cover the rules, one browser journey, and the packaged starter alarm. DynamoDB Local did not run on this machine. The hosted site is still the previous shell until deploy. The hosted checkpoint is the hosted list under T14.
+- Mario pressed Up on the hosted site, closed the tab, and reopened after 5 minutes. The round had settled as a loss. T11 is not started. The fuller pass before submission remains the hosted list under T14.
 
 ## Working agreement
 
@@ -133,7 +133,7 @@ A local fixture view helps test presentation without waiting for markets. It is 
 
 - [x] T09 — Complete frontend states and interaction polish
 
-- [ ] T10 — Verify and freeze the MVP
+- [x] T10 — Verify and freeze the MVP
 
 - [ ] T11 — Add persisted history and progression
 
@@ -678,7 +678,7 @@ feat: complete prediction countdown and result experience
 
 ## T10 — Verify and freeze the MVP
 
-Status: Awaiting manual verification
+Status: Complete
 
 Dependencies: T09.
 
@@ -748,13 +748,13 @@ MVP gate:
 
 - [x] Duplicate calls cannot score twice.
 
-- [ ] Closing browser does not cancel resolution.
+- [x] Closing browser does not cancel resolution.
 
 - [x] Critical automated tests pass.
 
-- [ ] Deployed smoke test passes.
+- [x] Deployed smoke test passes.
 
-- [ ] Public repository, deployed link and README exist.
+- [x] Public repository, deployed link and README exist.
 - [ ] Responsive playable UI includes loading/recovery and fair pending states.
 - [x] Basic rules/source/persistence explanations are available.
 - [x] No simulated prices, speed controls or fake persistence are exposed as production functionality.
@@ -1284,7 +1284,7 @@ If time runs short:
 
 ### T10
 
-- Status: Awaiting manual verification. The hosted smoke test and the browser-close check are not done.
+- Status: Complete. Mario marked T10 complete on 2026-10-11.
 - What changed:
   - `apps/api/src/integration/dynamo.int.test.ts` — DynamoDB condition tests. The file skips unless `DYNAMODB_ENDPOINT` is set. `yarn workspace api test:int` is the command. CI runs it against DynamoDB Local.
   - `apps/web/e2e/critical-journey.spec.ts` — one Chromium journey with a stubbed API and a test clock. Production still waits 60 seconds.
@@ -1300,9 +1300,9 @@ If time runs short:
   - `yarn workspace web build` — exit 0. `apps/web/dist` does not contain `__dev/next-prediction`, `FixtureApp`, or `seeded`.
   - `yarn workspace web e2e` — 1 passed, after `playwright install chromium`.
   - `yarn serverless package --stage dev --region eu-north-1` from `apps/api` — exit 0. The template contains the metric filter, `hunch-dev-workflow-start-failed`, and `states:ListExecutions` on the recovery role.
-- Manual verification: Not done. The hosted site is still the previous shell.
-- Decision or tradeoff: DynamoDB Local is a CI service. This machine does not run those cases. The scanner lists running executions so a long provider hold does not start a second recovery execution. Settlement was already conditional. The starter alarm reads the existing log line. It does not add metric-writing code.
-- Remaining limitation: Nothing is deployed. The alarm email, the 60-second hosted round, and closing the browser are still open. The tag `mvp-1.0` is not created.
+- Manual verification: Passed on the hosted site. On 2026-10-11 Mario pressed Up, closed the tab while the round was running, and reopened after 5 minutes. The round had settled as a loss. The API deploy of `hunch-dev` completed at 19:14, and he confirmed the SNS subscription email. The 375px layout pass was not part of this check.
+- Decision or tradeoff: DynamoDB Local is a CI service. This machine did not run those cases. The scanner lists running executions so a long provider hold does not start a second recovery execution. Settlement was already conditional. The starter alarm reads the existing log line. It does not add metric-writing code.
+- Remaining limitation: The tag `mvp-1.0` is not created. History is still a placeholder. The hosted layout pass under T14 was not repeated for this confirmation.
 - Commit: Pending. Suggested message: `test: verify MVP lifecycle and operational recovery`
 
 ### Future entry template

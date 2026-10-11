@@ -2,7 +2,7 @@
 
 ## Status
 
-T09 is complete. T10 is awaiting manual verification. The automated checks cover the game rules, one browser journey, and a packaged alarm for a workflow that fails to start. DynamoDB Local runs in CI. It did not run on this machine. Step Functions, the scanner, and the `pending-by-due` index are packaged and are not deployed. The hosted site is still the previous shell until the API deploy and the Amplify rebuild of `release`. The hosted checkpoint is the hosted list under T14.
+T10 is complete. The `hunch-dev` API is deployed in `eu-north-1`, including predictions, the resolver, the scanner, and the state machine `hunch-dev-resolution`. The hosted site `https://release.d2yczmbttcpoe9.amplifyapp.com` is allowed to call it. On 2026-10-11 Mario pressed Up, closed the tab while the round was running, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14.
 
 ## Product goal
 
