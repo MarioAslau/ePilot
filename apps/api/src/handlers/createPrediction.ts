@@ -133,11 +133,14 @@ export async function handleCreatePrediction(
     return activeRound(requestId)
   }
 
+  const priorRounds = player.wins + player.losses
   log('prediction.created', {
     requestId,
     playerId: auth.playerId,
     predictionId: built.prediction.predictionId,
     executionName: workflowExecutionName(built.prediction.predictionId),
+    priorRounds: String(priorRounds),
+    repeat: priorRounds > 0 ? 'true' : 'false',
   })
   if (deps.startWorkflow) {
     try {

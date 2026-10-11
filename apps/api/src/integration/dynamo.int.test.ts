@@ -202,4 +202,54 @@ describe.skipIf(!process.env.DYNAMODB_ENDPOINT)('DynamoDB conditions', () => {
     )
     expect((await predictions.getPrediction(created.playerId, built.prediction.predictionId))?.pendingKey).toBeUndefined()
   })
+
+  it('pages one player’s resolved rounds and skips the pending round', async () => {
+    const { predictions, created, built } = await playerAndRound(
+      '77777777-7777-4777-8777-777777777777',
+      9,
+    )
+    expect(await predictions.create(built)).toBe('created')
+    expect(await predictions.settle(settlement(created.playerId, built.prediction.predictionId))).toBe('settled')
+    const later = new Date(now.getTime() + 60_000)
+    const second = buildPrediction({
+      now: later,
+      playerId: created.playerId,
+      direction: 'DOWN',
+      idempotencyKey: '88888888-8888-4888-8888-888888888888',
+      entryPrice: '82000.00',
+      entryTradeTime: later.toISOString(),
+      entryFetchedAt: later.toISOString(),
+      nextBytes: (size) => Buffer.alloc(size, 10),
+    })
+    expect(await predictions.create(second)).toBe('created')
+    expect(
+      await predictions.settle({
+        ...settlement(created.playerId, second.prediction.predictionId),
+        outcome: 'LOSS',
+        scoreDelta: -1,
+      }),
+    ).toBe('settled')
+    const pendingAt = new Date(now.getTime() + 120_000)
+    const pending = buildPrediction({
+      now: pendingAt,
+      playerId: created.playerId,
+      direction: 'UP',
+      idempotencyKey: '99999999-9999-4999-8999-999999999999',
+      entryPrice: '82000.00',
+      entryTradeTime: pendingAt.toISOString(),
+      entryFetchedAt: pendingAt.toISOString(),
+      nextBytes: (size) => Buffer.alloc(size, 11),
+    })
+    expect(await predictions.create(pending)).toBe('created')
+
+    const first = await predictions.listResolved(created.playerId, { limit: 1 })
+    expect(first.items.map((row) => row.predictionId)).toEqual([second.prediction.predictionId])
+    expect(first.nextSk).toBe(`PREDICTION#${second.prediction.predictionId}`)
+    const secondPage = await predictions.listResolved(created.playerId, {
+      limit: 1,
+      startSk: first.nextSk ?? '',
+    })
+    expect(secondPage.items.map((row) => row.predictionId)).toEqual([built.prediction.predictionId])
+    expect(secondPage.items.map((row) => row.predictionId)).not.toContain(pending.prediction.predictionId)
+  })
 })

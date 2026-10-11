@@ -16,7 +16,8 @@ import { HowItWorks } from './components/HowItWorks'
 import { MarketCard } from './components/MarketCard'
 import { ResultReceipt } from './components/ResultReceipt'
 import { RoundTicket } from './components/RoundTicket'
-import { HistoryPlaceholder, ScoreCard } from './components/ScoreCard'
+import { RoundHistory } from './components/RoundHistory'
+import { ScoreCard } from './components/ScoreCard'
 import { StatusNotice } from './components/StatusNotice'
 import { type FixtureName, FIXTURE_NAMES, fixtures } from './fixtures'
 
@@ -124,7 +125,15 @@ export function FixtureApp() {
                 losses={state.losses}
                 flash={state.flash}
               />
-              <HistoryPlaceholder />
+              <RoundHistory
+                status="ready"
+                predictions={state.history ?? []}
+                hasMore={false}
+                loadingMore={false}
+                pageError={false}
+                onLoadMore={() => undefined}
+                onRetry={() => undefined}
+              />
               <HowItWorks />
             </div>
           </div>

@@ -25,6 +25,10 @@ export interface PredictionStore {
   ): Promise<'recorded' | 'already_settled'>
   listOverdue(before: string): Promise<OverduePrediction[]>
   clearPending(playerId: string, predictionId: string): Promise<void>
+  listResolved(
+    playerId: string,
+    input: { limit: number; startSk?: string },
+  ): Promise<{ items: PredictionRecord[]; nextSk: string | null }>
 }
 
 export interface SettlementInput {
@@ -285,6 +289,46 @@ export function dynamoPredictionStore(
         predictionId: String(item.sk).replace(/^PREDICTION#/, ''),
         dueAt: String(item.pendingDueAt),
       }))
+    },
+
+    async listResolved(playerId, { limit, startSk }) {
+      const pk = `PLAYER#${playerId}`
+      const items: PredictionRecord[] = []
+      let exclusive = startSk
+      while (items.length < limit) {
+        const result = await doc.send(
+          new QueryCommand({
+            TableName: tableName,
+            KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
+            FilterExpression: '#status = :resolved',
+            ExpressionAttributeNames: { '#status': 'status' },
+            ExpressionAttributeValues: {
+              ':pk': pk,
+              ':prefix': 'PREDICTION#',
+              ':resolved': 'RESOLVED',
+            },
+            ScanIndexForward: false,
+            ConsistentRead: true,
+            Limit: limit - items.length,
+            ...(exclusive ? { ExclusiveStartKey: { pk, sk: exclusive } } : {}),
+          }),
+        )
+        for (const item of result.Items ?? []) {
+          const record = asPrediction(item)
+          if (record.status === 'RESOLVED') items.push(record)
+        }
+        const lastKey = result.LastEvaluatedKey?.sk
+        const last = items[limit - 1]
+        if (items.length >= limit && last) {
+          return {
+            items: items.slice(0, limit),
+            nextSk: lastKey ? `PREDICTION#${last.predictionId}` : null,
+          }
+        }
+        if (!lastKey || lastKey === exclusive) return { items, nextSk: null }
+        exclusive = String(lastKey)
+      }
+      return { items, nextSk: null }
     },
 
     async clearPending(playerId, predictionId) {

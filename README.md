@@ -5,7 +5,7 @@ or lower after at least one minute.
 
 ## Implementation status
 
-T00 through T10 are complete. The hosted site at `https://release.d2yczmbttcpoe9.amplifyapp.com` calls the deployed API. On 2026-10-11 a hosted Up round was still running when the tab was closed, and after 5 minutes it had settled as a loss. The fuller pass before submission is the T14 section of `docs/implementation-plan.md`.
+T00 through T11 are complete. Mario confirmed the local history check on 2026-10-11. The hosted site at `https://release.d2yczmbttcpoe9.amplifyapp.com` calls the deployed API and does not include history until the next API deploy and Amplify rebuild. On 2026-10-11 a hosted Up round was still running when the tab was closed, and after 5 minutes it had settled as a loss. The fuller pass before submission is the T14 section of `docs/implementation-plan.md`.
 
 ## Links
 
@@ -23,15 +23,12 @@ Implemented:
 - One active prediction per player, enforced by the backend.
 - After 60 seconds the server compares a fresh Coinbase trade with the entry price. A win adds 1. A loss subtracts 1. An equal price or a price-source failure stays pending and is not a loss.
 - The page shows that result and then offers Up and Down again.
-
-Planned:
-- Display accuracy stats.
-- The hosted site settles rounds only after the T08 deploy.
+- After the first settled round, the score card shows wins, losses, and accuracy for all settled rounds.
+- Settled rounds are listed for that player, 20 at a time, up to 50 per request. The list shows direction, both prices, the point change, and the trade times. Pending rounds stay on the ticket, not in the list.
 
 ## Optional features
 
 Planned after the verified MVP:
-- Recent prediction history.
 - Fairness explanation.
 - Momentum Double Down.
 - Redemption Round.
@@ -188,6 +185,8 @@ Deployed, only after that local check is confirmed:
 9. Place a second round with the same player.
 
 For the T09 local check, restart `yarn dev:local` and start a new player. `http://localhost:5173/?fixture=win` and `?fixture=loss` show the two receipts without waiting. A real round still takes the minute. Near the end, `/me` polls about every second. At 0 the ticket says Comparing prices. The score flashes once. Refreshing the receipt does not flash again. `equal-price` and `resolution-provider-down` still use the fault switch above. The hold ticket is amber and says an outage never counts as a loss. If the market request is blocked, Up and Down stay visible and disabled, with “Waiting for a live price”.
+
+For the T11 local check, restart `yarn dev:local` and start a new player. Your rounds is empty before the first result. After a settled round, the row appears without a refresh and is still there after a reload. `http://localhost:5173/?fixture=history` and `?fixture=history-empty` show the list and the empty copy without waiting. Accuracy says all settled rounds. A page holds 20 rounds. Load older rounds appears only when another page exists. The hosted site still shows the placeholder until the API and the Amplify app are deployed again.
 
 ## Deployment
 

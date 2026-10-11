@@ -1,4 +1,5 @@
 import type { Direction, Outcome, PriceString, WaitReason } from 'contracts'
+import type { HistoryRound } from '../components/RoundHistory'
 
 /**
  * Fixture data for all 9 UI states.
@@ -6,7 +7,7 @@ import type { Direction, Outcome, PriceString, WaitReason } from 'contracts'
  *
  * Available names:
  *   ready | submitting | active | checking | equal-price |
- *   provider-hold | win | loss | setup-error
+ *   provider-hold | win | loss | setup-error | history | history-empty
  */
 
 export type FixtureName =
@@ -19,6 +20,8 @@ export type FixtureName =
   | 'win'
   | 'loss'
   | 'setup-error'
+  | 'history'
+  | 'history-empty'
 
 export const FIXTURE_NAMES: FixtureName[] = [
   'ready',
@@ -30,6 +33,8 @@ export const FIXTURE_NAMES: FixtureName[] = [
   'win',
   'loss',
   'setup-error',
+  'history',
+  'history-empty',
 ]
 
 const NOW = new Date('2026-10-06T14:00:00Z')
@@ -64,6 +69,7 @@ export interface FixtureState {
   }
   errorMessage?: string
   flash?: 'win' | 'loss' | null
+  history?: HistoryRound[]
 }
 
 export const fixtures: Record<FixtureName, FixtureState> = {
@@ -204,5 +210,46 @@ export const fixtures: Record<FixtureName, FixtureState> = {
     wins: 0,
     losses: 0,
     errorMessage: 'Unable to reach the backend. Check VITE_API_BASE_URL in .env.',
+  },
+
+  history: {
+    label: 'History',
+    price: '65432.10',
+    priceStatus: 'live',
+    score: -1,
+    wins: 1,
+    losses: 2,
+    history: [
+      {
+        predictionId: 'p_0000000003000_aaaabbbb',
+        direction: 'DOWN',
+        entryPrice: '65432.101',
+        resolutionPrice: '65432.104',
+        entryTradeTime: '2026-10-06T14:02:31.000Z',
+        resolutionTradeTime: '2026-10-06T14:03:33.000Z',
+        outcome: 'LOSS',
+        scoreDelta: -1,
+      },
+      {
+        predictionId: 'p_0000000002000_ccccdddd',
+        direction: 'UP',
+        entryPrice: '64000.00',
+        resolutionPrice: '64120.50',
+        entryTradeTime: '2026-10-06T14:00:00.000Z',
+        resolutionTradeTime: '2026-10-06T14:01:02.000Z',
+        outcome: 'WIN',
+        scoreDelta: 1,
+      },
+    ],
+  },
+
+  'history-empty': {
+    label: 'History empty',
+    price: '65432.10',
+    priceStatus: 'live',
+    score: 0,
+    wins: 0,
+    losses: 0,
+    history: [],
   },
 }

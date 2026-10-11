@@ -103,6 +103,20 @@ export function memoryGameStore(): PlayerStore & PredictionStore & { failNextSet
         }))
     },
 
+    async listResolved(playerId, { limit, startSk }) {
+      const startId = startSk?.startsWith('PREDICTION#') ? startSk.slice('PREDICTION#'.length) : undefined
+      const rows = [...predictions.values()]
+        .filter((prediction) => prediction.playerId === playerId && prediction.status === 'RESOLVED')
+        .filter((prediction) => (startId ? prediction.predictionId < startId : true))
+        .sort((a, b) => (a.predictionId < b.predictionId ? 1 : -1))
+      const page = rows.slice(0, limit)
+      const last = page[page.length - 1]
+      return {
+        items: page,
+        nextSk: rows.length > limit && last ? `PREDICTION#${last.predictionId}` : null,
+      }
+    },
+
     async clearPending(playerId, predictionId) {
       const prediction = predictions.get(`${playerId}#${predictionId}`)
       if (!prediction) return

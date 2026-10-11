@@ -52,6 +52,7 @@ export function ScoreCard({ score, wins, losses, flash, stale = false }: Props) 
             <div>
               <span className="fine">Accuracy</span>
               <b className="num">{accuracy}%</b>
+              <span className="fine">all settled rounds</span>
             </div>
           )}
         </div>
@@ -62,15 +63,6 @@ export function ScoreCard({ score, wins, losses, flash, stale = false }: Props) 
           Make your first prediction to start scoring.
         </p>
       )}
-    </section>
-  )
-}
-
-export function HistoryPlaceholder() {
-  return (
-    <section className="card" aria-label="Prediction history">
-      <p className="label">History</p>
-      <p>Your settled predictions will appear here.</p>
     </section>
   )
 }

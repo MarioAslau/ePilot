@@ -89,6 +89,15 @@ test('plays one round and can place another', async ({ page }) => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(me()) })
       return
     }
+    if (request.method() === 'GET' && path === '/predictions') {
+      const rows = phase === 'settled' || phase === 'second' ? [settled()] : []
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ predictions: rows, nextCursor: null }),
+      })
+      return
+    }
     if (request.method() === 'POST' && path === '/predictions') {
       if (!heldCreate) {
         heldCreate = true
@@ -139,6 +148,9 @@ test('plays one round and can place another', async ({ page }) => {
   await page.clock.runFor(2_000)
   await expect(page.locator('#receipt-heading')).toHaveText('Correct')
   await expect(score).toContainText('+1')
+  const rounds = page.getByRole('region', { name: 'Your rounds' })
+  await expect(rounds).toContainText('70,000.50 to 70,100.00')
+  await expect(rounds).toContainText('+1')
   await expect(page.locator('.flash-win')).toBeVisible()
   await expect(page.getByText('Correct. Score 1.')).toHaveCount(1)
 

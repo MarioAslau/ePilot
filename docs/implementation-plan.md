@@ -8,10 +8,10 @@ Then add optional features that demonstrate product judgment.
 
 ## Current progress
 
-- Active ticket: T10
-- Status: Complete
+- Active ticket: none
+- Status: T11 complete
 
-- Mario pressed Up on the hosted site, closed the tab, and reopened after 5 minutes. The round had settled as a loss. T11 is not started. The fuller pass before submission remains the hosted list under T14.
+T11 is complete. Mario confirmed the local history check on 2026-10-11. History is not on the hosted site until the next API deploy and Amplify rebuild. T12 has not started. On 2026-10-11 Mario pressed Up on the hosted site, closed the tab, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14.
 
 ## Working agreement
 
@@ -85,7 +85,7 @@ The uploaded Markdown had escaped headings and bullets. This revision restores n
 - Score copy must say: “Your score is saved on our server. This browser remembers your anonymous player.” The prototype's “Saved to this browser” implies the wrong ownership. Explain that clearing credentials or changing devices loses anonymous access.
 - Polling status should say Latest available or Updated X seconds ago with Coinbase as source. Do not imply a streaming feed. Poll intervals are configuration, not dictated by the prototype: start around 5s for market and 2s for active player state; refresh on return and after mutations; tune from observed cost/latency. No WebSockets required.
 - Accessibility: native controls, visible keyboard focus, meaningful names, touch targets around 44px or larger, logical focus after a panel changes, restrained motion and reduced-motion support. Announce significant state transitions once, not every price tick/countdown second. Chart has a text alternative.
-- Basic How it works is MVP functionality, not deferred to T11. Persisted paginated history remains T11. Before then, use an honest “History coming next” placeholder or omit the history card; never tell an existing player they have no rounds just because history is not wired.
+- Basic How it works is MVP functionality, not deferred to T11. Persisted paginated history is T11 and is complete locally. The earlier placeholder must not be used to tell an existing player they have no rounds.
 
 ### Prototype behaviour that must not leak into production
 
@@ -93,7 +93,7 @@ The HTML uses a seeded random price walk, an in-page mock server, fake in-memory
 
 - Keep scenario controls, time skips and seeded outcomes in local test fixtures only. Production timing remains at least 60 seconds.
 - Do not copy its integer-cent precision assumption: exact provider prices and decimal-safe comparisons remain authoritative. If rounded quotes look equal but the exact result differs, provide additional precision in the receipt.
-- Do not copy full player history into every `/me` response. Return active prediction and an identifiable latest result; paginate history in T11. Define this response in T03 so T09 can restore results without implementing the history feature early.
+- Do not copy full player history into every `/me` response. Return active prediction and an identifiable latest result. Paginate settled history on `GET /predictions`. T11 is complete locally. Define the `/me` response in T03 so T09 can restore results without implementing the history feature early.
 - The chart's synthetic two-minute history and 1m change must be replaced with real observations. In T06 collect validated display samples in memory while this browser is open. Start with an empty chart and “Collecting recent prices”; use actual sample coverage. Do not invent earlier points, a full two-minute window or a 1m change until sufficient data exists. This chart is informational and never resolves a round.
 
 ### Visible delivery and testing sequence
@@ -110,7 +110,8 @@ The HTML uses a seeded random price walk, an in-page mock server, fake in-memory
 | T08 | Whole core loop works through the UI against AWS, including result and browser-close recovery. |
 | T09 | Complete exceptional states, focus, responsive polish and repeat-play/restoration behaviour. |
 | T10 | Verified deployed MVP; extras begin only after this gate. |
-| T11–T13 | Real history, then separately designed and tested optional offers. |
+| T11 | Real history. Complete locally on 2026-10-11. Not on the hosted site until the next deploy. |
+| T12–T13 | Separately designed and tested optional offers. |
 
 A local fixture view helps test presentation without waiting for markets. It is not proof of backend fairness. Each backend ticket gets API/integration checks and its relevant browser checkpoint.
 
@@ -135,7 +136,7 @@ A local fixture view helps test presentation without waiting for markets. It is 
 
 - [x] T10 — Verify and freeze the MVP
 
-- [ ] T11 — Add persisted history and progression
+- [x] T11 — Add persisted history and progression
 
 - [ ] T12 — Add Momentum Double Down
 
@@ -765,7 +766,7 @@ test: verify MVP lifecycle and operational recovery
 
 ## T11 — Persisted history and progression
 
-Status: Not started
+Status: Complete
 
 Dependencies: MVP gate passed.
 
@@ -1302,8 +1303,31 @@ If time runs short:
   - `yarn serverless package --stage dev --region eu-north-1` from `apps/api` — exit 0. The template contains the metric filter, `hunch-dev-workflow-start-failed`, and `states:ListExecutions` on the recovery role.
 - Manual verification: Passed on the hosted site. On 2026-10-11 Mario pressed Up, closed the tab while the round was running, and reopened after 5 minutes. The round had settled as a loss. The API deploy of `hunch-dev` completed at 19:14, and he confirmed the SNS subscription email. The 375px layout pass was not part of this check.
 - Decision or tradeoff: DynamoDB Local is a CI service. This machine did not run those cases. The scanner lists running executions so a long provider hold does not start a second recovery execution. Settlement was already conditional. The starter alarm reads the existing log line. It does not add metric-writing code.
-- Remaining limitation: The tag `mvp-1.0` is not created. History is still a placeholder. The hosted layout pass under T14 was not repeated for this confirmation.
+- Remaining limitation: The tag `mvp-1.0` is not created. History is in the repo and is not on the hosted site until the next deploy. The hosted layout pass under T14 was not repeated for this confirmation.
 - Commit: Pending. Suggested message: `test: verify MVP lifecycle and operational recovery`
+
+### T11
+
+- Status: Complete. Mario confirmed the local check on 2026-10-11. Not deployed.
+- What changed:
+  - `GET /predictions` lists the authenticated player's settled rounds, newest first. `limit` defaults to 20 and maxes at 50. The cursor is the base64url of the last returned sort key, and the handler rebuilds the key with the authenticated player id. Pending rounds are excluded. The query is a consistent read on the player partition. There is no history index and no table scan.
+  - `HistoryLambdaRole` (`hunch-<stage>-history`) can `GetItem` and `Query` the table only.
+  - `prediction.created` now includes `priorRounds` and `repeat` on a new round. An idempotent replay does not log another creation. `prediction.settled` is unchanged. These counts are not a retention or activation measurement.
+  - The history placeholder is a list with loading, empty, error, and populated states. The empty copy appears only after a successful empty response. Load older rounds fetches the next page. Accuracy is labelled all settled rounds. How it works adds one step about the list and keeps the 60-second rule.
+  - `yarn dev:local` serves `GET /api/predictions` on the memory store, including the cursor query string.
+- Checks run and results:
+  - `yarn workspace contracts test` — 8/8 passed.
+  - `yarn workspace api test` — 70 passed and 6 skipped. The skipped tests are the DynamoDB file, because `DYNAMODB_ENDPOINT` was not set. That file now includes a `listResolved` page test.
+  - `yarn workspace web test` — 54/54 passed.
+  - `yarn workspace web e2e` — 1 passed. After the first result the journey sees the history row.
+  - `yarn typecheck` — exit 0.
+  - `yarn lint` — exit 0.
+  - `yarn workspace web build` — exit 0. `apps/web/dist` does not contain `FixtureApp`, `__dev/next-prediction`, or `seeded`.
+  - `yarn serverless package --stage dev --region eu-north-1` from `apps/api` — exit 0. The template has `GET /predictions` and `hunch-dev-history` with `dynamodb:GetItem` and `dynamodb:Query` on the table. It has no `dynamodb:Scan`. Lambda still reports the known `nodejs20.x` deprecation warning.
+- Manual verification: Passed locally on 2026-10-11. Mario confirmed the history check works.
+- Decision or tradeoff: No infinite scroll, no per-row receipt, and no streak fields. The open round stays on the ticket. Accuracy stays the all-time `wins` and `losses` from `GET /me`. Repeat play is two fields on the existing creation log. The history role may query the whole table; ownership is the authenticated partition key.
+- Remaining limitation: The hosted site still shows the placeholder until the API deploy and the Amplify rebuild. A player with fewer than 20 settled rounds does not see Load older rounds. If a player has exactly 20, DynamoDB can return a cursor when the next page is empty; Load older rounds then reports that every round is loaded. Pagination of a longer list is covered by the handler test. `yarn workspace api test:int` was not run on this machine.
+- Commit: Pending. Suggested message: `feat: add prediction history and transparent progress`
 
 ### Future entry template
 

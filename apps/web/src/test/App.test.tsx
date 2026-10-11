@@ -33,6 +33,18 @@ function jsonResponse(status: number, body: unknown) {
   }
 }
 
+function stubFetch(
+  handler: (url: string, init?: { method?: string; body?: string }) => unknown,
+) {
+  return vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
+    const method = init?.method ?? 'GET'
+    if (method === 'GET' && new URL(String(url), 'https://example.test').pathname.endsWith('/predictions')) {
+      return jsonResponse(200, { predictions: [], nextCursor: null })
+    }
+    return handler(url, init)
+  })
+}
+
 afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllEnvs()
@@ -51,7 +63,7 @@ describe('App player restore', () => {
 
   it('creates a player and shows score 0 when storage is empty', async () => {
     vi.stubEnv('VITE_API_BASE_URL', 'https://example.test')
-    const fetchMock = vi.fn(async (url: string, init?: { method?: string }) => {
+    const fetchMock = stubFetch(async (url: string, init?: { method?: string }) => {
       if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
       if (String(url).endsWith('/players') && init?.method === 'POST') {
         return jsonResponse(200, { playerId, accessToken: token })
@@ -70,6 +82,8 @@ describe('App player restore', () => {
     expect(screen.getAllByText('Your score is saved on our server. This browser remembers your anonymous player.')).toHaveLength(2)
     expect(await screen.findByRole('button', { name: /up/i })).toBeInTheDocument()
     expect(await screen.findByText('Collecting recent prices')).toBeInTheDocument()
+    expect(screen.queryByText('Your settled predictions will appear here.')).not.toBeInTheDocument()
+    expect(await screen.findByText(/No rounds yet/)).toBeInTheDocument()
     expect(fetchMock.mock.calls.filter((call) => String(call[0]).endsWith('/players'))).toHaveLength(1)
     expect(localStorage.getItem('hunch.session')).toContain(playerId)
   })
@@ -80,7 +94,7 @@ describe('App player restore', () => {
       'hunch.session',
       JSON.stringify({ playerId, accessToken: token }),
     )
-    const fetchMock = vi.fn(async (url: string) => {
+    const fetchMock = stubFetch(async (url: string) => {
       if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
       if (String(url).endsWith('/me')) return jsonResponse(200, { ...meBody, score: 4 })
       throw new Error(`unexpected ${url}`)
@@ -125,7 +139,7 @@ describe('App player restore', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('blocked')
     })
-    const fetchMock = vi.fn(async (_url: string) => jsonResponse(503, { code: 'PROVIDER_UNAVAILABLE' }))
+    const fetchMock = stubFetch(async (_url: string) => jsonResponse(503, { code: 'PROVIDER_UNAVAILABLE' }))
     vi.stubGlobal('fetch', fetchMock)
 
     render(<App />)
@@ -145,7 +159,7 @@ describe('App player restore', () => {
 
   it('shows the live Coinbase price', async () => {
     vi.stubEnv('VITE_API_BASE_URL', 'https://example.test')
-    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: { method?: string }) => {
+    vi.stubGlobal('fetch', stubFetch(async (url: string, init?: { method?: string }) => {
       if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
       if (String(url).endsWith('/players') && init?.method === 'POST') {
         return jsonResponse(200, { playerId, accessToken: token })
@@ -167,7 +181,7 @@ describe('App player restore', () => {
   it('keeps the last price and offers retry when a later poll fails', async () => {
     vi.stubEnv('VITE_API_BASE_URL', 'https://example.test')
     let marketCalls = 0
-    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: { method?: string }) => {
+    vi.stubGlobal('fetch', stubFetch(async (url: string, init?: { method?: string }) => {
       if (String(url).endsWith('/market')) {
         marketCalls += 1
         if (marketCalls > 1) throw new Error('offline')
@@ -229,7 +243,7 @@ describe('App predictions', () => {
     let resolvePost: (value: ReturnType<typeof jsonResponse>) => void = () => undefined
     const bodies: string[] = []
     const recorded = pendingPrediction('70000.50', new Date(Date.now() + 60_000).toISOString())
-    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: { body?: string }) => {
+    vi.stubGlobal('fetch', stubFetch(async (url: string, init?: { body?: string }) => {
       if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
       if (String(url).endsWith('/predictions')) {
         bodies.push(String(init?.body))
@@ -271,7 +285,7 @@ describe('App predictions', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval'] })
     const keys: string[] = []
     const recorded = pendingPrediction('65432.10', new Date(Date.now() + 60_000).toISOString())
-    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: { body?: string }) => {
+    vi.stubGlobal('fetch', stubFetch(async (url: string, init?: { body?: string }) => {
       if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
       if (String(url).endsWith('/predictions')) {
         const parsed = JSON.parse(String(init?.body)) as { idempotencyKey: string }
@@ -312,7 +326,7 @@ describe('App predictions', () => {
     vi.spyOn(crypto, 'randomUUID').mockReturnValue(idempotencyKey)
     let rejected = false
     const recorded = pendingPrediction('65432.10', new Date(Date.now() + 60_000).toISOString())
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    vi.stubGlobal('fetch', stubFetch(async (url: string) => {
       if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
       if (String(url).endsWith('/predictions')) {
         rejected = true
@@ -338,7 +352,7 @@ describe('App predictions', () => {
     vi.spyOn(crypto, 'randomUUID').mockReturnValue(idempotencyKey)
     vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval'] })
     const urls: string[] = []
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    vi.stubGlobal('fetch', stubFetch(async (url: string) => {
       urls.push(String(url))
       if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
       if (String(url).endsWith('/predictions')) throw new Error('timeout')
@@ -368,7 +382,7 @@ describe('App predictions', () => {
     vi.stubEnv('VITE_API_BASE_URL', 'https://example.test')
     savedPlayer()
     vi.spyOn(crypto, 'randomUUID').mockReturnValue(idempotencyKey)
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    vi.stubGlobal('fetch', stubFetch(async (url: string) => {
       if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
       if (String(url).endsWith('/predictions')) {
         return jsonResponse(503, { code: 'PROVIDER_UNAVAILABLE', message: 'Price source is unavailable' })
@@ -388,7 +402,7 @@ describe('App predictions', () => {
     vi.stubEnv('VITE_API_BASE_URL', 'https://example.test')
     savedPlayer()
     const recorded = pendingPrediction('65432.10', new Date(Date.now() - 1_000).toISOString())
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    vi.stubGlobal('fetch', stubFetch(async (url: string) => {
       if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
       if (String(url).endsWith('/me')) {
         return jsonResponse(200, {
@@ -421,7 +435,7 @@ describe('App predictions', () => {
       resolutionFetchedAt: '2026-10-11T15:02:03.000Z',
       resolvedAt: '2026-10-11T15:02:03.000Z',
     }
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    vi.stubGlobal('fetch', stubFetch(async (url: string) => {
       if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
       if (String(url).endsWith('/me')) {
         return jsonResponse(200, {
@@ -448,7 +462,7 @@ describe('App predictions', () => {
     vi.stubEnv('VITE_API_BASE_URL', 'https://example.test')
     savedPlayer()
     const recorded = pendingPrediction('65432.10', new Date(Date.now() - 1_000).toISOString())
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    vi.stubGlobal('fetch', stubFetch(async (url: string) => {
       if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
       if (String(url).endsWith('/me')) {
         return jsonResponse(200, {
@@ -471,7 +485,7 @@ describe('App predictions', () => {
     vi.stubEnv('VITE_API_BASE_URL', 'https://example.test')
     savedPlayer()
     const recorded = pendingPrediction('65432.10', new Date(Date.now() - 1_000).toISOString())
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    vi.stubGlobal('fetch', stubFetch(async (url: string) => {
       if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
       if (String(url).endsWith('/me')) {
         return jsonResponse(200, {
@@ -498,7 +512,7 @@ describe('App predictions', () => {
     savedPlayer()
     vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval'] })
     const recorded = pendingPrediction('65432.10', new Date(Date.now() + 60_000).toISOString())
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    vi.stubGlobal('fetch', stubFetch(async (url: string) => {
       if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
       if (String(url).endsWith('/me')) {
         return jsonResponse(200, {
@@ -531,7 +545,7 @@ describe('App predictions', () => {
     savedPlayer()
     vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval'] })
     let meCalls = 0
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    vi.stubGlobal('fetch', stubFetch(async (url: string) => {
       if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
       if (String(url).endsWith('/me')) {
         meCalls += 1
@@ -560,8 +574,30 @@ describe('App predictions', () => {
   it('shows accuracy only after a settled round, including a negative score', async () => {
     vi.stubEnv('VITE_API_BASE_URL', 'https://example.test')
     savedPlayer()
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: { method?: string }) => {
+      const method = init?.method ?? 'GET'
       if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
+      if (method === 'GET' && String(url).includes('/predictions')) {
+        return jsonResponse(200, {
+          predictions: [{
+            predictionId: 'p_0000000000002_abcd1234',
+            playerId,
+            direction: 'DOWN',
+            mode: 'STANDARD',
+            status: 'RESOLVED',
+            createdAt: '2026-10-11T15:00:00.000Z',
+            dueAt: '2026-10-11T15:01:00.000Z',
+            entryPrice: '100.00',
+            entryTradeTime: '2026-10-11T15:00:00.000Z',
+            resolvedAt: '2026-10-11T15:01:02.000Z',
+            resolutionPrice: '99.00',
+            resolutionTradeTime: '2026-10-11T15:01:02.000Z',
+            outcome: 'LOSS',
+            scoreDelta: -1,
+          }],
+          nextCursor: null,
+        })
+      }
       if (String(url).endsWith('/me')) {
         return jsonResponse(200, {
           ...meBody,
@@ -576,10 +612,12 @@ describe('App predictions', () => {
 
     const { unmount } = render(<App />)
     expect(await screen.findByText('0%')).toBeInTheDocument()
+    expect(screen.getByText('all settled rounds')).toBeInTheDocument()
     expect(screen.getAllByLabelText('Score: -2').length).toBeGreaterThan(0)
+    expect(screen.getByText((_, node) => node?.textContent === 'Not this time, −1')).toBeInTheDocument()
     unmount()
 
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    vi.stubGlobal('fetch', stubFetch(async (url: string) => {
       if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
       if (String(url).endsWith('/me')) return jsonResponse(200, meBody)
       throw new Error(String(url))
@@ -601,7 +639,7 @@ describe('App predictions', () => {
       resolutionTradeTime: '2026-10-11T15:02:00.000Z',
       resolvedAt: '2026-10-11T15:02:03.000Z',
     }
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    vi.stubGlobal('fetch', stubFetch(async (url: string) => {
       if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
       if (String(url).endsWith('/me')) {
         return jsonResponse(200, {
@@ -635,7 +673,7 @@ describe('App predictions', () => {
     vi.stubEnv('VITE_API_BASE_URL', 'https://example.test')
     savedPlayer()
     const recorded = pendingPrediction('65432.10', new Date(Date.now() + 60_000).toISOString())
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    vi.stubGlobal('fetch', stubFetch(async (url: string) => {
       if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
       if (String(url).endsWith('/me')) {
         return jsonResponse(200, {

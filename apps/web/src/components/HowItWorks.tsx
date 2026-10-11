@@ -39,6 +39,12 @@ export function HowItWorks() {
               If the price is still equal, we retry until it moves.
             </div>
           </li>
+          <li>
+            <div>
+              <b>Your rounds</b>
+              Each settled round stays in the list with its direction, entry price, compared price, and point change.
+            </div>
+          </li>
         </ol>
 
         <div className="rulebox">
