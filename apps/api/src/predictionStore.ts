@@ -118,7 +118,11 @@ function asIdempotency(item: Record<string, unknown>): IdempotencyRecord {
 
 export function dynamoPredictionStore(
   tableName = process.env.TABLE_NAME,
-  doc = DynamoDBDocumentClient.from(new DynamoDBClient({})),
+  doc = DynamoDBDocumentClient.from(
+    new DynamoDBClient(
+      process.env.AWS_ENDPOINT_URL_DYNAMODB ? { endpoint: process.env.AWS_ENDPOINT_URL_DYNAMODB } : {},
+    ),
+  ),
 ): PredictionStore {
   if (!tableName) throw new Error('TABLE_NAME is not set')
 

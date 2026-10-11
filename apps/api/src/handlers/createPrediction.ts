@@ -137,6 +137,7 @@ export async function handleCreatePrediction(
     requestId,
     playerId: auth.playerId,
     predictionId: built.prediction.predictionId,
+    executionName: workflowExecutionName(built.prediction.predictionId),
   })
   if (deps.startWorkflow) {
     try {

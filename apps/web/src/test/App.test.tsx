@@ -332,6 +332,38 @@ describe('App predictions', () => {
     expect(screen.queryByRole('button', { name: /up/i })).not.toBeInTheDocument()
   })
 
+  it('offers retry after a failed create and keeps the same player', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://example.test')
+    savedPlayer()
+    vi.spyOn(crypto, 'randomUUID').mockReturnValue(idempotencyKey)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'setInterval'] })
+    const urls: string[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      urls.push(String(url))
+      if (String(url).endsWith('/market')) return jsonResponse(200, marketBody)
+      if (String(url).endsWith('/predictions')) throw new Error('timeout')
+      if (String(url).endsWith('/me')) return jsonResponse(200, meBody)
+      throw new Error(String(url))
+    }))
+
+    render(<App />)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    fireEvent.click(screen.getByRole('button', { name: /up/i }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(7_000)
+    })
+
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+    expect(screen.getByText(playerId)).toBeInTheDocument()
+    expect(urls.some((url) => url.endsWith('/players'))).toBe(false)
+    expect(localStorage.getItem('hunch.session')).toContain(playerId)
+  })
+
   it('returns the buttons when the price source is unavailable', async () => {
     vi.stubEnv('VITE_API_BASE_URL', 'https://example.test')
     savedPlayer()

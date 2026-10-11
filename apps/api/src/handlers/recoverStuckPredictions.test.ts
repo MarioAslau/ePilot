@@ -72,6 +72,22 @@ describe('recoverStuckPredictions', () => {
     ])
   })
 
+  it('does not start another recovery execution while one is still running', async () => {
+    const { store, prediction } = await oldRound()
+    const started: string[] = []
+    const result = await handleRecoverStuckPredictions({
+      now: () => new Date('2026-10-11T15:10:00.000Z'),
+      listOverdue: (before) => store.listOverdue(before),
+      describe: async () => 'FAILED',
+      start: async (name) => {
+        started.push(name)
+      },
+      running: [`prediction-${prediction.predictionId}-r1`],
+    })
+    expect(started).toEqual([])
+    expect(result.started).toBe(0)
+  })
+
   it('does not list a round that is not two minutes overdue', async () => {
     const { store } = await oldRound()
     const result = await handleRecoverStuckPredictions({
