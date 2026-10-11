@@ -77,6 +77,13 @@ functions:
       - httpApi:
           path: /me
           method: GET
+  market:
+    handler: src/handlers/market.handler
+    description: Public display quote for BTC-USD
+    events:
+      - httpApi:
+          path: /market
+          method: GET
 
 resources:
   Resources:

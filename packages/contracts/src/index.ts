@@ -87,6 +87,7 @@ export type MeResponse = z.infer<typeof MeResponseSchema>
 
 export const MarketResponseSchema = z.object({
   price: PriceStringSchema,
+  source: z.literal('COINBASE_EXCHANGE'),
   fetchedAt: z.string().datetime(),
   /** Coinbase ticker `time` for this display quote. Not a settlement input. */
   tradeTime: z.string().datetime(),

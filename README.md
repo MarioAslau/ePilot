@@ -5,7 +5,7 @@ or lower after at least one minute.
 
 ## Implementation status
 
-T00 through T05 are complete in the repo. Anonymous player creation and restore work locally with `yarn dev:local`. The deployed site and health API are still the T04 release in `eu-north-1`. Play is not available yet.
+T00 through T06 are complete in the repo. `yarn dev:local` creates a player and shows a real Coinbase BTC-USD price. The hosted site shows that price after the API deploy and the Amplify rebuild. Play is not available yet.
 
 ## Links
 
@@ -18,9 +18,10 @@ T00 through T05 are complete in the repo. Anonymous player creation and restore 
 Implemented:
 - Anonymous player starts with score 0.
 - The browser restores that player and shows the server score.
+- The page shows the latest validated BTC-USD price, its source, its age, and a chart collected on this page.
 
 Planned:
-- Display current score, accuracy stats and latest available BTC/USD price.
+- Display accuracy stats.
 - Predict Up or Down.
 - One active prediction per player.
 - Backend waits at least 60 seconds.
@@ -95,8 +96,9 @@ yarn dev:local
 ```
 
 Open `http://localhost:5173`. The local API supports `POST /api/players`
-and `GET /api/me`, so anonymous creation and restoration can be tested
-without AWS credentials, a deployment or DynamoDB.
+and `GET /api/me`. `GET /api/market` calls the public Coinbase BTC-USD
+ticker, so the price on this page is real. Player records stay in memory
+and do not need AWS credentials, a deployment, or DynamoDB.
 
 Refresh or close and reopen the browser while the command is still running
 to verify restoration. An incognito window creates a different player.
@@ -133,6 +135,15 @@ For the T05 local manual check:
 6. Stop and restart `yarn dev:local`, then refresh the original tab.
 7. Confirm the rejected-player message appears. Choose **Start a new
    player** and confirm a new score-0 identity appears.
+
+For the T06 local price check, with `yarn dev:local` still running:
+
+1. Confirm the price, **Live**, **Coinbase Exchange · BTC-USD**, and an age that counts up and resets about every 5 seconds.
+2. Confirm the chart starts at **Collecting recent prices**, then draws a line. The 1-minute change waits about 60 seconds.
+3. In DevTools, block the `/market` request. Within about 15 seconds the price dims, the pill says **Delayed**, and **Retry** appears. Unblock it and choose **Retry**. It returns to Live.
+4. Hard-refresh while `/market` is still blocked. The pill says **Unavailable** and the page invents no price.
+5. Refresh normally. The chart starts empty again.
+6. Confirm the player ID and score still restore, and no Up or Down button appears.
 
 ## Deployment
 
@@ -210,7 +221,8 @@ Commercial value is a hypothesis, not a demonstrated outcome.
 
 ## Known limitations
 
-- Play is not available yet. Identity restore is complete in the repo. The hosted site shows it after the T05 deploy.
+- Play is not available yet. Identity restore and the display price are in the repo. The hosted site shows them after deploy and the Amplify rebuild of `release`.
+- A new prediction is not rejected for a missing entry quote yet. That check arrives with `POST /predictions`.
 - Anonymous identity is browser-specific. Clearing storage or using another device loses access.
 - Deploy player routes with `--param amplifyOrigin=https://release.d2yczmbttcpoe9.amplifyapp.com`, or the hosted site loses permission to call the API.
 - Market sampling and provider availability affect resolution time.

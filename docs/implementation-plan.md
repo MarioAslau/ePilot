@@ -8,10 +8,10 @@ Then add optional features that demonstrate product judgment.
 
 ## Current progress
 
-- Active ticket: T05
+- Active ticket: T06
 - Status: Complete
 
-- Anonymous create and restore are complete in the repo. The hosted site still serves the T04 health shell until the next API deploy and Amplify build. T06 is not started.
+- Validated BTC-USD display prices are complete in the repo. The hosted site still serves the previous frontend until this API is deployed and Amplify rebuilds `release`. T07 is not started.
 
 ## Working agreement
 
@@ -125,7 +125,7 @@ A local fixture view helps test presentation without waiting for markets. It is 
 
 - [x] T05 — Create and restore anonymous players
 
-- [ ] T06 — Display validated BTC prices
+- [x] T06 — Display validated BTC prices
 
 - [ ] T07 — Create predictions safely
 
@@ -454,7 +454,7 @@ feat: persist anonymous player identity and score
 
 ## T06 — Display validated BTC prices
 
-Status: Not started
+Status: Complete
 
 Dependencies: T05.
 
@@ -474,7 +474,7 @@ Tasks:
 
 - Keep display caching separate from fresh settlement quotes.
 
-- Reject new predictions if a valid entry quote cannot be fetched.
+- Reject new predictions if a valid entry quote cannot be fetched. Deferred to T07. T06 supplies the uncached `fetchTicker` and `ProviderUnavailableError` that the prediction handler will call. There is no `POST /predictions` yet, so this task is not done.
 
 Tests:
 
@@ -1147,6 +1147,31 @@ If time runs short:
 - Decision or tradeoff: Player ids are 8 hex characters, not the 4-character illustration. `GET /me` does not read predictions yet. There is no 3-second score poll. A `401` stays on the saved session until the player chooses "Start a new player". The local API is an in-memory browser-flow adapter, not a DynamoDB emulator.
 - Remaining limitation: The hosted page and API do not include this ticket until deploy. That deploy must pass `--param amplifyOrigin=https://release.d2yczmbttcpoe9.amplifyapp.com`. A lost `POST /players` response can create an extra orphan player on retry, because the token was never saved. Play is still unavailable.
 - Commit: Pending. Suggested message: `feat: persist anonymous player identity and score`
+
+### T06
+
+- Status: Complete. Code is in the repo. The hosted site has not been rebuilt with it.
+- What changed:
+  - `packages/contracts` — `MarketResponse.source` is `COINBASE_EXCHANGE`.
+  - `apps/api/src/coinbase.ts` — uncached `fetchTicker` validates the Coinbase BTC-USD ticker, times out after 3 seconds, and throws `ProviderUnavailableError`. `displayQuote` caches one success for about 3 seconds per warm process and does not cache failures.
+  - `apps/api/src/handlers/market.ts` — public `GET /market`. `isFresh` means the trade is at most 60 seconds old. Provider failure is `503 PROVIDER_UNAVAILABLE`.
+  - `apps/api/serverless.yml` — `GET /market` uses the default log-only role. It cannot read DynamoDB.
+  - `apps/web` — polls `/market` about every 5 seconds. Shows Live, Delayed, or Unavailable, keeps the last price on a later failure, and draws a chart only from samples collected on this page. The 1-minute change waits until a sample is 60 seconds old. The chart line stays inside the card, and its coverage label sits below the line. Up and Down stay hidden.
+  - `yarn dev:local` — `GET /api/market` calls the real Coinbase ticker through `fetchTicker`.
+- Checks run and results:
+  - `yarn workspace api test` — 24/24 passed.
+  - `yarn workspace api typecheck` — exit 0.
+  - `yarn workspace web test` — 20/20 passed.
+  - `yarn workspace web typecheck` — exit 0.
+  - `yarn workspace contracts typecheck` — exit 0.
+  - `yarn lint` — exit 0.
+  - `yarn workspace web build` — exit 0. The local adapter is serve-only.
+  - `yarn serverless package --stage dev --region eu-north-1` — exit 0. Template has `GET /market` on `IamRoleLambdaExecution`. That role can write logs only. Player Lambdas still use `PlayerLambdaRole`.
+  - Local `GET /api/market` returned a fresh `COINBASE_EXCHANGE` quote.
+- Manual verification: Passed locally. On 2026-10-11 Mario ran `yarn dev:local`, started a new player, and saw a live Coinbase price near 83,062, score 0, and the page chart. The first chart drew outside the card. The coverage label now sits inside the card. He marked T06 complete from that check. The hosted site has not been rebuilt.
+- Decision or tradeoff: A provider failure returns 503 and the browser keeps the last price. The server does not send a stale fallback. `/market` is public, with the same cost-abuse acceptance as `/health`. The client shows Delayed when the last good sample is more than 15 seconds old. Rejecting a prediction without an entry quote waits for T07.
+- Remaining limitation: The hosted page does not show this price until the API deploy and the `release` Amplify build. Display age uses the browser clock. The 1-minute change is a display subtraction, not a settlement comparison. The display cache is one quote per warm Lambda, so overlapping containers can each call Coinbase.
+- Commit: Pending. Suggested message: `feat: display validated BTC market prices`
 
 ### Future entry template
 

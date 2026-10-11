@@ -1,8 +1,10 @@
 import { useQuery, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { CreatePlayerResponseSchema, MeResponseSchema, type MeResponse } from 'contracts'
 import { useState } from 'react'
+import { HttpError, readJson } from './api'
 import { AppHeader } from './components/AppHeader'
 import { HowItWorks } from './components/HowItWorks'
+import { MarketCard } from './components/MarketCard'
 import { StatusNotice } from './components/StatusNotice'
 import {
   clearSession,
@@ -11,6 +13,7 @@ import {
   writeSession,
   type Session,
 } from './session'
+import { useMarket } from './useMarket'
 
 const SCORE_COPY = 'Your score is saved on our server. This browser remembers your anonymous player.'
 const STORAGE_LIMIT =
@@ -18,21 +21,6 @@ const STORAGE_LIMIT =
 
 function apiBaseUrl(): string {
   return (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
-}
-
-class HttpError extends Error {
-  readonly status: number
-
-  constructor(status: number) {
-    super(`HTTP ${status}`)
-    this.name = 'HttpError'
-    this.status = status
-  }
-}
-
-async function readJson(response: Response): Promise<unknown> {
-  if (!response.ok) throw new HttpError(response.status)
-  return response.json()
 }
 
 async function createPlayer(baseUrl: string): Promise<Session> {
@@ -75,6 +63,7 @@ function PlayerStatus() {
 
   const me = player.data
   const rejected = player.error instanceof HttpError && player.error.status === 401
+  const market = useMarket(baseUrl)
 
   return (
     <>
@@ -82,6 +71,23 @@ function PlayerStatus() {
       <main>
         <div className="layout">
           <div className="col">
+            {baseUrl && (
+              <MarketCard
+                price={market.price}
+                status={market.status}
+                ageSeconds={market.ageSeconds}
+                samples={market.samples}
+                now={market.now}
+                showPrediction={false}
+              />
+            )}
+            {market.price && market.errored && (
+              <StatusNotice
+                kind="warn"
+                message="Price updates are delayed. Showing the last known price."
+                action={{ label: 'Retry', onClick: () => void market.refetch() }}
+              />
+            )}
             {!baseUrl && (
               <StatusNotice
                 kind="error"

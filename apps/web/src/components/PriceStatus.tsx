@@ -1,17 +1,15 @@
-import { TrendingDown, TrendingUp } from 'lucide-react'
-
 type Status = 'loading' | 'live' | 'stale' | 'unavailable'
 
 interface Props {
   price: string | null
   status: Status
-  lastUpdated?: Date
+  ageSeconds?: number
 }
 
 function PillLabel({ status }: { status: Status }) {
   if (status === 'loading') return <span className="pill neutral"><span className="dot" />Loading…</span>
-  if (status === 'live')    return <span className="pill live"><span className="dot" />Live</span>
-  if (status === 'stale')   return <span className="pill delayed"><span className="dot" />Delayed</span>
+  if (status === 'live') return <span className="pill live"><span className="dot" />Live</span>
+  if (status === 'stale') return <span className="pill delayed"><span className="dot" />Delayed</span>
   return <span className="pill unavail"><span className="dot" />Unavailable</span>
 }
 
@@ -22,12 +20,20 @@ function formatPrice(raw: string | null): string {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+function ageLabel(status: Status, ageSeconds: number | undefined): string | null {
+  if (ageSeconds === undefined || status === 'loading' || status === 'unavailable') return null
+  const age = `Updated ${ageSeconds} seconds ago · Coinbase`
+  if (status === 'stale') return `Last known price, updated ${ageSeconds} seconds ago · Coinbase`
+  return age
+}
+
 /**
- * Displays the live BTC/USD price with freshness status pill.
- * Skeleton shown while loading; stale prices are visually dimmed.
+ * Displays the BTC/USD price with a freshness pill.
+ * A stale price is dimmed. Age uses the browser receive time.
  */
-export function PriceStatus({ price, status, lastUpdated }: Props) {
+export function PriceStatus({ price, status, ageSeconds }: Props) {
   const formatted = formatPrice(price)
+  const age = ageLabel(status, ageSeconds)
 
   return (
     <div>
@@ -47,25 +53,11 @@ export function PriceStatus({ price, status, lastUpdated }: Props) {
             {formatted}
           </p>
         )}
-        {status === 'live' && (
-          <span className="tick-ind up" aria-hidden="true">
-            <TrendingUp className="ic" size={14} />
-          </span>
-        )}
-        {status === 'unavailable' && (
-          <span className="tick-ind down" aria-hidden="true">
-            <TrendingDown className="ic" size={14} />
-          </span>
-        )}
       </div>
 
       <div className="mk-meta">
         <span>Coinbase Exchange · BTC-USD</span>
-        {lastUpdated && (
-          <span className="num">
-            Updated {lastUpdated.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-          </span>
-        )}
+        {age && <span className="num">{age}</span>}
       </div>
     </div>
   )

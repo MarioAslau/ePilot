@@ -11,7 +11,8 @@
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1149.0",
     "@aws-sdk/lib-dynamodb": "^3.1149.0",
-    "contracts": "*"
+    "contracts": "*",
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.145",
