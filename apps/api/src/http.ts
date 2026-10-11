@@ -13,3 +13,11 @@ export function unauthorized(requestId: string) {
     requestId,
   })
 }
+
+export function providerUnavailable(requestId: string) {
+  return json(503, {
+    code: 'PROVIDER_UNAVAILABLE',
+    message: 'Price source is unavailable',
+    requestId,
+  })
+}

@@ -1,38 +1,50 @@
-import { PriceStatus } from './PriceStatus'
+import { type PriceSample } from '../market'
+import { PriceChart } from './PriceChart'
 import { PredictionPanel } from './PredictionPanel'
+import { PriceStatus } from './PriceStatus'
 
 type Status = 'loading' | 'live' | 'stale' | 'unavailable'
 
 interface Props {
   price: string | null
   status: Status
-  lastUpdated?: Date
+  ageSeconds?: number
+  samples?: PriceSample[]
+  now?: number
+  showPrediction?: boolean
   onPredict?: (direction: 'UP' | 'DOWN') => void
   isSubmitting?: boolean
 }
 
 /**
- * Left-column card: current BTC/USD price + prediction interaction.
- * Two sub-sections separated by the .stage-play border:
- *  - Market info (pair, price, status pill)
- *  - Prediction panel (headline, direction buttons)
+ * Left-column card: current BTC/USD price and, in fixtures, the prediction panel.
  */
-export function MarketCard({ price, status, lastUpdated, onPredict, isSubmitting }: Props) {
+export function MarketCard({
+  price,
+  status,
+  ageSeconds,
+  samples,
+  now,
+  showPrediction = true,
+  onPredict,
+  isSubmitting,
+}: Props) {
   return (
     <article className="card stage" aria-label="BTC/USD market and prediction">
-      {/* Market price section */}
       <div>
-        <PriceStatus price={price} status={status} lastUpdated={lastUpdated} />
+        <PriceStatus price={price} status={status} ageSeconds={ageSeconds} />
+        {samples && <PriceChart samples={samples} now={now ?? Date.now()} />}
       </div>
 
-      {/* Prediction interaction section */}
-      <div className="stage-play">
-        <PredictionPanel
-          price={price}
-          onPredict={onPredict}
-          isSubmitting={isSubmitting ?? false}
-        />
-      </div>
+      {showPrediction && (
+        <div className="stage-play">
+          <PredictionPanel
+            price={price}
+            onPredict={onPredict}
+            isSubmitting={isSubmitting ?? false}
+          />
+        </div>
+      )}
     </article>
   )
 }

@@ -1,3 +1,4 @@
+import { fetchTicker, isFreshTrade } from '../../apps/api/src/coinbase.ts'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
@@ -42,6 +43,34 @@ function localPlayerApi(): Plugin {
               accessToken: player.accessToken,
             }),
           )
+          return
+        }
+
+        if (request.method === 'GET' && pathname === '/api/market') {
+          try {
+            const quote = await fetchTicker()
+            const now = new Date()
+            response.setHeader('Content-Type', 'application/json')
+            response.end(
+              JSON.stringify({
+                price: quote.price,
+                source: 'COINBASE_EXCHANGE',
+                fetchedAt: quote.fetchedAt,
+                tradeTime: quote.tradeTime,
+                isFresh: isFreshTrade(quote.tradeTime, now),
+              }),
+            )
+          } catch {
+            response.statusCode = 503
+            response.setHeader('Content-Type', 'application/json')
+            response.end(
+              JSON.stringify({
+                code: 'PROVIDER_UNAVAILABLE',
+                message: 'Price source is unavailable',
+                requestId: 'local',
+              }),
+            )
+          }
           return
         }
 

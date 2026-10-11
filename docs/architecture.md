@@ -2,7 +2,7 @@
 
 ## Status
 
-T05 is complete in the repo. `POST /players` and `GET /me` create and restore an anonymous player. The hosted site still serves the T04 health shell until the next API deploy and Amplify build. Prices, predictions and settlement are not implemented yet.
+T06 is complete in the repo. `GET /market` returns a validated Coinbase BTC-USD quote. Predictions and settlement are not implemented yet. The hosted site shows the price after the API deploy and the Amplify rebuild of `release`.
 
 ## Product goal
 
@@ -188,7 +188,7 @@ Do not log tokens or render unsafe user-provided HTML.
   Return authenticated player score and active/latest prediction.
 
 - GET /market
-  Return latest available display price and metadata.
+  Public display quote. Returns `price`, `source: COINBASE_EXCHANGE`, `fetchedAt`, `tradeTime`, and `isFresh`. No player token. Provider failure is `503 PROVIDER_UNAVAILABLE`. This quote is not a settlement input.
 
 - POST /predictions
   Accept direction and idempotency key.
@@ -306,10 +306,16 @@ Formatting/rounding is only for display.
 
 Store provider observation time where available and fetchedAt.
 Reject malformed or unusably stale settlement data.
-Document freshness policy when the provider adapter is implemented.
 
-Display prices may be cached.
-Entry and resolution quotes follow their own freshness requirements.
+Display freshness, implemented with `GET /market`:
+
+- `fetchTicker` calls the public Coinbase Exchange BTC-USD ticker, sends a User-Agent, and aborts after 3 seconds. It validates `price` as a positive decimal string and `time` as an ISO datetime. Coinbase microseconds are trimmed to milliseconds. This function is uncached so entry and resolution quotes can reuse it.
+- `isFresh` is true when the trade time is at most 60 seconds before the Lambda clock.
+- `displayQuote` keeps one successful quote for about 3 seconds in a warm Lambda. Failures are not cached. A provider failure returns 503. The browser keeps the last price and labels it Delayed.
+- The browser polls about every 5 seconds. It shows Delayed when the latest poll failed, `isFresh` is false, or the last good sample is more than 15 seconds old by the browser clock. Age is measured from when this browser received the quote.
+- The chart stores fresh samples from the current page only, for about 10 minutes. It does not invent earlier history. The 1-minute change stays hidden until a sample is at least 60 seconds old.
+
+Entry and resolution quotes follow their own freshness requirements and must call `fetchTicker`, not `displayQuote`.
 
 ## Concurrency and idempotency
 
@@ -750,11 +756,12 @@ Test DynamoDB concurrency conditions with an isolated datastore.
 Use one deterministic browser journey.
 Manually smoke-test real deployed 60-second resolution.
 
-`yarn dev:local` mounts a development-only in-memory player API under Vite
-at `/api`. It supports player creation and restoration for the lifetime of
-the dev-server process. It deliberately does not emulate DynamoDB, API
-Gateway, IAM or production token hashing. Production handler tests cover
-token hashing. The next deploy is what proves those AWS settings.
+`yarn dev:local` mounts a development-only player API under Vite at `/api`.
+Player records last for the dev-server process. `GET /api/market` calls the
+real Coinbase ticker through `fetchTicker`, so the local page shows a real
+price and the same validation. It does not emulate DynamoDB, API Gateway,
+IAM, or the display cache. Production handler tests cover token hashing and
+the market response. The next deploy is what proves the AWS settings.
 
 ## Operational runbook
 
