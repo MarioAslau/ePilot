@@ -9,6 +9,7 @@ export function usePrediction(
   baseUrl: string,
   session: Session | null,
   onFinished: (outcome: 'placed' | 'rejected', code?: string) => void,
+  onReconcile?: () => void,
 ) {
   const [phase, setPhase] = useState<'idle' | 'recording' | 'unknown'>('idle')
   const [notice, setNotice] = useState<string | null>(null)
@@ -60,6 +61,7 @@ export function usePrediction(
 
     setPhase('unknown')
     setNotice('Checking whether your prediction was recorded…')
+    onReconcile?.()
     if (attempts.current < RETRY_MS.length) {
       const delay = RETRY_MS[attempts.current] ?? 4_000
       attempts.current += 1

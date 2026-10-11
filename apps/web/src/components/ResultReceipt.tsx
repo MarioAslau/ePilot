@@ -52,7 +52,7 @@ export function ResultReceipt({
     <aside className={`receipt ${isWin ? 'win' : 'loss'}`} aria-label={`Result: ${outcome}`}>
       <div className="rc-top">
         <div>
-          <p className="rc-title">{isWin ? 'Correct' : 'Not this time'}</p>
+          <p className="rc-title" id="receipt-heading" tabIndex={-1}>{isWin ? 'Correct' : 'Not this time'}</p>
           <p className="rc-sub">
             {isUp
               ? <><ChevronUp className="ic" size={12} aria-hidden="true" /> Predicted Up</>
