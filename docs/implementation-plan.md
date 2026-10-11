@@ -8,10 +8,10 @@ Then add optional features that demonstrate product judgment.
 
 ## Current progress
 
-- Active ticket: T12
-- Status: Awaiting manual verification
+- Active ticket: none
+- Status: T12 complete
 
-T12 Momentum Double Down is implemented locally and awaiting Mario's check. The flag is off unless a deploy passes `--param doubleDown=on`. `yarn dev:local` defaults it on. History and Double Down are not on the hosted site until the next API deploy and Amplify rebuild. On 2026-10-11 Mario pressed Up on the hosted site, closed the tab, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14. Do not start T13.
+T12 is complete. Mario marked the local Double Down check done on 2026-10-11. The flag is off unless a deploy passes `--param doubleDown=on`. `yarn dev:local` defaults it on. History and Double Down are not on the hosted site until the next API deploy and Amplify rebuild. On 2026-10-11 Mario pressed Up on the hosted site, closed the tab, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14. T13 has not started.
 
 ## Working agreement
 
@@ -111,7 +111,7 @@ The HTML uses a seeded random price walk, an in-page mock server, fake in-memory
 | T09 | Complete exceptional states, focus, responsive polish and repeat-play/restoration behaviour. |
 | T10 | Verified deployed MVP; extras begin only after this gate. |
 | T11 | Real history. Complete locally on 2026-10-11. Not on the hosted site until the next deploy. |
-| T12 | Momentum Double Down. Implemented locally. Awaiting Mario's check. Off on a deploy unless `--param doubleDown=on`. |
+| T12 | Momentum Double Down. Complete locally on 2026-10-11. Off on a deploy unless `--param doubleDown=on`. Not on the hosted site until the next deploy. |
 | T13 | Redemption. Not started. |
 
 A local fixture view helps test presentation without waiting for markets. It is not proof of backend fairness. Each backend ticket gets API/integration checks and its relevant browser checkpoint.
@@ -139,7 +139,7 @@ A local fixture view helps test presentation without waiting for markets. It is 
 
 - [x] T11 — Add persisted history and progression
 
-- [ ] T12 — Add Momentum Double Down
+- [x] T12 — Add Momentum Double Down
 
 - [ ] T13 — Add Redemption Round
 
@@ -811,7 +811,7 @@ feat: add prediction history and transparent progress
 
 ## T12 — Momentum Double Down
 
-Status: Awaiting manual verification
+Status: Complete
 
 Dependencies: T11 and reliable resolution. T11 is complete locally.
 
@@ -1332,7 +1332,7 @@ If time runs short:
 
 ### T12
 
-- Status: Awaiting manual verification. Not deployed. T13 has not started.
+- Status: Complete. Mario marked the local check done on 2026-10-11. Not deployed. T13 has not started.
 - What changed:
   - A standard win creates one Double Down offer when `FEATURE_DOUBLE_DOWN` is `on`. The offer id is `o_` plus the parent prediction id. The deadline is an ISO string, because a numeric `expiresAt` would be deleted by the table TTL. Expiry is derived on read. Need more time adds 20 seconds, at most 10 times.
   - Accept starts a `DOUBLE_DOWN` round in the parent's direction, with a fresh entry and the same 60-second wait. `evaluate()` stays ±1. `scoreFor` maps a bonus round to ±2. The original +1 is not rewritten. A bonus win does not create another offer. Decline, expiry, and a new standard round end the offer. Accept and create cannot both succeed.
@@ -1345,7 +1345,7 @@ If time runs short:
   - `yarn workspace web build` — exit 0. `apps/web/dist` does not contain `FixtureApp` or `__dev/next-prediction`.
   - `yarn workspace web e2e` — 2 passed. The second journey accepts a stubbed offer, shows the pair total +3, the expiry copy after the tab has seen the offer, and the replaced notice. The viewport is 375px wide.
   - `yarn serverless package --stage dev --region eu-north-1` from `apps/api` — exit 0. The template has the three offer routes, `OfferLambdaRole`, `FEATURE_DOUBLE_DOWN`, and `dynamodb:PutItem` on the resolver. It has no `dynamodb:Scan`. Lambda still reports the known `nodejs20.x` deprecation warning.
-- Manual verification: Not confirmed by Mario. During implementation, `?fixture=dd-offer` showed +1 kept, pair +3 and −1, identical Double down and No thanks buttons, and Up/Down under the title “Nice call. Bonus round?”. A local `next-resolution-win` round in the browser settled Correct, score +1, and the tab then showed “Offer ended. Your +1 is kept.” after the 10-second window. The hosted site is unchanged.
+- Manual verification: Mario marked T12 complete on 2026-10-11. During implementation, `?fixture=dd-offer` showed +1 kept, pair +3 and −1, identical Double down and No thanks buttons, and Up/Down under the title “Nice call. Bonus round?”. A local `next-resolution-win` round in the browser settled Correct, score +1, and the tab then showed “Offer ended. Your +1 is kept.” after the 10-second window. The hosted site is unchanged.
 - Decision or tradeoff: The offer deadline is an ISO string so the idempotency TTL does not delete it. See D7. The initial window stays 10 seconds. Need more time is the WCAG 2.2.1 extension, 20 seconds, 10 times. Wins and losses still count a bonus round as one round.
 - Remaining limitation: Hosted Double Down stays off until a deploy passes `--param doubleDown=on`. The DynamoDB race tests did not run on this machine. A bonus round still takes at least 60 seconds.
 - Commit: Pending. Suggested message: `feat: add optional momentum double-down rounds`

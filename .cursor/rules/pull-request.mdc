@@ -1,0 +1,56 @@
+---
+description: Pull request creation for the Hunch BTC prediction game. Use when writing a PR title, body, or gh pr create.
+alwaysApply: false
+---
+
+# Pull requests
+
+Small focused PRs. Conventional Commit titles. Every section below filled in. Target `main`.
+
+## Title
+
+`<type>[optional scope]: <description>`. Imperative, specific, under 72 characters.
+
+Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `ci`.
+
+| Good | Bad |
+|------|-----|
+| `feat: add optional momentum double-down rounds` | `Add some stuff` |
+| `fix: keep offer deadlines out of the table TTL` | `fixing bug` |
+| `test: cover the double-down offer journey` | `tests` |
+
+## Branch
+
+`<type>/T<nn>-<short-kebab-description>`, matching the ticket. Example: `feat/T12-add-double-down`. Lowercase. No force push after the first review; add commits instead.
+
+## Body
+
+Fill every section. There is no separate template file.
+
+- **Description.** What changed and why. Name the constraint or tradeoff when one drove the design.
+- **Changelog.** User-facing lines in past participle (`Added`, `Fixed`), or `CHANGELOG entry: null` when nothing user-facing changed.
+- **Related.** `Fixes: #N` or `Closes: #N` when a GitHub issue exists. Otherwise `Refs: T<nn>` and `docs/implementation-plan.md`.
+- **Manual testing.** Gherkin: `Scenario`, `Given`, `When`, `Then`. One scenario per path, including the failure path.
+- **Screenshots.** Required when UI changes. Say which states, and leave the item unchecked until images are attached.
+- **Pre-merge checklist.** Include every item. Check it when it passed or does not apply, and say why it does not apply. Leave it unchecked when it is still open.
+
+## Checklist
+
+- [ ] Title follows the format above
+- [ ] `yarn typecheck`, `yarn lint`, and `yarn test` passed
+- [ ] UI changes ran `yarn workspace web build` and `yarn workspace web e2e`
+- [ ] API, IAM, or workflow changes ran `yarn serverless package --stage dev --region eu-north-1`
+- [ ] DynamoDB cases are in CI, or the skip is stated because `DYNAMODB_ENDPOINT` was unset
+- [ ] No secrets, access tokens, or token hashes in the diff or the description
+- [ ] Production still waits at least 60 seconds before settlement
+- [ ] `docs/implementation-plan.md` status and diary match what shipped
+- [ ] Author ran the manual scenarios
+- [ ] Screenshots attached for UI changes, or the section says there is no UI change
+
+## Opening the PR
+
+Create it as a draft assigned to the author. Mark it ready only after the checks passed, the manual scenarios were run, and the checklist is filled in honestly. Do not push or open the PR unless asked.
+
+```bash
+gh pr create --title "feat: add optional momentum double-down rounds" --assignee @me --draft --base main
+```

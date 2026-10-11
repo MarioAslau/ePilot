@@ -5,7 +5,7 @@ or lower after at least one minute.
 
 ## Implementation status
 
-T00 through T11 are complete. T12 Momentum Double Down is implemented locally and awaiting a manual check. The hosted site at `https://release.d2yczmbttcpoe9.amplifyapp.com` calls the deployed API and does not include history or Double Down until the next API deploy and Amplify rebuild. A deploy leaves Double Down off unless it passes `--param doubleDown=on`. On 2026-10-11 a hosted Up round was still running when the tab was closed, and after 5 minutes it had settled as a loss. The fuller pass before submission is the T14 section of `docs/implementation-plan.md`.
+T00 through T12 are complete. Mario marked the local Double Down check done on 2026-10-11. The hosted site at `https://release.d2yczmbttcpoe9.amplifyapp.com` calls the deployed API and does not include history or Double Down until the next API deploy and Amplify rebuild. A deploy leaves Double Down off unless it passes `--param doubleDown=on`. On 2026-10-11 a hosted Up round was still running when the tab was closed, and after 5 minutes it had settled as a loss. The fuller pass before submission is the T14 section of `docs/implementation-plan.md`.
 
 ## Links
 

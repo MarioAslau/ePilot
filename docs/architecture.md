@@ -2,7 +2,7 @@
 
 ## Status
 
-T11 is complete. Mario confirmed the local history check on 2026-10-11. T12 Momentum Double Down is implemented locally and awaiting Mario's check. The flag defaults off. `yarn dev:local` defaults it on. The hosted site `https://release.d2yczmbttcpoe9.amplifyapp.com` still shows the T10 build until the next API deploy and Amplify rebuild. History and Double Down are in the packaged template and are not in the account until that deploy. T10's hosted check still stands: on 2026-10-11 Mario pressed Up, closed the tab while the round was running, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14.
+T11 and T12 are complete locally. Mario confirmed history on 2026-10-11 and marked Double Down done the same day. The Double Down flag defaults off. `yarn dev:local` defaults it on. The hosted site `https://release.d2yczmbttcpoe9.amplifyapp.com` still shows the T10 build until the next API deploy and Amplify rebuild. History and Double Down are in the packaged template and are not in the account until that deploy. A deploy leaves Double Down off unless it passes `--param doubleDown=on`. T10's hosted check still stands: on 2026-10-11 Mario pressed Up, closed the tab while the round was running, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14.
 
 ## Product goal
 

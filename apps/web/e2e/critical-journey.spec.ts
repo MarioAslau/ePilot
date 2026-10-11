@@ -135,17 +135,22 @@ test('plays one round and can place another', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Your prediction' })).toBeVisible()
   expect(playerPosts).toBe(postsAfterCreate)
 
+  // Pause inside the page. A separate pauseAt(Date.now()) can already be in the
+  // past, because wall time keeps moving the fake clock. Then advance in 5s
+  // steps, under the 8s /me abort, until the deadline has passed.
+  await page.evaluate(async () => {
+    const clock = (globalThis as unknown as { __pwClock: { controller: { pauseAt: (time: number) => Promise<void> } } }).__pwClock
+    await clock.controller.pauseAt(Date.now())
+  })
   serverNow = dueAt
-  // runFor repeats the 1s countdown. fastForward fires it once, so the minute never elapses.
-  // Each chunk stays under the 8s /me abort.
-  for (let step = 0; step < 12; step += 1) {
+  for (let step = 0; step < 13; step += 1) {
     await page.clock.runFor(5_000)
   }
   await expect(page.getByText('Comparing prices')).toBeVisible()
   await expect(page.locator('#receipt-heading')).toHaveCount(0)
 
   phase = 'settled'
-  await page.clock.runFor(2_000)
+  await page.clock.runFor(3_000)
   await expect(page.locator('#receipt-heading')).toHaveText('Correct')
   await expect(score).toContainText('+1')
   const rounds = page.getByRole('region', { name: 'Your rounds' })
