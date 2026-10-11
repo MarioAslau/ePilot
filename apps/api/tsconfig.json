@@ -2,8 +2,9 @@
   "compilerOptions": {
     "composite": true,
     "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
     "outDir": "dist",
     "declaration": true,
     "declarationDir": "dist/types",
@@ -13,7 +14,5 @@
     "resolveJsonModule": true
   },
   "include": ["src"],
-  "references": [
-    { "path": "../../packages/contracts" }
-  ]
+  "exclude": ["src/**/*.test.ts"]
 }

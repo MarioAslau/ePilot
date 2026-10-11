@@ -2,7 +2,7 @@
 
 ## Status
 
-T04 is complete. The dev API and hosted shell are deployed in `eu-north-1`. `GET /health` is live, and the site at `https://release.d2yczmbttcpoe9.amplifyapp.com` shows whether that check succeeded. Player identity, prices, predictions and settlement are not implemented yet.
+T05 is complete in the repo. `POST /players` and `GET /me` create and restore an anonymous player. The hosted site still serves the T04 health shell until the next API deploy and Amplify build. Prices, predictions and settlement are not implemented yet.
 
 ## Product goal
 
@@ -146,14 +146,16 @@ Do not introduce a separate Amplify-managed backend.
 
 On first visit, `POST /players` generates two values:
 
-- **Player ID** — a short human-readable identifier (e.g. `anon_7F3A`).
-  Public. Returned to the browser and stored in DynamoDB.
+- **Player ID** — `anon_` plus 8 hex characters (for example `anon_ab12cd34`).
+  The shorter `anon_7F3A` form in early notes is only an illustration.
+  Public. Returned to the browser and stored in DynamoDB. A colliding id
+  is rejected by a conditional write and the create call tries a new id.
 - **Access token** — `crypto.randomBytes(32).toString('hex')`, 64 hex
   characters, 256 bits of entropy. Secret. Returned to the browser in
   the response body once and never stored on the server.
 
-The browser saves both to `localStorage`. Every subsequent authenticated
-request sends them in an `Authorization` header.
+The browser saves both in `localStorage` under `hunch.session`. Every
+authenticated request sends `Authorization: Bearer <playerId>.<accessToken>`.
 
 The backend stores only the SHA-256 hash of the raw token
 (`crypto.createHash('sha256').update(token).digest('hex')`) on the
@@ -247,7 +249,9 @@ Only `PROVIDER_UNAVAILABLE` is in `RECOVERABLE_ERROR_CODES`.
 
 ## Proposed data model
 
-Use one DynamoDB table named `hunch-<stage>`. Partition key `pk` and sort key `sk` are strings. Billing is on-demand. Streams are off. No GSI yet; player history must not scan the table, and its index waits until history is implemented. The dev table is retained if the stack is deleted. The health Lambda cannot read or write it.
+Use one DynamoDB table named `hunch-<stage>`. Partition key `pk` and sort key `sk` are strings. Billing is on-demand. Streams are off. No GSI yet; player history must not scan the table, and its index waits until history is implemented. The dev table is retained if the stack is deleted. The health Lambda cannot read or write it. Player Lambdas can `GetItem` and `PutItem` only, through a separate role.
+
+A player item uses `pk = PLAYER#<playerId>` and `sk = PLAYER`. `GET /me` returns `activePrediction`, `latestResolvedPrediction` and `waitReason` as `null` until a prediction writer exists.
 
 Player:
 - playerId
@@ -745,6 +749,12 @@ Inject clocks and price providers.
 Test DynamoDB concurrency conditions with an isolated datastore.
 Use one deterministic browser journey.
 Manually smoke-test real deployed 60-second resolution.
+
+`yarn dev:local` mounts a development-only in-memory player API under Vite
+at `/api`. It supports player creation and restoration for the lifetime of
+the dev-server process. It deliberately does not emulate DynamoDB, API
+Gateway, IAM or production token hashing. Production handler tests cover
+token hashing. The next deploy is what proves those AWS settings.
 
 ## Operational runbook
 

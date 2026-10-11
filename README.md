@@ -5,7 +5,7 @@ or lower after at least one minute.
 
 ## Implementation status
 
-T00 through T04 are complete. The dev site and health API are deployed in `eu-north-1`. The page reports whether `GET /health` succeeded. Play is not available yet.
+T00 through T05 are complete in the repo. Anonymous player creation and restore work locally with `yarn dev:local`. The deployed site and health API are still the T04 release in `eu-north-1`. Play is not available yet.
 
 ## Links
 
@@ -15,8 +15,11 @@ T00 through T04 are complete. The dev site and health API are deployed in `eu-no
 
 ## Standard functionality
 
-Planned:
+Implemented:
 - Anonymous player starts with score 0.
+- The browser restores that player and shows the server score.
+
+Planned:
 - Display current score, accuracy stats and latest available BTC/USD price.
 - Predict Up or Down.
 - One active prediction per player.
@@ -60,10 +63,10 @@ Their precise rules and availability will be documented when implemented.
 - .cursor/rules/project-workflow.mdc: agent working instructions.
 - docs/implementation-plan.md: tickets, checkpoints and diary.
 - docs/architecture.md: design, decisions and recovery guidance.
-- apps/web: frontend, planned.
-- apps/api: backend and infrastructure, planned.
+- apps/web: React frontend.
+- apps/api: Lambda handlers and Serverless infrastructure.
 - packages/contracts: shared Zod schemas, types and the scoring evaluator.
-- .cursor/skills: verified project skills, planned.
+- .cursor/skills: verified project skills.
 
 ## Prerequisites
 
@@ -79,21 +82,57 @@ Never commit AWS credentials or anonymous player tokens.
 
 ## Local development
 
-Not implemented yet.
-Add verified installation, environment and startup instructions at T02.
+Install dependencies once from the repository root:
+
+```bash
+yarn install
+```
+
+Run the frontend with a development-only in-memory player API:
+
+```bash
+yarn dev:local
+```
+
+Open `http://localhost:5173`. The local API supports `POST /api/players`
+and `GET /api/me`, so anonymous creation and restoration can be tested
+without AWS credentials, a deployment or DynamoDB.
+
+Refresh or close and reopen the browser while the command is still running
+to verify restoration. An incognito window creates a different player.
+Restarting `yarn dev:local` clears the in-memory players; the browser will
+then show that its saved player was rejected. Choose **Start a new player**
+to recover.
+
+This adapter checks the browser flow. Automated API tests cover the
+production handlers and token hashing. DynamoDB, IAM and API Gateway are
+proven by the next deploy, not by this local process.
+
+To run the frontend against the deployed API instead, copy `.env.example`
+to `.env`, set `VITE_API_BASE_URL`, and run:
+
+```bash
+yarn dev
+```
 
 ## Testing
 
-Not implemented yet.
+Run all currently implemented automated checks:
 
-Planned coverage:
-- Time and scoring rules.
-- Equal-price handling.
-- Provider failures.
-- Concurrent prediction creation.
-- Duplicate settlement.
-- Identity restoration.
-- Critical browser journey.
+```bash
+yarn check
+```
+
+For the T05 local manual check:
+
+1. Remove `hunch.session` in DevTools under Application → Local Storage.
+2. Run `yarn dev:local` and open `http://localhost:5173`.
+3. Confirm a player ID is shown with score 0.
+4. Refresh, then close and reopen the tab. Confirm the same ID returns.
+5. Open an incognito window. Confirm it receives a different ID.
+6. Stop and restart `yarn dev:local`, then refresh the original tab.
+7. Confirm the rejected-player message appears. Choose **Start a new
+   player** and confirm a new score-0 identity appears.
 
 ## Deployment
 
@@ -102,7 +141,7 @@ The dev API and website are deployed in `eu-north-1`, stage `dev`.
 - Website: `https://release.d2yczmbttcpoe9.amplifyapp.com`
 - Health check: `https://6n3p7430tg.execute-api.eu-north-1.amazonaws.com/health` returns `{"status":"ok"}`. That URL is public. It is not an AWS access key.
 
-The hosted page says **Backend connected.** Play is not available yet.
+The hosted page still says **Backend connected.** and **Play is not available yet.** It shows the new player flow after the T05 API deploy and the following Amplify build.
 
 This project account is locked to Europe (Stockholm). These steps assume an AWS account and a configured CLI. They do not create the account.
 
@@ -146,19 +185,20 @@ detects the stuck prediction within five minutes and restarts it.
 
 ## Anonymous persistence
 
-No account or login required. On first visit the backend creates a player
-and generates a random secret token (256-bit, cryptographically random).
-The token is returned to your browser once and saved to `localStorage`.
-The backend stores only a hash of that token — never the token itself —
-so a database breach cannot impersonate players.
+No account or login required. On first visit `POST /players` creates a player
+at score 0 and returns a random secret token (256-bit, cryptographically random)
+once. The browser saves the player id and token in `localStorage` under
+`hunch.session`. The backend stores only a SHA-256 hash of that token.
 
-On every return visit your browser sends the stored token. The backend
-hashes it, matches it to the stored hash, and restores your score and
-active round. The token never leaves your browser except in API requests
-over HTTPS.
+On every return visit the browser sends `Authorization: Bearer <playerId>.<accessToken>`
+to `GET /me`. The backend hashes the token, compares it with `timingSafeEqual`,
+and restores the score. There is no active round yet, so that field is empty.
+A failed restore keeps the saved session and offers retry. It does not create
+a replacement player. A rejected token stays saved until you choose to start again.
 
-Clearing browser storage loses anonymous access. Cross-device restoration
-is outside the initial scope.
+Clearing browser storage loses access to that player. The DynamoDB record remains.
+Another device, or a private window, creates a different player. The token is
+exposed if the page has an XSS flaw. This is anonymous continuity, not an account.
 
 ## Product rationale
 
@@ -170,8 +210,9 @@ Commercial value is a hypothesis, not a demonstrated outcome.
 
 ## Known limitations
 
-- Application is not implemented yet.
-- Anonymous identity will be browser-specific.
+- Play is not available yet. Identity restore is complete in the repo. The hosted site shows it after the T05 deploy.
+- Anonymous identity is browser-specific. Clearing storage or using another device loses access.
+- Deploy player routes with `--param amplifyOrigin=https://release.d2yczmbttcpoe9.amplifyapp.com`, or the hosted site loses permission to call the API.
 - Market sampling and provider availability affect resolution time.
 - Optional game-mode rules remain proposed until confirmed.
 
