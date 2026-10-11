@@ -1,124 +1,106 @@
-import { fetchTicker, isFreshTrade } from '../../apps/api/src/coinbase.ts'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import { fileURLToPath } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 
-interface LocalPlayer {
-  playerId: string
-  accessToken: string
-  createdAt: string
+type DevFault = 'drop-response' | 'provider-down'
+
+interface LocalResult {
+  statusCode: number
+  body?: string
 }
 
-function randomHex(byteLength: number): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(byteLength))
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+interface LocalApp {
+  consumeFault: () => DevFault | null
+  handle: (
+    method: string,
+    path: string,
+    authorization: string | undefined,
+    rawBody: string | undefined,
+    fault: DevFault | null,
+  ) => Promise<LocalResult | null>
 }
 
-function localPlayerApi(): Plugin {
-  const players = new Map<string, LocalPlayer>()
+function readBody(request: {
+  on(event: 'data' | 'end' | 'error', listener: (value?: unknown) => void): void
+}): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Uint8Array[] = []
+    request.on('data', (chunk) => {
+      if (typeof chunk === 'string') chunks.push(new TextEncoder().encode(chunk))
+      else if (chunk instanceof Uint8Array) chunks.push(chunk)
+    })
+    request.on('end', () => {
+      const length = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
+      const body = new Uint8Array(length)
+      let offset = 0
+      for (const chunk of chunks) {
+        body.set(chunk, offset)
+        offset += chunk.length
+      }
+      resolve(new TextDecoder().decode(body))
+    })
+    request.on('error', () => reject(new Error('Could not read the request body')))
+  })
+}
 
+function localApi(): Plugin {
   return {
-    name: 'local-player-api',
+    name: 'local-api',
     apply: 'serve',
-    configureServer(server) {
+    async configureServer(server) {
+      const loaded = (await server.ssrLoadModule(
+        fileURLToPath(new URL('../api/src/localDev.ts', import.meta.url)),
+      )) as { createLocalApp: () => LocalApp }
+      const app = loaded.createLocalApp()
+
       server.middlewares.use(async (request, response, next) => {
         const pathname = new URL(request.url ?? '/', 'http://localhost').pathname
+        if (!pathname.startsWith('/api/')) {
+          next()
+          return
+        }
 
-        if (request.method === 'POST' && pathname === '/api/players') {
-          let playerId: string
-          do {
-            playerId = `anon_${randomHex(4)}`
-          } while (players.has(playerId))
-
-          const player = {
-            playerId,
-            accessToken: randomHex(32),
-            createdAt: new Date().toISOString(),
+        try {
+          const rawBody = request.method === 'POST' ? await readBody(request) : undefined
+          const fault: DevFault | null =
+            request.method === 'POST' && pathname === '/api/predictions' ? app.consumeFault() : null
+          const result = await app.handle(
+            request.method ?? 'GET',
+            pathname,
+            request.headers.authorization,
+            rawBody,
+            fault,
+          )
+          if (!result) {
+            next()
+            return
           }
-          players.set(playerId, player)
+          if (fault === 'drop-response') {
+            request.socket?.destroy()
+            return
+          }
+          response.statusCode = result.statusCode
+          if (result.body) response.setHeader('Content-Type', 'application/json')
+          response.end(result.body ?? '')
+        } catch {
+          response.statusCode = 503
           response.setHeader('Content-Type', 'application/json')
           response.end(
             JSON.stringify({
-              playerId: player.playerId,
-              accessToken: player.accessToken,
+              code: 'PROVIDER_UNAVAILABLE',
+              message: 'Price source is unavailable',
+              requestId: 'local',
             }),
           )
-          return
         }
-
-        if (request.method === 'GET' && pathname === '/api/market') {
-          try {
-            const quote = await fetchTicker()
-            const now = new Date()
-            response.setHeader('Content-Type', 'application/json')
-            response.end(
-              JSON.stringify({
-                price: quote.price,
-                source: 'COINBASE_EXCHANGE',
-                fetchedAt: quote.fetchedAt,
-                tradeTime: quote.tradeTime,
-                isFresh: isFreshTrade(quote.tradeTime, now),
-              }),
-            )
-          } catch {
-            response.statusCode = 503
-            response.setHeader('Content-Type', 'application/json')
-            response.end(
-              JSON.stringify({
-                code: 'PROVIDER_UNAVAILABLE',
-                message: 'Price source is unavailable',
-                requestId: 'local',
-              }),
-            )
-          }
-          return
-        }
-
-        if (request.method === 'GET' && pathname === '/api/me') {
-          const match =
-            /^Bearer (anon_[0-9a-f]{8})\.([0-9a-f]{64})$/.exec(
-              request.headers.authorization ?? '',
-            )
-          const player = match?.[1] ? players.get(match[1]) : undefined
-          if (!player || player.accessToken !== match?.[2]) {
-            response.statusCode = 401
-            response.setHeader('Content-Type', 'application/json')
-            response.end(
-              JSON.stringify({
-                code: 'UNAUTHORIZED',
-                message: 'Invalid player credentials',
-                requestId: 'local',
-              }),
-            )
-            return
-          }
-
-          response.setHeader('Content-Type', 'application/json')
-          response.end(
-            JSON.stringify(
-              {
-                playerId: player.playerId,
-                score: 0,
-                wins: 0,
-                losses: 0,
-                activePrediction: null,
-                latestResolvedPrediction: null,
-                waitReason: null,
-                serverTime: new Date().toISOString(),
-              },
-            ),
-          )
-          return
-        }
-
-        next()
       })
     },
   }
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), localPlayerApi()],
+  plugins: [react(), tailwindcss(), localApi()],
   server: {
     port: 5173,
     open: true,

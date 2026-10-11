@@ -1,10 +1,11 @@
-import { useQuery, QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { useQuery, useQueryClient, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { CreatePlayerResponseSchema, MeResponseSchema, type MeResponse } from 'contracts'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { HttpError, readJson } from './api'
 import { AppHeader } from './components/AppHeader'
 import { HowItWorks } from './components/HowItWorks'
 import { MarketCard } from './components/MarketCard'
+import { RoundTicket } from './components/RoundTicket'
 import { StatusNotice } from './components/StatusNotice'
 import {
   clearSession,
@@ -14,6 +15,7 @@ import {
   type Session,
 } from './session'
 import { useMarket } from './useMarket'
+import { usePrediction } from './usePrediction'
 
 const SCORE_COPY = 'Your score is saved on our server. This browser remembers your anonymous player.'
 const STORAGE_LIMIT =
@@ -37,8 +39,14 @@ async function fetchMe(baseUrl: string, session: Session): Promise<MeResponse> {
   return MeResponseSchema.parse(await readJson(response))
 }
 
+function secondsRemaining(dueAt: string, serverTime: string, receivedAt: number, nowMs: number): number {
+  const offset = new Date(serverTime).getTime() - receivedAt
+  return Math.max(0, Math.ceil((new Date(dueAt).getTime() - (nowMs + offset)) / 1000))
+}
+
 function PlayerStatus() {
   const baseUrl = apiBaseUrl()
+  const queryClient = useQueryClient()
   const [storageBlocked] = useState(() => {
     try {
       readSession()
@@ -47,23 +55,48 @@ function PlayerStatus() {
       return error instanceof StorageUnavailableError
     }
   })
+  const [nowMs, setNowMs] = useState(() => Date.now())
 
   const player = useQuery({
     queryKey: ['player', baseUrl],
     enabled: baseUrl.length > 0 && !storageBlocked,
     retry: false,
+    refetchInterval: (query) => (query.state.data?.me.activePrediction ? 5_000 : false),
     queryFn: async () => {
+      const receivedAt = Date.now()
       const existing = readSession()
-      if (existing) return fetchMe(baseUrl, existing)
-      const created = await createPlayer(baseUrl)
-      writeSession(created)
-      return fetchMe(baseUrl, created)
+      const me = existing
+        ? await fetchMe(baseUrl, existing)
+        : await createPlayer(baseUrl).then((created) => {
+            writeSession(created)
+            return fetchMe(baseUrl, created)
+          })
+      return { me, receivedAt }
     },
   })
 
-  const me = player.data
+  const snapshot = player.data
+  const me = snapshot?.me
+  const session = me ? readSession() : null
+  const prediction = usePrediction(baseUrl, session, () => {
+    void queryClient.invalidateQueries({ queryKey: ['player', baseUrl] })
+  })
   const rejected = player.error instanceof HttpError && player.error.status === 401
   const market = useMarket(baseUrl)
+  const active = me?.activePrediction ?? prediction.placed
+  const remaining = active && me && snapshot
+    ? secondsRemaining(active.dueAt, me.serverTime, snapshot.receivedAt, nowMs)
+    : 0
+  const roundState =
+    !active ? null : remaining <= 0 || me?.waitReason === 'CHECKING_PRICE' ? 'CHECKING_PRICE' : 'WAITING_FOR_DEADLINE'
+  const showPrediction = Boolean(me) && !active && market.status === 'live'
+
+  const activeId = active?.predictionId
+  useEffect(() => {
+    if (!activeId) return
+    const id = window.setInterval(() => setNowMs(Date.now()), 1_000)
+    return () => window.clearInterval(id)
+  }, [activeId])
 
   return (
     <>
@@ -78,7 +111,37 @@ function PlayerStatus() {
                 ageSeconds={market.ageSeconds}
                 samples={market.samples}
                 now={market.now}
-                showPrediction={false}
+                showPrediction={showPrediction}
+                onPredict={(direction) => prediction.submit(direction, market.price)}
+                isSubmitting={prediction.isSubmitting}
+              />
+            )}
+            {active && roundState && (
+              <RoundTicket
+                key={active.predictionId}
+                direction={active.direction}
+                entryPrice={active.entryPrice}
+                entryTime={new Date(active.entryTradeTime)}
+                deadline={new Date(active.dueAt)}
+                predictionId={active.predictionId}
+                state={roundState}
+                secondsRemaining={remaining}
+                note={
+                  prediction.serverPriced
+                    ? 'The server recorded its own entry price.'
+                    : undefined
+                }
+              />
+            )}
+            {prediction.notice && prediction.notice !== 'Recording entry' && (
+              <StatusNotice
+                kind={prediction.phase === 'unknown' ? 'info' : 'error'}
+                message={prediction.notice}
+                action={
+                  prediction.canRetry
+                    ? { label: 'Retry', onClick: prediction.retry }
+                    : undefined
+                }
               />
             )}
             {market.price && market.errored && (
@@ -142,8 +205,8 @@ function PlayerStatus() {
 }
 
 /**
- * Production shell. It creates or restores an anonymous player.
- * Direction buttons stay out until predictions exist.
+ * Production shell. It creates or restores an anonymous player
+ * and submits one pending prediction at a time.
  */
 export function App() {
   const [queryClient] = useState(

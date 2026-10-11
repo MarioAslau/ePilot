@@ -2,7 +2,7 @@
 
 ## Status
 
-T06 is complete in the repo. `GET /market` returns a validated Coinbase BTC-USD quote. Predictions and settlement are not implemented yet. The hosted site shows the price after the API deploy and the Amplify rebuild of `release`.
+T07 is complete in the repo. `POST /predictions` records one pending round from an uncached Coinbase entry quote. `GET /me` returns that round. Settlement and Step Functions are not implemented; a round stays pending after the deadline. The hosted site does not include this until the API deploy and the Amplify rebuild of `release`.
 
 ## Product goal
 
@@ -191,8 +191,7 @@ Do not log tokens or render unsafe user-provided HTML.
   Public display quote. Returns `price`, `source: COINBASE_EXCHANGE`, `fetchedAt`, `tradeTime`, and `isFresh`. No player token. Provider failure is `503 PROVIDER_UNAVAILABLE`. This quote is not a settlement input.
 
 - POST /predictions
-  Accept direction and idempotency key.
-  Return created prediction or the original duplicate result.
+  Implemented. Accepts `direction` (`UP` or `DOWN`) and a UUID `idempotencyKey`. The server records the entry price, trade time, `createdAt`, and `dueAt` (`createdAt` plus 60 seconds). A new round is `201`. The same key and direction is `200` with the stored prediction. The same key and other direction is `409 IDEMPOTENCY_CONFLICT`. A different key while a round is open is `409 ACTIVE_ROUND`. A provider failure, or an entry trade older than 10 seconds, is `503 PROVIDER_UNAVAILABLE` and writes nothing. Client `entryPrice`, `createdAt`, and `score` are ignored.
 
 - GET /predictions
   Return authenticated player history with pagination.
@@ -239,9 +238,10 @@ infer an equal-price or provider hold from the display quote.
 Display freshness is `MarketResponse.isFresh` only.
 
 `POST /players` returns `playerId` and a 64-hex-character access token
-once. `POST /predictions` takes `direction` and a UUID `idempotencyKey`.
-If that response is lost, send the same body again. That replay is
-`RecoverSubmissionRequest`. Do not mint a new key until the server answers.
+once. `POST /predictions` takes `direction` (`UP` or `DOWN`) and a UUID
+`idempotencyKey`. A prediction also includes `mode: STANDARD` and
+`entryTradeTime`. If that response is lost, send the same body again.
+Do not mint a new key until the server answers or rejects the request.
 
 Error codes: `INVALID_INPUT`, `UNAUTHORIZED`, `ACTIVE_ROUND`,
 `IDEMPOTENCY_CONFLICT`, `PROVIDER_UNAVAILABLE`.
@@ -249,9 +249,9 @@ Only `PROVIDER_UNAVAILABLE` is in `RECOVERABLE_ERROR_CODES`.
 
 ## Proposed data model
 
-Use one DynamoDB table named `hunch-<stage>`. Partition key `pk` and sort key `sk` are strings. Billing is on-demand. Streams are off. No GSI yet; player history must not scan the table, and its index waits until history is implemented. The dev table is retained if the stack is deleted. The health Lambda cannot read or write it. Player Lambdas can `GetItem` and `PutItem` only, through a separate role.
+Use one DynamoDB table named `hunch-<stage>`. Partition key `pk` and sort key `sk` are strings. Billing is on-demand. Streams are off. No GSI yet; player history must not scan the table, and its index waits until history is implemented. The dev table is retained if the stack is deleted. TTL is enabled on `expiresAt` and is set only on idempotency items, 24 hours after creation. The health and market Lambdas cannot read or write the table. Player Lambdas can `GetItem` and `PutItem` only. The prediction Lambda can `GetItem`, `PutItem`, `UpdateItem`, and `TransactWriteItems`.
 
-A player item uses `pk = PLAYER#<playerId>` and `sk = PLAYER`. `GET /me` returns `activePrediction`, `latestResolvedPrediction` and `waitReason` as `null` until a prediction writer exists.
+A player item uses `pk = PLAYER#<playerId>` and `sk = PLAYER`. The raw access token is not stored. `GET /me` loads `activePrediction` when `activePredictionId` is set. `waitReason` is `WAITING_FOR_DEADLINE` before `dueAt` and `CHECKING_PRICE` at or after `dueAt`. `latestResolvedPrediction` stays `null` until settlement exists.
 
 Player:
 - playerId
@@ -262,16 +262,19 @@ Player:
 - activePredictionId
 - createdAt
 
+Prediction item: `pk = PLAYER#<playerId>`, `sk = PREDICTION#<predictionId>`. `predictionId` is `p_`, a 13-digit epoch millisecond value, `_`, and 8 hex characters.
+
 Prediction:
 - predictionId
 - playerId
-- direction
-- mode
-- status
+- direction (`UP` or `DOWN`)
+- mode (`STANDARD`)
+- status (`PENDING` until settlement)
 - createdAt
 - dueAt
 - entryPrice
-- entryQuoteMetadata
+- entryTradeTime
+- entryFetchedAt
 - resolvedAt
 - resolutionPrice
 - resolutionTradeTime   (exchange timestamp of the compared trade, from the Coinbase ticker `time` field)
@@ -280,12 +283,15 @@ Prediction:
 - scoreDelta
 - parentPredictionId, optional
 
+Idempotency item: `pk = PLAYER#<playerId>`, `sk = IDEMPOTENCY#<idempotencyKey>`.
+
 Idempotency record:
 - playerId
-- requestKey
-- requestPayloadHash
+- idempotencyKey
+- direction
 - predictionId
-- expiry, if a retention policy is used
+- createdAt
+- expiresAt (epoch seconds, 24 hours)
 
 Offer, optional:
 - offerId
@@ -315,7 +321,7 @@ Display freshness, implemented with `GET /market`:
 - The browser polls about every 5 seconds. It shows Delayed when the latest poll failed, `isFresh` is false, or the last good sample is more than 15 seconds old by the browser clock. Age is measured from when this browser received the quote.
 - The chart stores fresh samples from the current page only, for about 10 minutes. It does not invent earlier history. The 1-minute change stays hidden until a sample is at least 60 seconds old.
 
-Entry and resolution quotes follow their own freshness requirements and must call `fetchTicker`, not `displayQuote`.
+Entry and resolution quotes call `fetchTicker`, not `displayQuote`. An entry trade older than 10 seconds is unusable. That failure returns `503` and does not write a round. Display freshness stays 60 seconds and does not decide whether an entry quote is accepted.
 
 ## Concurrency and idempotency
 
@@ -331,7 +337,7 @@ The backend stores one Idempotency record per `(playerId, idempotencyKey)`:
 ```
 playerId:       string
 idempotencyKey: string   (UUID v4 from the browser)
-direction:      "up" | "down"
+direction:      "UP" | "DOWN"
 predictionId:   string
 expiresAt:      TTL, 24 hours
 ```
@@ -346,17 +352,12 @@ See D4 in the decision log.
 
 ### Prediction creation transaction
 
-The DynamoDB transaction applies all of the following atomically, or none:
-- Condition: player has no `activePredictionId`.
-- Write: new Prediction record.
-- Write: set `activePredictionId` on the Player record.
-- Write: Idempotency record for this request.
+`TransactWriteItems` applies all of the following atomically, or none:
+- Put the Prediction item if that key is absent.
+- Set `activePredictionId` only if the player item exists and `activePredictionId` is absent.
+- Put the Idempotency item if that key is absent.
 
-If the condition fails (player already has an active prediction):
-return `409 ACTIVE_ROUND`. The transaction condition — not application
-code — is what enforces the one-active-prediction rule. Two simultaneous
-requests with different keys both hit the condition; only the first to
-land succeeds.
+A failed idempotency condition is a duplicate key and returns the stored prediction. A failed player condition is `409 ACTIVE_ROUND`. The transaction, not a check in application code, is what enforces one active prediction. A pre-check avoids a Coinbase call when the player is already locked. Two simultaneous requests with different keys can both fetch a quote; only one transaction lands.
 
 ### Settlement transaction
 
@@ -374,7 +375,9 @@ the score delta.
 
 ## Workflow startup and recovery
 
-After writing the Prediction record, createPrediction calls
+T07 does not call `StartExecution`. After the deadline, `GET /me` reports `CHECKING_PRICE` and the round stays pending until T08.
+
+Planned for T08: after writing the Prediction record, createPrediction calls
 `sfn:StartExecution` synchronously with the execution name
 `prediction-{predictionId}`. If the call fails or the Lambda crashes
 after the DB write, the execution is never started. This window is

@@ -5,7 +5,7 @@ or lower after at least one minute.
 
 ## Implementation status
 
-T00 through T06 are complete in the repo. `yarn dev:local` creates a player and shows a real Coinbase BTC-USD price. The hosted site shows that price after the API deploy and the Amplify rebuild. Play is not available yet.
+T00 through T07 are complete in the repo. `yarn dev:local` can record one pending Up or Down prediction. That round does not settle. The hosted site does not include it until the API deploy and the Amplify rebuild.
 
 ## Links
 
@@ -19,12 +19,12 @@ Implemented:
 - Anonymous player starts with score 0.
 - The browser restores that player and shows the server score.
 - The page shows the latest validated BTC-USD price, its source, its age, and a chart collected on this page.
+- Predict Up or Down. The server records the entry price and a 60-second deadline.
+- One active prediction per player, enforced by the backend.
 
 Planned:
 - Display accuracy stats.
-- Predict Up or Down.
-- One active prediction per player.
-- Backend waits at least 60 seconds.
+- Backend waits at least 60 seconds, then settles the round.
 - Equal entry/resolution price keeps the round pending.
 - Correct prediction adds 1 point.
 - Incorrect prediction subtracts 1 point.
@@ -95,10 +95,30 @@ Run the frontend with a development-only in-memory player API:
 yarn dev:local
 ```
 
-Open `http://localhost:5173`. The local API supports `POST /api/players`
-and `GET /api/me`. `GET /api/market` calls the public Coinbase BTC-USD
-ticker, so the price on this page is real. Player records stay in memory
-and do not need AWS credentials, a deployment, or DynamoDB.
+Open `http://localhost:5173`. The local API runs the player, market, and
+prediction handlers in memory. `GET /api/market` calls the public Coinbase
+BTC-USD ticker, and so does an Up or Down click. Records do not need AWS
+credentials, a deployment, or DynamoDB.
+
+A development-only fault switch is available while this command is running.
+It is not part of the deployed API.
+
+```bash
+curl -X POST http://localhost:5173/api/__dev/next-prediction \
+  -H 'Content-Type: application/json' \
+  -d '{"mode":"provider-down"}'
+```
+
+`provider-down` makes the next prediction quote fail. `drop-response`
+records the next prediction and then drops the HTTP response. Restarting
+the command clears in-memory rounds. There is no cancel button. To leave
+a locked local round behind, choose **Start a new player** in a new
+browser profile, or restart `yarn dev:local` and start again.
+
+After a later deploy, a dev round stays locked because settlement is not
+built yet. To unlock that player in DynamoDB, delete its `PREDICTION#`
+item and remove `activePredictionId` from the player item. Idempotency
+items expire after 24 hours. Do not add a reset control to the game.
 
 Refresh or close and reopen the browser while the command is still running
 to verify restoration. An incognito window creates a different player.
@@ -143,7 +163,19 @@ For the T06 local price check, with `yarn dev:local` still running:
 3. In DevTools, block the `/market` request. Within about 15 seconds the price dims, the pill says **Delayed**, and **Retry** appears. Unblock it and choose **Retry**. It returns to Live.
 4. Hard-refresh while `/market` is still blocked. The pill says **Unavailable** and the page invents no price.
 5. Refresh normally. The chart starts empty again.
-6. Confirm the player ID and score still restore, and no Up or Down button appears.
+6. Confirm the player ID and score still restore. On the current build a Live price also shows Up and Down. That is the T07 behaviour below.
+
+For the T07 local prediction check, restart `yarn dev:local` and use a new player:
+
+1. With a Live price, choose **Up**. Both buttons lock, then a ticket shows the server entry price, the trade time, and a countdown. The buttons disappear.
+2. Refresh the tab. The same ticket returns. The score stays 0.
+3. Double-click **Up** on a new player. One ticket appears.
+4. Open the same player in a second tab after the first tab has a ticket. The second tab shows that same round immediately, and its buttons are gone.
+5. `curl -X POST http://localhost:5173/api/__dev/next-prediction -H 'Content-Type: application/json' -d '{"mode":"drop-response"}'`, then choose **Down**. The page says it is checking whether the prediction was recorded, then shows the ticket.
+6. Arm `{"mode":"provider-down"}` and choose a direction on a player with no round. The page says **Not placed. The price source is unavailable.** and the buttons return.
+7. Wait until the countdown reaches 0. The ticket says **Checking price** and does not show a win or a loss.
+
+Mario confirmed this local check on 2026-10-11. A deployed round stays locked until T08.
 
 ## Deployment
 
@@ -178,9 +210,12 @@ To remove the dev stack later: `yarn serverless remove --stage dev --region eu-n
 ## How resolution works
 
 When a prediction is accepted, the backend records an entry quote and a
-deadline (at least 60 seconds from acceptance), then starts a Step
-Functions workflow using a deterministic execution name. The workflow
-waits until the deadline, then retrieves a fresh quote from Coinbase.
+deadline (at least 60 seconds from acceptance). T07 stops there. The
+round stays pending, and the page says Checking price after the deadline.
+
+Planned for T08: start a Step Functions workflow using a deterministic
+execution name. The workflow waits until the deadline, then retrieves a
+fresh quote from Coinbase.
 
 If the quote price differs from the entry price, the round is settled.
 If equal, the workflow waits and retries. Provider outages pause the
