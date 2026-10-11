@@ -1,4 +1,5 @@
-import { PredictionSchema, type Direction, type Prediction } from 'contracts'
+import { PredictionSchema, PredictionHistoryResponseSchema, type Direction, type Prediction, type PredictionHistoryResponse } from 'contracts'
+import { readJson } from './api'
 import type { Session } from './session'
 
 export type PredictionPostResult =
@@ -41,4 +42,21 @@ export async function postPrediction(
   } catch {
     return { kind: 'unknown' }
   }
+}
+
+export async function fetchHistory(
+  baseUrl: string,
+  session: Session,
+  cursor: string | null,
+): Promise<PredictionHistoryResponse> {
+  const params = new URLSearchParams()
+  if (cursor) params.set('cursor', cursor)
+  const query = params.toString()
+  const response = await fetch(`${baseUrl}/predictions${query ? `?${query}` : ''}`, {
+    headers: {
+      Authorization: `Bearer ${session.playerId}.${session.accessToken}`,
+    },
+    signal: AbortSignal.timeout(8_000),
+  })
+  return PredictionHistoryResponseSchema.parse(await readJson(response))
 }

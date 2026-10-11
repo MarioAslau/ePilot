@@ -18,6 +18,7 @@ interface LocalApp {
     authorization: string | undefined,
     rawBody: string | undefined,
     fault: DevFault | null,
+    query?: Record<string, string | undefined>,
   ) => Promise<LocalResult | null>
 }
 
@@ -55,7 +56,8 @@ function localApi(): Plugin {
       const app = loaded.createLocalApp()
 
       server.middlewares.use(async (request, response, next) => {
-        const pathname = new URL(request.url ?? '/', 'http://localhost').pathname
+        const url = new URL(request.url ?? '/', 'http://localhost')
+        const pathname = url.pathname
         if (!pathname.startsWith('/api/')) {
           next()
           return
@@ -71,6 +73,7 @@ function localApi(): Plugin {
             request.headers.authorization,
             rawBody,
             fault,
+            Object.fromEntries(url.searchParams.entries()),
           )
           if (!result) {
             next()

@@ -72,4 +72,74 @@ describe('lifecycle logs', () => {
       expect(output).not.toContain(secret)
     }
   })
+
+  it('marks a later round as repeat play', async () => {
+    const lines: string[] = []
+    vi.spyOn(console, 'log').mockImplementation((line: unknown) => {
+      lines.push(String(line))
+    })
+    const store = memoryGameStore()
+    const created = createPlayer(now, (size) => Buffer.alloc(size, 3))
+    await store.putNew(created)
+    const header = `Bearer ${created.playerId}.${created.accessToken}`
+    const deps = {
+      players: store,
+      predictions: store,
+      now: () => now,
+      quote: async () => quote,
+    }
+    const first = await handleCreatePrediction(
+      header,
+      JSON.stringify({ direction: 'UP', idempotencyKey: '88888888-8888-4888-8888-888888888888' }),
+      'first-round',
+      deps,
+    )
+    const firstBody = JSON.parse(first.body ?? '') as { predictionId: string }
+    await store.settle({
+      playerId: created.playerId,
+      predictionId: firstBody.predictionId,
+      outcome: 'WIN',
+      scoreDelta: 1,
+      resolutionPrice: '85000.00',
+      resolutionTradeTime: '2026-10-11T15:01:02.000Z',
+      resolutionFetchedAt: '2026-10-11T15:01:03.000Z',
+      resolvedAt: '2026-10-11T15:01:03.000Z',
+    })
+    await handleCreatePrediction(
+      header,
+      JSON.stringify({ direction: 'DOWN', idempotencyKey: '99999999-9999-4999-8999-999999999999' }),
+      'second-round',
+      {
+        ...deps,
+        now: () => new Date('2026-10-11T15:02:00.000Z'),
+        quote: async () => ({
+          ...quote,
+          tradeTime: '2026-10-11T15:01:58.000Z',
+          fetchedAt: '2026-10-11T15:02:00.000Z',
+        }),
+      },
+    )
+    await handleCreatePrediction(
+      header,
+      JSON.stringify({ direction: 'DOWN', idempotencyKey: '99999999-9999-4999-8999-999999999999' }),
+      'replay',
+      {
+        ...deps,
+        now: () => new Date('2026-10-11T15:02:00.000Z'),
+        quote: async () => ({
+          ...quote,
+          tradeTime: '2026-10-11T15:01:58.000Z',
+          fetchedAt: '2026-10-11T15:02:00.000Z',
+        }),
+      },
+    )
+    const createdLogs = lines
+      .map((line) => JSON.parse(line) as { event?: string; repeat?: string; priorRounds?: string })
+      .filter((row) => row.event === 'prediction.created')
+    expect(createdLogs).toEqual([
+      expect.objectContaining({ repeat: 'false', priorRounds: '0' }),
+      expect.objectContaining({ repeat: 'true', priorRounds: '1' }),
+    ])
+    expect(lines.join('\n')).not.toContain(created.accessToken)
+  })
 })

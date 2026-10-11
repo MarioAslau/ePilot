@@ -535,6 +535,12 @@ button { font: inherit; color: inherit }
 .hm { min-width: 0 }
 .hm b    { font-weight: 600; display: block; font-size: var(--t-small) }
 .hm span { display: block; font-size: var(--t-cap); color: var(--subtle); white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.hm .exact { white-space: normal; overflow: visible; text-overflow: clip }
+.hist-sk { height: var(--s12); margin-top: var(--s2) }
+.hist-sk:first-of-type { margin-top: var(--s3) }
+.hist-more { margin-top: var(--s3) }
+.hist-more .btn { min-height: 44px }
+.hist-end { margin-top: var(--s3) }
 .hp { font-weight: 720; font-size: 1rem; text-align: right }
 .hp.win  { color: var(--up) }
 .hp.loss { color: var(--down) }

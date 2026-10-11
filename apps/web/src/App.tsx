@@ -7,7 +7,8 @@ import { HowItWorks } from './components/HowItWorks'
 import { MarketCard } from './components/MarketCard'
 import { ResultReceipt } from './components/ResultReceipt'
 import { RoundTicket } from './components/RoundTicket'
-import { HistoryPlaceholder, ScoreCard } from './components/ScoreCard'
+import { RoundHistory } from './components/RoundHistory'
+import { ScoreCard } from './components/ScoreCard'
 import { StatusNotice } from './components/StatusNotice'
 import { announcement, pollInterval, roundView, clockOffset, type RoundPhase } from './round'
 import {
@@ -19,6 +20,7 @@ import {
 } from './session'
 import { markSeenResult, shouldAnimate } from './seenResults'
 import { useMarket } from './useMarket'
+import { useHistory } from './useHistory'
 import { usePrediction } from './usePrediction'
 
 const SCORE_COPY = 'Your score is saved on our server. This browser remembers your anonymous player.'
@@ -94,6 +96,11 @@ function PlayerStatus() {
   const snapshot = player.data
   const me = snapshot?.me
   const session = me ? readSession() : null
+  const history = useHistory(
+    baseUrl,
+    session?.playerId ?? null,
+    me?.latestResolvedPrediction?.predictionId ?? null,
+  )
   const refreshPlayer = () => {
     void queryClient.invalidateQueries({ queryKey: ['player', baseUrl] })
   }
@@ -282,7 +289,17 @@ function PlayerStatus() {
                 stale={stalePlayer}
               />
             )}
-            <HistoryPlaceholder />
+            {baseUrl && !storageBlocked && (
+              <RoundHistory
+                status={history.status}
+                predictions={history.predictions}
+                hasMore={history.hasMore}
+                loadingMore={history.loadingMore}
+                pageError={history.pageError}
+                onLoadMore={history.loadMore}
+                onRetry={history.retry}
+              />
+            )}
             <HowItWorks />
           </div>
         </div>

@@ -14,5 +14,7 @@ describe('HowItWorks', () => {
     const summary = screen.getByText('How it works')
     await userEvent.click(summary)
     expect(screen.getByText(/make your call/i)).toBeInTheDocument()
+    expect(screen.getByText('Your rounds')).toBeInTheDocument()
+    expect(screen.getByText(/at least 60 seconds/i)).toBeInTheDocument()
   })
 })

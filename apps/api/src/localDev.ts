@@ -1,6 +1,7 @@
 import { fetchTicker, ProviderUnavailableError } from './coinbase.js'
 import { handleCreatePlayer } from './handlers/createPlayer.js'
 import { handleCreatePrediction } from './handlers/createPrediction.js'
+import { handleGetPredictionHistory } from './handlers/getPredictionHistory.js'
 import { handleMarket } from './handlers/market.js'
 import { handleMe } from './handlers/me.js'
 import { handleResolvePrediction } from './handlers/resolvePrediction.js'
@@ -65,6 +66,7 @@ export function createLocalApp() {
       authorization: string | undefined,
       rawBody: string | undefined,
       fault: DevFault | null = null,
+      query?: Record<string, string | undefined>,
     ) {
       if (method === 'POST' && path === '/api/__dev/next-prediction') {
         let mode: string | undefined
@@ -103,6 +105,12 @@ export function createLocalApp() {
       }
       if (method === 'GET' && path === '/api/market') {
         return handleMarket('local')
+      }
+      if (method === 'GET' && path === '/api/predictions') {
+        return handleGetPredictionHistory(authorization, query, 'local', {
+          players: store,
+          predictions: store,
+        })
       }
       if (method === 'POST' && path === '/api/predictions') {
         return handleCreatePrediction(authorization, rawBody, 'local', {

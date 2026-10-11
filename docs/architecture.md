@@ -2,7 +2,7 @@
 
 ## Status
 
-T10 is complete. The `hunch-dev` API is deployed in `eu-north-1`, including predictions, the resolver, the scanner, and the state machine `hunch-dev-resolution`. The hosted site `https://release.d2yczmbttcpoe9.amplifyapp.com` is allowed to call it. On 2026-10-11 Mario pressed Up, closed the tab while the round was running, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14.
+T11 is complete. Mario confirmed the local history check on 2026-10-11. Settled rounds are listed from `GET /predictions`. That route and the history role are in the packaged template and are not in the account until the next deploy, so the hosted site `https://release.d2yczmbttcpoe9.amplifyapp.com` still shows the T10 build. T10's hosted check still stands: on 2026-10-11 Mario pressed Up, closed the tab while the round was running, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14.
 
 ## Product goal
 
@@ -194,7 +194,7 @@ Do not log tokens or render unsafe user-provided HTML.
   Implemented. Accepts `direction` (`UP` or `DOWN`) and a UUID `idempotencyKey`. The server records the entry price, trade time, `createdAt`, and `dueAt` (`createdAt` plus 60 seconds). A new round is `201`. The same key and direction is `200` with the stored prediction. The same key and other direction is `409 IDEMPOTENCY_CONFLICT`. A different key while a round is open is `409 ACTIVE_ROUND`. A provider failure, or an entry trade older than 10 seconds, is `503 PROVIDER_UNAVAILABLE` and writes nothing. Client `entryPrice`, `createdAt`, and `score` are ignored.
 
 - GET /predictions
-  Return authenticated player history with pagination.
+  Implemented. Returns the authenticated player's settled rounds, newest first. `limit` is an integer from 1 to 50 and defaults to 20. `cursor` is the base64url encoding of the last returned sort key. The handler rebuilds the DynamoDB key with the authenticated player id, so a cursor cannot read another player's partition. A cursor that is not `PREDICTION#p_` plus 13 digits, `_`, and 8 hex characters is `400 INVALID_INPUT`. Pending rounds are omitted. `nextCursor` is null when that player's resolved rounds are exhausted.
 
 - POST /offers/{offerId}/accept
   Optional mode acceptance. Validate eligibility and expiry.
@@ -249,7 +249,7 @@ Only `PROVIDER_UNAVAILABLE` is in `RECOVERABLE_ERROR_CODES`.
 
 ## Proposed data model
 
-Use one DynamoDB table named `hunch-<stage>`. Partition key `pk` and sort key `sk` are strings. Billing is on-demand. Streams are off. The first index is the sparse GSI `pending-by-due`: hash `pendingKey`, range `pendingDueAt`, keys only. Pending predictions set `pendingKey = PENDING` and `pendingDueAt = dueAt`. Settlement removes both. Player history still has no index and must not scan the table. The dev table is retained if the stack is deleted. TTL is enabled on `expiresAt` and is set only on idempotency items, 24 hours after creation. The health and market Lambdas cannot read or write the table. Player Lambdas can `GetItem` and `PutItem` only. The prediction Lambda can `GetItem`, `PutItem`, `UpdateItem`, and `TransactWriteItems`, and can `states:StartExecution` on `hunch-<stage>-resolution`. The resolver can `GetItem`, `UpdateItem`, and `TransactWriteItems` on the table. It cannot query or scan. The recovery Lambda can `Query` only `pending-by-due`, plus `StartExecution` and `ListExecutions` on the state machine and `DescribeExecution` on its executions.
+Use one DynamoDB table named `hunch-<stage>`. Partition key `pk` and sort key `sk` are strings. Billing is on-demand. Streams are off. The first index is the sparse GSI `pending-by-due`: hash `pendingKey`, range `pendingDueAt`, keys only. Pending predictions set `pendingKey = PENDING` and `pendingDueAt = dueAt`. Settlement removes both. Player history is a Query on that player's partition, `begins_with(sk, PREDICTION#)`, newest first, with a consistent read. It has no index and must not scan the table. The dev table is retained if the stack is deleted. TTL is enabled on `expiresAt` and is set only on idempotency items, 24 hours after creation. The health and market Lambdas cannot read or write the table. Player Lambdas can `GetItem` and `PutItem` only. The history Lambda can `GetItem` and `Query` on the table ARN only. It cannot query the index, scan, or write. IAM cannot limit that Query to one partition; the handler sets `pk` from the authenticated player id. The prediction Lambda can `GetItem`, `PutItem`, `UpdateItem`, and `TransactWriteItems`, and can `states:StartExecution` on `hunch-<stage>-resolution`. The resolver can `GetItem`, `UpdateItem`, and `TransactWriteItems` on the table. It cannot query or scan. The recovery Lambda can `Query` only `pending-by-due`, plus `StartExecution` and `ListExecutions` on the state machine and `DescribeExecution` on its executions.
 
 A player item uses `pk = PLAYER#<playerId>` and `sk = PLAYER`. The raw access token is not stored. `GET /me` loads `activePrediction` when `activePredictionId` is set. `waitReason` is `WAITING_FOR_DEADLINE` before `dueAt`. After `dueAt` it is `EQUAL_PRICE` or `PROVIDER_HOLD` only when `lastCheck` is less than 30 seconds old. Otherwise it is `CHECKING_PRICE`. `latestResolvedPrediction` is loaded from `latestResolvedPredictionId` when that prediction is `RESOLVED`.
 
@@ -306,7 +306,7 @@ Offer, optional:
 - status
 - acceptedPredictionId
 
-Query player history; do not scan the whole table.
+Query player history on the player partition, newest first. Do not scan the whole table. There is no history index.
 
 ## Price handling
 
@@ -373,7 +373,7 @@ A cancelled transaction means the round was already settled. The handler returns
 
 ## Workflow startup and recovery
 
-After a newly stored round, createPrediction calls `sfn:StartExecution` with the name `prediction-{predictionId}` and input `{ playerId, predictionId, dueAt }`. The `prediction.created` log includes that `executionName`. `ExecutionAlreadyExists` is success. Any other start failure is logged as `prediction.workflow_start_failed` and the handler still returns 201. A metric filter on that log raises `hunch-<stage>-workflow-start-failed`. An idempotent replay of the create request does not start a second workflow. If the Lambda crashes after the write and before the start, no execution exists until the scanner runs.
+After a newly stored round, createPrediction calls `sfn:StartExecution` with the name `prediction-{predictionId}` and input `{ playerId, predictionId, dueAt }`. The `prediction.created` log includes `executionName`, `priorRounds`, and `repeat`. `repeat` is `true` when the player already had at least one settled round. These fields count creations. They are not a retention or activation measurement. `ExecutionAlreadyExists` is success. Any other start failure is logged as `prediction.workflow_start_failed` and the handler still returns 201. A metric filter on that log raises `hunch-<stage>-workflow-start-failed`. An idempotent replay of the create request does not start a second workflow. If the Lambda crashes after the write and before the start, no execution exists until the scanner runs.
 
 The machine is `hunch-<stage>-resolution`. It waits until `dueAt`, then invokes the resolver. `SETTLED`, `ALREADY_SETTLED`, and `ORPHANED` succeed. `EQUAL_PRICE` waits 5 seconds and tries again. `PROVIDER_HOLD` waits 15 seconds. `TOO_EARLY` returns to the deadline wait. Lambda task failures retry with backoff, at most 6 times. The execution timeout is 21600 seconds (6 hours). Resolution calls `fetchTicker`, not the display cache. The clock is checked against `dueAt` before any quote. A provider error or a trade older than 10 seconds is `PROVIDER_HOLD`, never a loss. `evaluate()` uses the exchange trade time as `resolvedAt`, so that trade must itself be at least 60 seconds after `createdAt`.
 
@@ -533,7 +533,7 @@ Mobile (below 960 px): single column. Stacking order:
 2. MarketCard
 3. PredictionPanel
 4. ScoreCard
-5. RoundHistory / history placeholder
+5. RoundHistory
 6. HowItWorks
 
 Keep the current score visible on mobile at all times without depending
@@ -555,9 +555,9 @@ separate from data-fetching.
 | DirectionButtons | Up/Down buttons with locked and loading states |
 | RoundTicket | Entry price, latest price, step tracker, wait ring, state copy |
 | ResultReceipt | Outcome badge, score delta, entry/compared price, timestamps |
-| ScoreCard | Numeric score; after the first settled round also shows accuracy %, wins and losses counts |
-| RoundHistory | Settled prediction list; honest placeholder until T11 |
-| HowItWorks | Expandable accordion; MVP content in from T02 |
+| ScoreCard | Numeric score; after the first settled round also shows accuracy %, wins and losses counts, labelled as all settled rounds |
+| RoundHistory | Settled prediction list with loading, empty, error, and populated states |
+| HowItWorks | Expandable accordion; basic rules from T02, plus where settled rounds are listed |
 | StatusNotice | Info / warn / error inline notices with icon, copy and action |
 
 ### Application states
@@ -672,15 +672,11 @@ communicated through text and icons alone.
 - Chart has a text alternative (`aria-label` on the SVG).
 - Prices and timers use tabular figures so layouts do not shift.
 
-### History placeholder
+### Round history
 
-Basic rules explanation (`HowItWorks`) is MVP functionality, present from T02.
-Persisted, paginated round history is T11.
+`GET /predictions` returns settled rounds only. The list shows direction, entry time, both prices, elapsed time, and +1 or −1, with the words Correct or Not this time. When the rounded prices hide a difference, the row also shows the exact price strings. Loading uses two skeleton rows. The empty copy appears only after a successful empty response. A failed load keeps any rows already shown and offers Retry. Load older rounds requests the next page of 20. Accuracy on the score card is all settled rounds, from `wins` and `losses` on `GET /me`, not from the loaded page.
 
-Before T11 is complete, use an honest placeholder such as
-"Your settled predictions will appear here" or omit the history card.
-Never tell an existing player they have no rounds just because the
-history feature is not yet wired.
+`prediction.created` includes `priorRounds` (`wins + losses` before that round) and `repeat` (`true` when that count is greater than 0). An idempotent replay does not log another creation. `prediction.settled` is unchanged. These log counts are not proof of retention or activation.
 
 ### Prototype boundaries
 
@@ -698,7 +694,8 @@ The following prototype behaviours must NOT appear in production:
   storage and API boundaries; show additional precision in receipts when
   rounded values would hide the outcome.
 - Full player history in every `/me` response: return active prediction
-  and an identifiable latest result only; paginate history in T11.
+  and an identifiable latest result only. Settled history is paginated
+  on `GET /predictions`. T11 is complete locally.
 - Synthetic two-minute chart history: collect validated display-price
   samples in memory from page load only; start with an empty chart and
   "Collecting recent prices"; do not invent earlier points.
@@ -771,8 +768,8 @@ These names exist after the T08 deploy of stage `dev` in `eu-north-1`. They are 
 
 - Table `hunch-dev`, index `pending-by-due`.
 - State machine `hunch-dev-resolution`.
-- Functions `hunch-dev-resolvePrediction` and `hunch-dev-recoverStuckPredictions`.
-- Roles `hunch-dev-predictions`, `hunch-dev-resolver`, `hunch-dev-recovery`, `hunch-dev-resolution`.
+- Functions `hunch-dev-resolvePrediction`, `hunch-dev-recoverStuckPredictions`, and `hunch-dev-getPredictionHistory`.
+- Roles `hunch-dev-predictions`, `hunch-dev-resolver`, `hunch-dev-recovery`, `hunch-dev-resolution`, and `hunch-dev-history`. `hunch-dev-history` can `GetItem` and `Query` the table. It cannot scan or write. `hunch-dev-getPredictionHistory` and that role are in the packaged template. They are in the account only after the next deploy.
 - Topic `hunch-dev-alerts`. Email subscription only when deploy passes `--param alarmEmail=...`. Confirm that email or the alarms have no subscriber.
 - Alarms, all to that topic, period 300 seconds, threshold 1, missing data does not breach: `hunch-dev-resolution-failed`, `hunch-dev-resolution-timed-out`, `hunch-dev-resolver-errors`, `hunch-dev-recovery-errors`, `hunch-dev-workflow-start-failed`.
 
@@ -792,7 +789,15 @@ fields @timestamp, event, predictionId, playerId, state, action, executionName
 | sort @timestamp asc
 ```
 
-Logs do not contain the access token or its hash. `prediction.created` includes `executionName`.
+Logs do not contain the access token or its hash. `prediction.created` includes `executionName`, `priorRounds`, and `repeat`. `history.listed` includes `count` and `hasMore`. A day of repeat play can be counted with:
+
+```
+fields @timestamp, playerId, priorRounds, repeat
+| filter event = "prediction.created"
+| stats count() by repeat
+```
+
+That count is not proof that players were retained or activated.
 5. To stop a live execution: `aws stepfunctions stop-execution --execution-arn <arn>`. Stopping it does not score the round. After `dueAt` plus about 7 minutes the scanner starts one replacement execution.
 6. Starting `prediction-<id>` again after it succeeded returns the existing execution and does not score again. For an execution that already failed, timed out, or was aborted, `aws stepfunctions redrive-execution --execution-arn <arn>` reruns it from the failed step. That is the operator alternative to waiting for the scanner. A round whose execution was never started has nothing to redrive. The scanner starts that one.
 7. Confirm one `RESOLVED` prediction and one score change. There is no in-app cancel. To unlock a player by hand, delete the `PREDICTION#` item and remove `activePredictionId`. Do not do that for a round the workflow may still settle.

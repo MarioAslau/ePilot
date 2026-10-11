@@ -95,6 +95,15 @@ functions:
       - httpApi:
           path: /predictions
           method: POST
+  getPredictionHistory:
+    handler: src/handlers/getPredictionHistory.handler
+    description: List the authenticated player's settled predictions
+    role:
+      Fn::GetAtt: [HistoryLambdaRole, Arn]
+    events:
+      - httpApi:
+          path: /predictions
+          method: GET
   resolvePrediction:
     handler: src/handlers/resolvePrediction.handler
     description: Settle one prediction after its deadline
@@ -177,6 +186,40 @@ resources:
                   Action:
                     - dynamodb:GetItem
                     - dynamodb:PutItem
+                  Resource:
+                    Fn::GetAtt: [GameTable, Arn]
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogStream
+                    - logs:CreateLogGroup
+                    - logs:TagResource
+                  Resource:
+                    Fn::Sub: arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/hunch-${sls:stage}-*:*
+                - Effect: Allow
+                  Action:
+                    - logs:PutLogEvents
+                  Resource:
+                    Fn::Sub: arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/hunch-${sls:stage}-*:*:*
+    HistoryLambdaRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: hunch-${sls:stage}-history
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: history-table
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - dynamodb:GetItem
+                    - dynamodb:Query
                   Resource:
                     Fn::GetAtt: [GameTable, Arn]
                 - Effect: Allow

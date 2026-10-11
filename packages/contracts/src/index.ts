@@ -123,6 +123,13 @@ export const PredictionHistoryResponseSchema = z.object({
 })
 export type PredictionHistoryResponse = z.infer<typeof PredictionHistoryResponseSchema>
 
+/** `limit` defaults to 20 on the server. `cursor` is an opaque continuation token. */
+export const PredictionHistoryQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).optional(),
+  cursor: z.string().min(1).optional(),
+})
+export type PredictionHistoryQuery = z.infer<typeof PredictionHistoryQuerySchema>
+
 export const ErrorCodeSchema = z.enum([
   'INVALID_INPUT',
   'UNAUTHORIZED',

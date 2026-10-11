@@ -34,4 +34,19 @@ describe('local prediction faults', () => {
     )
     expect(JSON.parse(me?.body ?? '').activePrediction).toBeNull()
   })
+
+  it('lists only the signed-in player and starts empty', async () => {
+    const app = createLocalApp()
+    const created = await app.handle('POST', '/api/players', undefined, undefined)
+    const player = JSON.parse(created?.body ?? '') as { playerId: string; accessToken: string }
+    const denied = await app.handle('GET', '/api/predictions', undefined, undefined)
+    expect(denied?.statusCode).toBe(401)
+    const history = await app.handle(
+      'GET',
+      '/api/predictions',
+      `Bearer ${player.playerId}.${player.accessToken}`,
+      undefined,
+    )
+    expect(JSON.parse(history?.body ?? '')).toEqual({ predictions: [], nextCursor: null })
+  })
 })
