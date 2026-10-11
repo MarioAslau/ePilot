@@ -15,6 +15,8 @@ export interface PlayerRecord {
   createdAt: string
   activePredictionId?: string
   latestResolvedPredictionId?: string
+  openOfferId?: string
+  latestOfferId?: string
 }
 
 export interface PlayerStore {
@@ -80,6 +82,8 @@ export function dynamoPlayerStore(tableName = process.env.TABLE_NAME): PlayerSto
         ...(item.latestResolvedPredictionId
           ? { latestResolvedPredictionId: String(item.latestResolvedPredictionId) }
           : {}),
+        ...(item.openOfferId ? { openOfferId: String(item.openOfferId) } : {}),
+        ...(item.latestOfferId ? { latestOfferId: String(item.latestOfferId) } : {}),
       }
     },
   }

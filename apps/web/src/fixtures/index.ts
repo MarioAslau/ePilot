@@ -22,6 +22,18 @@ export type FixtureName =
   | 'setup-error'
   | 'history'
   | 'history-empty'
+  | 'dd-offer'
+  | 'dd-offer-extended'
+  | 'dd-submitting'
+  | 'dd-expired'
+  | 'dd-declined'
+  | 'dd-used'
+  | 'dd-replaced'
+  | 'dd-active'
+  | 'dd-win'
+  | 'dd-loss'
+  | 'dd-history'
+  | 'dd-reduced-motion'
 
 export const FIXTURE_NAMES: FixtureName[] = [
   'ready',
@@ -35,6 +47,18 @@ export const FIXTURE_NAMES: FixtureName[] = [
   'setup-error',
   'history',
   'history-empty',
+  'dd-offer',
+  'dd-offer-extended',
+  'dd-submitting',
+  'dd-expired',
+  'dd-declined',
+  'dd-used',
+  'dd-replaced',
+  'dd-active',
+  'dd-win',
+  'dd-loss',
+  'dd-history',
+  'dd-reduced-motion',
 ]
 
 const NOW = new Date('2026-10-06T14:00:00Z')
@@ -70,6 +94,22 @@ export interface FixtureState {
   errorMessage?: string
   flash?: 'win' | 'loss' | null
   history?: HistoryRound[]
+  offerPreview?: 'open' | 'extended' | 'submitting' | 'expired' | 'declined' | 'used' | 'replaced'
+  doubleDownHelp?: boolean
+  bonus?: boolean
+}
+
+function ddBase(label: string, extra: Partial<FixtureState> = {}): FixtureState {
+  return {
+    label,
+    price: '65432.10',
+    priceStatus: 'live',
+    score: 1,
+    wins: 1,
+    losses: 0,
+    doubleDownHelp: true,
+    ...extra,
+  }
 }
 
 export const fixtures: Record<FixtureName, FixtureState> = {
@@ -252,4 +292,37 @@ export const fixtures: Record<FixtureName, FixtureState> = {
     losses: 0,
     history: [],
   },
+
+  'dd-offer': ddBase('DD offer', { offerPreview: 'open' }),
+  'dd-offer-extended': ddBase('DD extended', { offerPreview: 'extended' }),
+  'dd-submitting': ddBase('DD submitting', { offerPreview: 'submitting' }),
+  'dd-expired': ddBase('DD expired', { offerPreview: 'expired' }),
+  'dd-declined': ddBase('DD declined', { offerPreview: 'declined' }),
+  'dd-used': ddBase('DD used', { offerPreview: 'used', bonus: true, activeRound: {
+    direction: 'UP', entryPrice: '65432.10', entryTime: NOW, deadline: LATER, predictionId: 'p_0000000003000_eeeeffff', state: 'WAITING_FOR_DEADLINE', secondsRemaining: 40,
+  } }),
+  'dd-replaced': ddBase('DD replaced', { offerPreview: 'replaced', activeRound: {
+    direction: 'DOWN', entryPrice: '65432.10', entryTime: NOW, deadline: LATER, predictionId: 'p_0000000003000_eeeeffff', state: 'WAITING_FOR_DEADLINE', secondsRemaining: 40,
+  } }),
+  'dd-active': ddBase('DD active', { bonus: true, activeRound: {
+    direction: 'UP', entryPrice: '65432.10', entryTime: NOW, deadline: LATER, predictionId: 'p_0000000003000_eeeeffff', state: 'WAITING_FOR_DEADLINE', secondsRemaining: 40,
+  } }),
+  'dd-win': ddBase('DD win', { bonus: true, score: 3, wins: 2, result: {
+    outcome: 'WIN', direction: 'UP', entryPrice: '65432.10', resolutionPrice: '65500.00', entryTime: NOW, resolutionTime: LATER, predictionId: 'p_0000000003000_eeeeffff',
+  } }),
+  'dd-loss': ddBase('DD loss', { bonus: true, score: -1, wins: 1, losses: 1, result: {
+    outcome: 'LOSS', direction: 'UP', entryPrice: '65432.10', resolutionPrice: '65000.00', entryTime: NOW, resolutionTime: LATER, predictionId: 'p_0000000003000_eeeeffff',
+  } }),
+  'dd-history': ddBase('DD history', { score: 3, wins: 2, history: [
+    {
+      predictionId: 'p_0000000003000_eeeeffff', direction: 'UP', entryPrice: '65432.10', resolutionPrice: '65500.00',
+      entryTradeTime: '2026-10-06T14:02:00.000Z', resolutionTradeTime: '2026-10-06T14:03:02.000Z', outcome: 'WIN', scoreDelta: 2,
+      parentPredictionId: 'p_0000000002000_ccccdddd',
+    },
+    {
+      predictionId: 'p_0000000002000_ccccdddd', direction: 'UP', entryPrice: '64000.00', resolutionPrice: '64120.50',
+      entryTradeTime: '2026-10-06T14:00:00.000Z', resolutionTradeTime: '2026-10-06T14:01:02.000Z', outcome: 'WIN', scoreDelta: 1,
+    },
+  ] }),
+  'dd-reduced-motion': ddBase('DD reduced motion', { offerPreview: 'open' }),
 }

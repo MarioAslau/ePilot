@@ -25,15 +25,19 @@ export function pollInterval(input: {
   offsetMs: number
   nowMs: number
   waitReason: WaitReason | null
+  offerOpen?: boolean
 }): number {
-  if (!input.hasActive) return 3_000
-  const remaining = input.dueAt ? secondsRemaining(input.dueAt, input.offsetMs, input.nowMs) : 60
-  const holding =
-    input.waitReason === 'CHECKING_PRICE' ||
-    input.waitReason === 'EQUAL_PRICE' ||
-    input.waitReason === 'PROVIDER_HOLD'
-  if (remaining <= 5 || holding) return 1_000
-  return 2_000
+  if (input.hasActive) {
+    const remaining = input.dueAt ? secondsRemaining(input.dueAt, input.offsetMs, input.nowMs) : 60
+    const holding =
+      input.waitReason === 'CHECKING_PRICE' ||
+      input.waitReason === 'EQUAL_PRICE' ||
+      input.waitReason === 'PROVIDER_HOLD'
+    if (remaining <= 5 || holding) return 1_000
+    return 2_000
+  }
+  if (input.offerOpen) return 2_000
+  return 3_000
 }
 
 export function roundView(input: {

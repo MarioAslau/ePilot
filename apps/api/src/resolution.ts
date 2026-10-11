@@ -1,6 +1,8 @@
 import { evaluate } from 'contracts'
+import type { ScoreDelta } from 'contracts'
 import type { TickerQuote } from './coinbase.js'
 import { tradeIsEntryFresh, type PredictionRecord } from './prediction.js'
+import { scoreFor } from './scoring.js'
 
 export type Decision =
   | { status: 'TOO_EARLY' }
@@ -9,13 +11,15 @@ export type Decision =
   | {
       status: 'RESOLVED'
       outcome: 'WIN' | 'LOSS'
-      scoreDelta: 1 | -1
+      scoreDelta: ScoreDelta
       resolutionPrice: string
       resolutionTradeTime: string
       resolutionFetchedAt: string
     }
 
-type Decidable = Pick<PredictionRecord, 'createdAt' | 'dueAt' | 'direction' | 'entryPrice'>
+type Decidable = Pick<PredictionRecord, 'createdAt' | 'dueAt' | 'direction' | 'entryPrice'> & {
+  mode?: PredictionRecord['mode']
+}
 
 /**
  * Decide a resolution attempt. A clock before dueAt returns TOO_EARLY
@@ -38,7 +42,7 @@ export function decide(prediction: Decidable, now: Date, quote?: TickerQuote): D
   return {
     status: 'RESOLVED',
     outcome: result.outcome,
-    scoreDelta: result.scoreDelta,
+    scoreDelta: scoreFor(prediction.mode ?? 'STANDARD', result.outcome),
     resolutionPrice: quote.price,
     resolutionTradeTime: quote.tradeTime,
     resolutionFetchedAt: quote.fetchedAt,

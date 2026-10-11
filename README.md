@@ -5,7 +5,7 @@ or lower after at least one minute.
 
 ## Implementation status
 
-T00 through T11 are complete. Mario confirmed the local history check on 2026-10-11. The hosted site at `https://release.d2yczmbttcpoe9.amplifyapp.com` calls the deployed API and does not include history until the next API deploy and Amplify rebuild. On 2026-10-11 a hosted Up round was still running when the tab was closed, and after 5 minutes it had settled as a loss. The fuller pass before submission is the T14 section of `docs/implementation-plan.md`.
+T00 through T11 are complete. T12 Momentum Double Down is implemented locally and awaiting a manual check. The hosted site at `https://release.d2yczmbttcpoe9.amplifyapp.com` calls the deployed API and does not include history or Double Down until the next API deploy and Amplify rebuild. A deploy leaves Double Down off unless it passes `--param doubleDown=on`. On 2026-10-11 a hosted Up round was still running when the tab was closed, and after 5 minutes it had settled as a loss. The fuller pass before submission is the T14 section of `docs/implementation-plan.md`.
 
 ## Links
 
@@ -187,6 +187,16 @@ Deployed, only after that local check is confirmed:
 For the T09 local check, restart `yarn dev:local` and start a new player. `http://localhost:5173/?fixture=win` and `?fixture=loss` show the two receipts without waiting. A real round still takes the minute. Near the end, `/me` polls about every second. At 0 the ticket says Comparing prices. The score flashes once. Refreshing the receipt does not flash again. `equal-price` and `resolution-provider-down` still use the fault switch above. The hold ticket is amber and says an outage never counts as a loss. If the market request is blocked, Up and Down stay visible and disabled, with “Waiting for a live price”.
 
 For the T11 local check, restart `yarn dev:local` and start a new player. Your rounds is empty before the first result. After a settled round, the row appears without a refresh and is still there after a reload. `http://localhost:5173/?fixture=history` and `?fixture=history-empty` show the list and the empty copy without waiting. Accuracy says all settled rounds. A page holds 20 rounds. Load older rounds appears only when another page exists. The hosted site still shows the placeholder until the API and the Amplify app are deployed again.
+
+For the T12 local check, `yarn dev:local` turns Double Down on. Set `FEATURE_DOUBLE_DOWN=off` before that command to hide it. Arm the next settlement as a win, then place a round:
+
+```bash
+curl -X POST http://localhost:5173/api/__dev/next-prediction \
+  -H 'Content-Type: application/json' \
+  -d '{"mode":"next-resolution-win"}'
+```
+
+That fault is local only. It is not on API Gateway. After the receipt, the offer shows +1 kept, the same direction, +2 for a pair total of +3, and −2 for a pair total of −1. Need more time adds 20 seconds, up to 10 times. The offer ends after the deadline. No thanks keeps the +1. Up or Down while it is open starts a normal round and ends the offer. A bonus win does not offer another bonus. `http://localhost:5173/?fixture=dd-offer` shows the offer without waiting. The other `dd-` names are in the preview banner. Hosted checks wait for a deploy with `--param doubleDown=on`.
 
 ## Deployment
 

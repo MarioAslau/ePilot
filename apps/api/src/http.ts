@@ -48,10 +48,33 @@ export function activeRound(requestId: string) {
   })
 }
 
-export function idempotencyConflict(requestId: string) {
+export function idempotencyConflict(requestId: string, scope: 'direction' | 'offer' = 'direction') {
   return json(409, {
     code: 'IDEMPOTENCY_CONFLICT',
-    message: 'This idempotency key was used for a different direction',
+    message:
+      scope === 'offer'
+        ? 'This idempotency key was already used'
+        : 'This idempotency key was used for a different direction',
+    requestId,
+  })
+}
+
+const OFFER_MESSAGE = {
+  OFFER_NOT_FOUND: 'Offer not found',
+  OFFER_EXPIRED: 'This offer has ended',
+  OFFER_ACCEPTED: 'This offer was already accepted',
+  OFFER_DECLINED: 'This offer was declined',
+  OFFER_REPLACED: 'This offer was replaced',
+  MAX_EXTENSIONS: 'This offer cannot be extended again',
+} as const
+
+export function offerError(
+  requestId: string,
+  code: keyof typeof OFFER_MESSAGE,
+) {
+  return json(code === 'OFFER_NOT_FOUND' ? 404 : 409, {
+    code,
+    message: OFFER_MESSAGE[code],
     requestId,
   })
 }

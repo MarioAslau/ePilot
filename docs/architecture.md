@@ -2,14 +2,14 @@
 
 ## Status
 
-T11 is complete. Mario confirmed the local history check on 2026-10-11. Settled rounds are listed from `GET /predictions`. That route and the history role are in the packaged template and are not in the account until the next deploy, so the hosted site `https://release.d2yczmbttcpoe9.amplifyapp.com` still shows the T10 build. T10's hosted check still stands: on 2026-10-11 Mario pressed Up, closed the tab while the round was running, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14.
+T11 is complete. Mario confirmed the local history check on 2026-10-11. T12 Momentum Double Down is implemented locally and awaiting Mario's check. The flag defaults off. `yarn dev:local` defaults it on. The hosted site `https://release.d2yczmbttcpoe9.amplifyapp.com` still shows the T10 build until the next API deploy and Amplify rebuild. History and Double Down are in the packaged template and are not in the account until that deploy. T10's hosted check still stands: on 2026-10-11 Mario pressed Up, closed the tab while the round was running, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14.
 
 ## Product goal
 
 A player should understand the game quickly, trust the result and
 return to their saved progress without needing to register.
 
-Deliver the standard prediction loop before optional modes.
+The standard prediction loop is the game. Momentum Double Down is an optional continuation after a standard win. It is off until a deploy passes `--param doubleDown=on`.
 
 ## Standard rules
 
@@ -197,7 +197,13 @@ Do not log tokens or render unsafe user-provided HTML.
   Implemented. Returns the authenticated player's settled rounds, newest first. `limit` is an integer from 1 to 50 and defaults to 20. `cursor` is the base64url encoding of the last returned sort key. The handler rebuilds the DynamoDB key with the authenticated player id, so a cursor cannot read another player's partition. A cursor that is not `PREDICTION#p_` plus 13 digits, `_`, and 8 hex characters is `400 INVALID_INPUT`. Pending rounds are omitted. `nextCursor` is null when that player's resolved rounds are exhausted.
 
 - POST /offers/{offerId}/accept
-  Optional mode acceptance. Validate eligibility and expiry.
+  Implemented. Body is `{ idempotencyKey }`. Any client `direction` is ignored. The bonus round uses the parent direction, a fresh entry quote, and `dueAt` 60 seconds after `createdAt`. The same key and the same offer returns the stored bonus round. The same key used for another offer, or for a standard create, is `409 IDEMPOTENCY_CONFLICT` with the message “This idempotency key was already used”. A provider failure or a trade older than 10 seconds writes nothing and leaves the offer open.
+
+- POST /offers/{offerId}/decline
+  Implemented. No body. Decline is conditional and a second decline returns the declined offer.
+
+- POST /offers/{offerId}/extend
+  Implemented. No body. Adds 20 seconds, at most 10 times, so the longest offer is 210 seconds. The update requires the offer to still be open, not yet due, under the cap, and still on the deadline just read.
 
 - GET /health
   Basic deployment connectivity check.
@@ -244,12 +250,23 @@ once. `POST /predictions` takes `direction` (`UP` or `DOWN`) and a UUID
 Do not mint a new key until the server answers or rejects the request.
 
 Error codes: `INVALID_INPUT`, `UNAUTHORIZED`, `ACTIVE_ROUND`,
-`IDEMPOTENCY_CONFLICT`, `PROVIDER_UNAVAILABLE`.
-Only `PROVIDER_UNAVAILABLE` is in `RECOVERABLE_ERROR_CODES`.
+`IDEMPOTENCY_CONFLICT`, `PROVIDER_UNAVAILABLE`, `OFFER_EXPIRED`,
+`OFFER_ACCEPTED`, `OFFER_DECLINED`, `OFFER_REPLACED`, `MAX_EXTENSIONS`,
+and `OFFER_NOT_FOUND`. Offer conflicts are 409. A missing offer, another
+player's offer, or any offer while the flag is off is 404
+`OFFER_NOT_FOUND`. Only `PROVIDER_UNAVAILABLE` is in
+`RECOVERABLE_ERROR_CODES`.
+
+`GET /me` also returns `offer` and `features.doubleDown`. `offer` is the
+latest offer while it is open, and for 60 seconds after its deadline.
+After that it is null. A resolved bonus round includes
+`parent: { predictionId, scoreDelta }`. The flag comes from
+`FEATURE_DOUBLE_DOWN`, which is on only when the Serverless param
+`doubleDown` is `on`. The default is off.
 
 ## Proposed data model
 
-Use one DynamoDB table named `hunch-<stage>`. Partition key `pk` and sort key `sk` are strings. Billing is on-demand. Streams are off. The first index is the sparse GSI `pending-by-due`: hash `pendingKey`, range `pendingDueAt`, keys only. Pending predictions set `pendingKey = PENDING` and `pendingDueAt = dueAt`. Settlement removes both. Player history is a Query on that player's partition, `begins_with(sk, PREDICTION#)`, newest first, with a consistent read. It has no index and must not scan the table. The dev table is retained if the stack is deleted. TTL is enabled on `expiresAt` and is set only on idempotency items, 24 hours after creation. The health and market Lambdas cannot read or write the table. Player Lambdas can `GetItem` and `PutItem` only. The history Lambda can `GetItem` and `Query` on the table ARN only. It cannot query the index, scan, or write. IAM cannot limit that Query to one partition; the handler sets `pk` from the authenticated player id. The prediction Lambda can `GetItem`, `PutItem`, `UpdateItem`, and `TransactWriteItems`, and can `states:StartExecution` on `hunch-<stage>-resolution`. The resolver can `GetItem`, `UpdateItem`, and `TransactWriteItems` on the table. It cannot query or scan. The recovery Lambda can `Query` only `pending-by-due`, plus `StartExecution` and `ListExecutions` on the state machine and `DescribeExecution` on its executions.
+Use one DynamoDB table named `hunch-<stage>`. Partition key `pk` and sort key `sk` are strings. Billing is on-demand. Streams are off. The first index is the sparse GSI `pending-by-due`: hash `pendingKey`, range `pendingDueAt`, keys only. Pending predictions set `pendingKey = PENDING` and `pendingDueAt = dueAt`. Settlement removes both. Player history is a Query on that player's partition, `begins_with(sk, PREDICTION#)`, newest first, with a consistent read. It has no index and must not scan the table. The dev table is retained if the stack is deleted. TTL is enabled on `expiresAt` and is set only on idempotency items, 24 hours after creation. The health and market Lambdas cannot read or write the table. Player Lambdas can `GetItem` and `PutItem` only. The history Lambda can `GetItem` and `Query` on the table ARN only. It cannot query the index, scan, or write. IAM cannot limit that Query to one partition; the handler sets `pk` from the authenticated player id. The prediction Lambda can `GetItem`, `PutItem`, `UpdateItem`, and `TransactWriteItems`, and can `states:StartExecution` on `hunch-<stage>-resolution`. The resolver can `GetItem`, `PutItem`, `UpdateItem`, and `TransactWriteItems` on the table. `PutItem` is required because a winning settlement also puts the offer. It cannot query or scan. The offer Lambda (`hunch-<stage>-offers`) can `GetItem`, `PutItem`, `UpdateItem`, and `TransactWriteItems`, and can `states:StartExecution` on the resolution machine. It cannot scan. The recovery Lambda can `Query` only `pending-by-due`, plus `StartExecution` and `ListExecutions` on the state machine and `DescribeExecution` on its executions.
 
 A player item uses `pk = PLAYER#<playerId>` and `sk = PLAYER`. The raw access token is not stored. `GET /me` loads `activePrediction` when `activePredictionId` is set. `waitReason` is `WAITING_FOR_DEADLINE` before `dueAt`. After `dueAt` it is `EQUAL_PRICE` or `PROVIDER_HOLD` only when `lastCheck` is less than 30 seconds old. Otherwise it is `CHECKING_PRICE`. `latestResolvedPrediction` is loaded from `latestResolvedPredictionId` when that prediction is `RESOLVED`.
 
@@ -261,7 +278,11 @@ Player:
 - losses        (count of incorrect predictions; displayed in ScoreCard at MVP)
 - activePredictionId
 - latestResolvedPredictionId
+- openOfferId
+- latestOfferId
 - createdAt
+
+`openOfferId` is set when a standard win creates an offer and removed on accept, decline, or replace. `latestOfferId` stays so `GET /me` can still show the offer after it ends. An offer item uses `pk = PLAYER#<playerId>` and `sk = OFFER#<offerId>`. `offerId` is `o_` plus the parent prediction id. The deadline is an ISO string named `expiresAt`. It must not be a number: the table TTL deletes numeric `expiresAt`, and that attribute is only for idempotency rows. Expiry is not written as a status. `OPEN` with `now >= expiresAt` is expired when the offer is read. A standard create while the offer is still open sets `REPLACED` in the same transaction. That replace still runs when the flag is off, so a leftover offer cannot trap the player. Accept and create cannot both succeed: accept sets `activePredictionId` only when none exists, and create requires that none exists.
 
 Prediction item: `pk = PLAYER#<playerId>`, `sk = PREDICTION#<predictionId>`. `predictionId` is `p_`, a 13-digit epoch millisecond value, `_`, and 8 hex characters.
 
@@ -705,17 +726,11 @@ The following prototype behaviours must NOT appear in production:
 
 ## Optional modes
 
-These are proposed defaults, to be confirmed before implementation.
+Redemption is still a proposal. Momentum Double Down is implemented and off by default.
 
 ### Momentum Double Down
 
-- Eligible after a standard win.
-- Offer lasts 10 seconds.
-- Same direction, new entry quote, new minimum 60-second round.
-- Original +1 remains settled.
-- Bonus score delta: +2 or -2.
-- Combined pair: +3 or -1.
-- One acceptance; no chains.
+Implemented locally. A `STANDARD` win creates one offer only when `FEATURE_DOUBLE_DOWN` is `on`. `issuedAt` is that settlement's `resolvedAt`. The first deadline is 10 seconds later. Need more time adds 20 seconds, at most 10 times. Accept starts `DOUBLE_DOWN` in the parent's direction. `evaluate()` stays ±1. `scoreFor(mode, outcome)` maps a bonus round to ±2. The original +1 is never rewritten. A bonus win does not create another offer. `wins` and `losses` still increase by 1 per settled round, including a bonus round. Decline sets `DECLINED`. The settlement transaction puts the offer once; a repeated settle returns `already_settled`.
 
 ### Redemption Round
 
@@ -768,8 +783,8 @@ These names exist after the T08 deploy of stage `dev` in `eu-north-1`. They are 
 
 - Table `hunch-dev`, index `pending-by-due`.
 - State machine `hunch-dev-resolution`.
-- Functions `hunch-dev-resolvePrediction`, `hunch-dev-recoverStuckPredictions`, and `hunch-dev-getPredictionHistory`.
-- Roles `hunch-dev-predictions`, `hunch-dev-resolver`, `hunch-dev-recovery`, `hunch-dev-resolution`, and `hunch-dev-history`. `hunch-dev-history` can `GetItem` and `Query` the table. It cannot scan or write. `hunch-dev-getPredictionHistory` and that role are in the packaged template. They are in the account only after the next deploy.
+- Functions `hunch-dev-resolvePrediction`, `hunch-dev-recoverStuckPredictions`, `hunch-dev-getPredictionHistory`, `hunch-dev-acceptOffer`, `hunch-dev-declineOffer`, and `hunch-dev-extendOffer`.
+- Roles `hunch-dev-predictions`, `hunch-dev-resolver`, `hunch-dev-recovery`, `hunch-dev-resolution`, `hunch-dev-history`, and `hunch-dev-offers`. `hunch-dev-history` can `GetItem` and `Query` the table. It cannot scan or write. `hunch-dev-offers` can `GetItem`, `PutItem`, `UpdateItem`, and `TransactWriteItems`, and can start a resolution execution. The resolver can also `PutItem`, because the win transaction puts the offer. These functions and roles are in the packaged template. They are in the account only after the next deploy. The deploy param `doubleDown` defaults to `off`. Pass `--param doubleDown=on` to turn the feature on.
 - Topic `hunch-dev-alerts`. Email subscription only when deploy passes `--param alarmEmail=...`. Confirm that email or the alarms have no subscriber.
 - Alarms, all to that topic, period 300 seconds, threshold 1, missing data does not breach: `hunch-dev-resolution-failed`, `hunch-dev-resolution-timed-out`, `hunch-dev-resolver-errors`, `hunch-dev-recovery-errors`, `hunch-dev-workflow-start-failed`.
 
@@ -797,7 +812,13 @@ fields @timestamp, playerId, priorRounds, repeat
 | stats count() by repeat
 ```
 
-That count is not proof that players were retained or activated.
+That count is not proof that players were retained or activated. Offer lines are `offer.created`, `offer.accepted`, `offer.declined`, `offer.extended`, `offer.replaced`, and `offer.rejected`. Acceptance and completion can be counted from those lines. They are not proof of retention or activation.
+
+```
+fields @timestamp, event, offerId, predictionId
+| filter event like /^offer\./
+| stats count() by event
+```
 5. To stop a live execution: `aws stepfunctions stop-execution --execution-arn <arn>`. Stopping it does not score the round. After `dueAt` plus about 7 minutes the scanner starts one replacement execution.
 6. Starting `prediction-<id>` again after it succeeded returns the existing execution and does not score again. For an execution that already failed, timed out, or was aborted, `aws stepfunctions redrive-execution --execution-arn <arn>` reruns it from the failed step. That is the operator alternative to waiting for the scanner. A round whose execution was never started has nothing to redrive. The scanner starts that one.
 7. Confirm one `RESOLVED` prediction and one score change. There is no in-app cancel. To unlock a player by hand, delete the `PREDICTION#` item and remove `activePredictionId`. Do not do that for a round the workflow may still settle.
@@ -1032,3 +1053,20 @@ The root security-credentials page only appears after activating advanced featur
 
 **Tradeoff or limitation.**
 The dev stack cannot move to another region unless the account is permanently upgraded. The CLI user `hunch-dev` has an access key and no console password. That key stays on Mario's Mac and out of Git. A reviewer who deploys their own copy on a classic AWS account can pass a different `--region`.
+
+---
+
+### D7 — Offer deadline is an ISO string, and expiry is derived
+
+**Decision.**
+Store the Double Down deadline as an ISO string in `expiresAt`. Do not write a status of `EXPIRED`. An offer is expired when its stored status is `OPEN` and `now` is at or after that string. `GET /me` returns the latest offer while it is open, and until 60 seconds after the deadline.
+
+**Reason.**
+The table TTL deletes any item whose `expiresAt` is a number. That attribute is the epoch-second lifetime of idempotency rows. An offer that used the same numeric name would disappear before the player could accept it. Deriving expiry on read means a late request and a refresh agree without a second write.
+
+**Alternatives considered.**
+- A different numeric attribute name with no TTL: works, but then two clocks exist and a writer must remember which field the TTL watches.
+- A scheduled write that sets `EXPIRED`: adds a timer for a 10-second window and can race with accept.
+
+**Tradeoff or limitation.**
+String comparison is safe only because both values are `toISOString()`. The offer stays in the table after it ends. Idempotency rows still use a numeric `expiresAt` and are the only rows the TTL deletes.

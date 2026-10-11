@@ -1,6 +1,7 @@
 import type { APIGatewayProxyHandlerV2 } from 'aws-lambda'
 import { MeResponseSchema } from 'contracts'
 import { authorizationHeader, json, unauthorized } from '../http.js'
+import { doubleDownEnabled, offerIsVisible, offerResponse } from '../offer.js'
 import { readPlayerAuthorization, tokenMatches } from '../player.js'
 import { dynamoPlayerStore, type PlayerStore } from '../playerStore.js'
 import type { PredictionRecord } from '../prediction.js'
@@ -28,8 +29,9 @@ export async function handleMe(
   requestId: string,
   deps: {
     store: PlayerStore
-    predictions?: Pick<PredictionStore, 'getPrediction'>
+    predictions?: Pick<PredictionStore, 'getPrediction' | 'getOffer'>
     now?: () => Date
+    doubleDown?: boolean
   },
 ) {
   const auth = readPlayerAuthorization(header)
@@ -51,6 +53,24 @@ export async function handleMe(
     latest = await deps.predictions.getPrediction(auth.playerId, record.latestResolvedPredictionId)
   }
   const waitReason = waitReasonFor(active, clock)
+  const enabled = deps.doubleDown ?? doubleDownEnabled()
+  let offer = null
+  if (enabled && record.latestOfferId && deps.predictions) {
+    const stored = await deps.predictions.getOffer(auth.playerId, record.latestOfferId)
+    if (stored && offerIsVisible(stored, clock)) offer = offerResponse(stored, clock)
+  }
+  let parent: { predictionId: string; scoreDelta: NonNullable<PredictionRecord['scoreDelta']> } | undefined
+  if (
+    latest?.status === 'RESOLVED' &&
+    latest.mode === 'DOUBLE_DOWN' &&
+    latest.parentPredictionId &&
+    deps.predictions
+  ) {
+    const parentRecord = await deps.predictions.getPrediction(auth.playerId, latest.parentPredictionId)
+    if (parentRecord?.scoreDelta) {
+      parent = { predictionId: parentRecord.predictionId, scoreDelta: parentRecord.scoreDelta }
+    }
+  }
 
   return json(
     200,
@@ -60,9 +80,11 @@ export async function handleMe(
       wins: record.wins,
       losses: record.losses,
       activePrediction: active ? predictionResponse(active) : null,
-      latestResolvedPrediction: latest?.status === 'RESOLVED' ? predictionResponse(latest) : null,
+      latestResolvedPrediction: latest?.status === 'RESOLVED' ? predictionResponse(latest, parent) : null,
       waitReason,
       serverTime: clock.toISOString(),
+      offer,
+      features: { doubleDown: enabled },
     }),
   )
 }

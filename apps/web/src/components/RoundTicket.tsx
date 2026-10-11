@@ -1,6 +1,8 @@
 import type { Direction, WaitReason } from 'contracts'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useEffect, useRef } from 'react'
+import { roundLabel } from '../offer'
+import { DoubleDownBadge } from './DoubleDownBadge'
 
 interface Props {
   direction: Direction
@@ -14,6 +16,8 @@ interface Props {
   note?: string
   latestPrice?: string
   autoFocus?: boolean
+  bonus?: boolean
+  parentPredictionId?: string
 }
 
 function formatPrice(raw: string): string {
@@ -65,6 +69,8 @@ export function RoundTicket({
   note,
   latestPrice,
   autoFocus = false,
+  bonus = false,
+  parentPredictionId,
 }: Props) {
   const heading = useRef<HTMLHeadingElement>(null)
   useEffect(() => {
@@ -82,9 +88,11 @@ export function RoundTicket({
   const offset = circumference * (1 - progress)
 
   return (
-    <div className={`ticket ${onHold ? 'hold' : isUp ? 'up' : 'down'}`}>
+    <div className={`ticket ${bonus ? 'bonus' : ''} ${onHold ? 'hold' : isUp ? 'up' : 'down'}`}>
       <h2 id="round-heading" className="play-title" tabIndex={-1} ref={heading}>
-        Your prediction
+        {bonus
+          ? (onHold ? 'Bonus round on hold' : comparing ? 'Getting your bonus result' : 'Your bonus round is in')
+          : 'Your prediction'}
       </h2>
       <div className="tk-head">
         <span className={`dirtag ${isUp ? 'up' : 'down'}`} aria-label={`Prediction: ${direction}`}>
@@ -93,8 +101,13 @@ export function RoundTicket({
             : <ChevronDown className="ic" aria-hidden="true" />}
           {isUp ? 'Going Up' : 'Going Down'}
         </span>
-        <span className="tk-id fine">#{predictionId.slice(-6).toUpperCase()}</span>
+        {bonus ? <DoubleDownBadge /> : <span className="tk-id fine">#{predictionId.slice(-6).toUpperCase()}</span>}
       </div>
+      {bonus && parentPredictionId && (
+        <p className="dd-strip">
+          Bonus on round {roundLabel(parentPredictionId)}, <b>+1 kept</b>. Right <b>+2</b> (pair +3). Wrong <b>−2</b> (pair −1).
+        </p>
+      )}
 
       <ol className="steps" aria-label="Round progress">
         <li className="done">Placed</li>

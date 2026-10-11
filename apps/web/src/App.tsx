@@ -7,10 +7,15 @@ import { HowItWorks } from './components/HowItWorks'
 import { MarketCard } from './components/MarketCard'
 import { ResultReceipt } from './components/ResultReceipt'
 import { RoundTicket } from './components/RoundTicket'
+import { DoubleDownOffer } from './components/DoubleDownOffer'
+import { OfferNotice } from './components/OfferNotice'
+import { PredictionPanel } from './components/PredictionPanel'
 import { RoundHistory } from './components/RoundHistory'
 import { ScoreCard } from './components/ScoreCard'
 import { StatusNotice } from './components/StatusNotice'
+import { bonusResultAnnouncement, offerPhase, winOfferAnnouncement } from './offer'
 import { announcement, pollInterval, roundView, clockOffset, type RoundPhase } from './round'
+import { useOffer } from './useOffer'
 import {
   clearSession,
   readSession,
@@ -72,12 +77,15 @@ function PlayerStatus() {
     refetchInterval: (query) => {
       const data = query.state.data
       if (!data) return false
+      const offer = data.me.features.doubleDown ? data.me.offer : null
+      const serverNow = Date.now() + data.offsetMs
       return pollInterval({
         hasActive: Boolean(data.me.activePrediction),
         dueAt: data.me.activePrediction?.dueAt,
         offsetMs: data.offsetMs,
         nowMs: Date.now(),
         waitReason: data.me.waitReason,
+        offerOpen: Boolean(offer && offer.status === 'OPEN' && serverNow < new Date(offer.expiresAt).getTime()),
       })
     },
     queryFn: async () => {
@@ -104,7 +112,19 @@ function PlayerStatus() {
   const refreshPlayer = () => {
     void queryClient.invalidateQueries({ queryKey: ['player', baseUrl] })
   }
-  const prediction = usePrediction(baseUrl, session, refreshPlayer, refreshPlayer)
+  const serverNowMs = nowMs + (snapshot?.offsetMs ?? 0)
+  const visibleOffer = me?.features.doubleDown ? me.offer : null
+  const controls = useOffer(baseUrl, session, visibleOffer, serverNowMs, refreshPlayer)
+  const phaseOffer = offerPhase(visibleOffer, controls, serverNowMs)
+  const prediction = usePrediction(
+    baseUrl,
+    session,
+    (outcome) => {
+      if (outcome === 'rejected') controls.markReplacedHere(null)
+      refreshPlayer()
+    },
+    refreshPlayer,
+  )
   const rejected = player.error instanceof HttpError && player.error.status === 401
   const stalePlayer = Boolean(player.isError && player.data && !rejected)
   const market = useMarket(baseUrl)
@@ -116,8 +136,9 @@ function PlayerStatus() {
     nowMs,
   })
   const showPrediction = Boolean(me) && !view.active
+  const relocateButtons = phaseOffer === 'open' || phaseOffer === 'submitting' || phaseOffer === 'expired' || phaseOffer === 'declined'
   const marketLive = market.status === 'live'
-  const buttonsDisabled = !marketLive || stalePlayer || prediction.phase !== 'idle'
+  const buttonsDisabled = !marketLive || stalePlayer || prediction.phase !== 'idle' || controls.mutation !== null
   const buttonReason = prediction.phase === 'recording'
     ? null
     : stalePlayer
@@ -127,11 +148,12 @@ function PlayerStatus() {
         : null
 
   const activeId = view.active?.predictionId
+  const offerTiming = phaseOffer === 'open' || phaseOffer === 'submitting'
   useEffect(() => {
-    if (!activeId) return
-    const id = window.setInterval(() => setNowMs(Date.now()), 1_000)
+    if (!activeId && !offerTiming) return
+    const id = window.setInterval(() => setNowMs(Date.now()), offerTiming && !activeId ? 100 : 1_000)
     return () => window.clearInterval(id)
-  }, [activeId])
+  }, [activeId, offerTiming])
 
   useEffect(() => {
     const from = prevPhase.current
@@ -144,7 +166,9 @@ function PlayerStatus() {
       const outcome = view.settled.outcome
       if (!shouldAnimate(me.playerId, predictionId)) return
       setFlash(outcome === 'WIN' ? 'win' : 'loss')
-      setLive(announcement(from, 'result', { outcome, score: me.score }) ?? '')
+      if (view.settled.mode === 'DOUBLE_DOWN') setLive(bonusResultAnnouncement(outcome, me.score))
+      else if (outcome === 'WIN' && phaseOffer === 'open') setLive(winOfferAnnouncement(me.score, view.settled.direction))
+      else setLive(announcement(from, 'result', { outcome, score: me.score }) ?? '')
       const timer = window.setTimeout(() => markSeenResult(me.playerId, predictionId), 0)
       return () => window.clearTimeout(timer)
     }
@@ -153,7 +177,38 @@ function PlayerStatus() {
       entryPrice: view.active?.entryPrice,
     })
     if (text) setLive(text)
-  }, [view.phase, view.settled, view.active, me])
+  }, [view.phase, view.settled, view.active, me, phaseOffer])
+
+  const prevOfferPhase = useRef(phaseOffer)
+  const prevExpiry = useRef(visibleOffer?.expiresAt ?? null)
+  const announcedBonus = useRef<string | null>(null)
+  const focusTitle = useRef(false)
+  useEffect(() => {
+    if (phaseOffer === 'expired' && prevOfferPhase.current === 'open') {
+      setLive('Double down offer ended. Your +1 is kept.')
+    }
+    if (phaseOffer === 'declined' && focusTitle.current) {
+      focusTitle.current = false
+      document.getElementById('play-title')?.focus()
+    }
+    prevOfferPhase.current = phaseOffer
+  }, [phaseOffer])
+  useEffect(() => {
+    const expiry = visibleOffer?.expiresAt ?? null
+    if (prevExpiry.current && expiry && expiry !== prevExpiry.current && phaseOffer === 'open') {
+      const seconds = Math.max(0, Math.ceil((new Date(expiry).getTime() - serverNowMs) / 1000))
+      setLive(`20 seconds added. Offer ends in ${seconds} seconds.`)
+    }
+    prevExpiry.current = expiry
+  }, [visibleOffer?.expiresAt, phaseOffer, serverNowMs])
+  useEffect(() => {
+    const active = view.active
+    if (active?.mode !== 'DOUBLE_DOWN' || !controls.acceptedHereOfferId) return
+    if (announcedBonus.current === active.predictionId) return
+    announcedBonus.current = active.predictionId
+    const word = active.direction === 'DOWN' ? 'down' : 'up'
+    setLive(`Bonus round started: ${word}, entry price ${active.entryPrice}. Plus 2 if right, minus 2 if wrong. The earliest result is in 60 seconds.`)
+  }, [view.active, controls.acceptedHereOfferId])
 
   const ticketState =
     view.phase === 'equal' ? 'EQUAL_PRICE'
@@ -175,11 +230,17 @@ function PlayerStatus() {
                 ageSeconds={market.ageSeconds}
                 samples={market.samples}
                 now={market.now}
-                showPrediction={showPrediction}
-                onPredict={(direction) => prediction.submit(direction, market.price)}
+                showPrediction={showPrediction && !relocateButtons}
+                onPredict={(direction) => {
+                  if (visibleOffer && (phaseOffer === 'open' || phaseOffer === 'submitting')) {
+                    controls.markReplacedHere(visibleOffer.offerId)
+                  }
+                  prediction.submit(direction, market.price)
+                }}
                 isSubmitting={prediction.phase === 'recording'}
                 predictionDisabled={buttonsDisabled}
                 predictionReason={buttonReason}
+                predictionTitle={offerTiming ? 'Nice call. Bonus round?' : undefined}
               />
             )}
             {view.settled?.outcome && view.settled.resolutionPrice && view.settled.resolutionTradeTime && view.settled.resolvedAt && (
@@ -193,6 +254,68 @@ function PlayerStatus() {
                 fetchedAt={view.settled.resolutionFetchedAt ? new Date(view.settled.resolutionFetchedAt) : undefined}
                 settledAt={new Date(view.settled.resolvedAt)}
                 predictionId={view.settled.predictionId}
+                scoreDelta={view.settled.scoreDelta}
+                parent={view.settled.parent}
+              />
+            )}
+            {visibleOffer && (phaseOffer === 'open' || phaseOffer === 'submitting') && (
+              <DoubleDownOffer
+                offer={visibleOffer}
+                serverNowMs={serverNowMs}
+                submitting={phaseOffer === 'submitting'}
+                error={controls.error}
+                busy={buttonsDisabled}
+                onAccept={() => void controls.accept()}
+                onDecline={() => {
+                  focusTitle.current = true
+                  void controls.decline()
+                }}
+                onExtend={() => void controls.extend()}
+              />
+            )}
+            {visibleOffer && phaseOffer === 'expired' && (
+              <OfferNotice
+                tone="neutral"
+                icon="clock"
+                message={<><b>Offer ended. Your +1 is kept.</b> Pick Up or Down whenever you're ready for a normal round.</>}
+                onDismiss={() => controls.dismiss(visibleOffer.offerId)}
+              />
+            )}
+            {visibleOffer && phaseOffer === 'declined' && (
+              <OfferNotice
+                tone="neutral"
+                icon="check"
+                message={<><b>No bonus round. Your +1 is kept.</b> Pick Up or Down whenever you're ready.</>}
+                onDismiss={() => controls.dismiss(visibleOffer.offerId)}
+              />
+            )}
+            {relocateButtons && (
+              <PredictionPanel
+                price={market.price}
+                title={offerTiming ? 'Nice call. Bonus round?' : undefined}
+                onPredict={(direction) => {
+                  if (visibleOffer) controls.markReplacedHere(visibleOffer.offerId)
+                  prediction.submit(direction, market.price)
+                }}
+                isSubmitting={prediction.phase === 'recording'}
+                disabled={buttonsDisabled}
+                reason={buttonReason}
+              />
+            )}
+            {visibleOffer && phaseOffer === 'used' && (
+              <OfferNotice
+                tone="info"
+                icon="ban"
+                message={<><b>Offer no longer available.</b> You already doubled down on round {visibleOffer.parentPredictionId.slice(-6).toUpperCase()} in another tab. Your +1 is kept, and that bonus round is the one you see here.</>}
+                onDismiss={() => controls.dismiss(visibleOffer.offerId)}
+              />
+            )}
+            {visibleOffer && phaseOffer === 'replaced' && (
+              <OfferNotice
+                tone="info"
+                icon="copy"
+                message={<><b>Offer no longer available.</b> A new round was started in another tab, which ended the Double Down offer for round {visibleOffer.parentPredictionId.slice(-6).toUpperCase()}. Your +1 is kept.</>}
+                onDismiss={() => controls.dismiss(visibleOffer.offerId)}
               />
             )}
             {view.active && (
@@ -206,7 +329,12 @@ function PlayerStatus() {
                 state={ticketState}
                 secondsRemaining={view.remaining}
                 latestPrice={market.price ?? undefined}
-                autoFocus={prediction.placed?.predictionId === view.active.predictionId}
+                bonus={view.active.mode === 'DOUBLE_DOWN'}
+                parentPredictionId={view.active.parentPredictionId}
+                autoFocus={
+                  prediction.placed?.predictionId === view.active.predictionId
+                  || visibleOffer?.bonusPredictionId === view.active.predictionId
+                }
                 note={
                   prediction.serverPriced
                     ? 'The server recorded its own entry price.'
@@ -300,7 +428,7 @@ function PlayerStatus() {
                 onRetry={history.retry}
               />
             )}
-            <HowItWorks />
+            <HowItWorks doubleDown={Boolean(me?.features.doubleDown)} />
           </div>
         </div>
       </main>

@@ -13,11 +13,14 @@ import {
 } from '../http.js'
 import { readPlayerAuthorization, tokenMatches } from '../player.js'
 import { dynamoPlayerStore, type PlayerStore } from '../playerStore.js'
-import { buildPrediction, tradeIsEntryFresh, workflowExecutionName, type PredictionRecord } from '../prediction.js'
+import { buildPrediction, tradeIsEntryFresh, workflowExecutionName, type IdempotencyRecord, type PredictionRecord } from '../prediction.js'
 import { dynamoPredictionStore, type PredictionStore } from '../predictionStore.js'
 import { startPredictionWorkflow } from '../workflowClient.js'
 
-export function predictionResponse(record: PredictionRecord) {
+export function predictionResponse(
+  record: PredictionRecord,
+  parent?: { predictionId: string; scoreDelta: NonNullable<PredictionRecord['scoreDelta']> },
+) {
   return PredictionSchema.parse({
     predictionId: record.predictionId,
     playerId: record.playerId,
@@ -28,6 +31,7 @@ export function predictionResponse(record: PredictionRecord) {
     dueAt: record.dueAt,
     entryPrice: record.entryPrice,
     entryTradeTime: record.entryTradeTime,
+    ...(record.parentPredictionId ? { parentPredictionId: record.parentPredictionId } : {}),
     ...(record.status === 'RESOLVED'
       ? {
           resolvedAt: record.resolvedAt,
@@ -36,9 +40,14 @@ export function predictionResponse(record: PredictionRecord) {
           resolutionFetchedAt: record.resolutionFetchedAt,
           outcome: record.outcome,
           scoreDelta: record.scoreDelta,
+          ...(parent ? { parent } : {}),
         }
       : {}),
   })
+}
+
+function sameCreate(existing: IdempotencyRecord, direction: PredictionRecord['direction']) {
+  return existing.kind !== 'OFFER_ACCEPT' && existing.direction === direction
 }
 
 function log(event: string, fields: Record<string, string | undefined>) {
@@ -77,7 +86,7 @@ export async function handleCreatePrediction(
 
   const existing = await deps.predictions.getIdempotency(auth.playerId, body.data.idempotencyKey)
   if (existing) {
-    if (existing.direction !== body.data.direction) {
+    if (!sameCreate(existing, body.data.direction)) {
       log('prediction.rejected', { requestId, playerId: auth.playerId, reason: 'IDEMPOTENCY_CONFLICT' })
       return idempotencyConflict(requestId)
     }
@@ -120,10 +129,24 @@ export async function handleCreatePrediction(
     entryFetchedAt: quote.fetchedAt,
     nextBytes: deps.nextBytes ?? randomBytes,
   })
-  const outcome = await deps.predictions.create(built)
+  const nowIso = clock.toISOString()
+  const openOfferId = player.openOfferId
+  let outcome = await deps.predictions.create({
+    ...built,
+    ...(openOfferId ? { replaceOfferId: openOfferId, now: nowIso } : {}),
+  })
+  const replacedOfferId = outcome === 'created' ? openOfferId : undefined
+  if (outcome === 'offer_changed') {
+    const current = await deps.players.get(auth.playerId)
+    if (current?.activePredictionId) {
+      log('prediction.rejected', { requestId, playerId: auth.playerId, reason: 'ACTIVE_ROUND' })
+      return activeRound(requestId)
+    }
+    outcome = await deps.predictions.create({ ...built, clearOpenOffer: true })
+  }
   if (outcome === 'duplicate_key') {
     const raced = await deps.predictions.getIdempotency(auth.playerId, body.data.idempotencyKey)
-    if (!raced || raced.direction !== body.data.direction) return idempotencyConflict(requestId)
+    if (!raced || !sameCreate(raced, body.data.direction)) return idempotencyConflict(requestId)
     const stored = await deps.predictions.getPrediction(auth.playerId, raced.predictionId)
     if (!stored) return providerUnavailable(requestId)
     return json(200, predictionResponse(stored))
@@ -133,6 +156,9 @@ export async function handleCreatePrediction(
     return activeRound(requestId)
   }
 
+  if (replacedOfferId) {
+    log('offer.replaced', { requestId, playerId: auth.playerId, offerId: replacedOfferId, predictionId: built.prediction.predictionId })
+  }
   const priorRounds = player.wins + player.losses
   log('prediction.created', {
     requestId,

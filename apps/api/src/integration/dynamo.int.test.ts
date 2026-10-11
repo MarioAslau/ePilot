@@ -6,6 +6,7 @@ import {
 } from '@aws-sdk/client-dynamodb'
 import { DynamoDBDocumentClient, UpdateCommand } from '@aws-sdk/lib-dynamodb'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { offerIdFor } from '../offer.js'
 import { createPlayer, playerKeys } from '../player.js'
 import { buildPrediction } from '../prediction.js'
 import { dynamoPlayerStore } from '../playerStore.js'
@@ -251,5 +252,98 @@ describe.skipIf(!process.env.DYNAMODB_ENDPOINT)('DynamoDB conditions', () => {
     })
     expect(secondPage.items.map((row) => row.predictionId)).toEqual([built.prediction.predictionId])
     expect(secondPage.items.map((row) => row.predictionId)).not.toContain(pending.prediction.predictionId)
+  })
+
+  it('creates one offer with the win and lets one accept or one standard round win', async () => {
+    const { players, predictions, created, built } = await playerAndRound(
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      12,
+    )
+    expect(await predictions.create(built)).toBe('created')
+    const offerId = offerIdFor(built.prediction.predictionId)
+    const settled = settlement(created.playerId, built.prediction.predictionId)
+    expect(await predictions.settle({
+      ...settled,
+      createOffer: { offerId, direction: 'UP', parentPredictionId: built.prediction.predictionId },
+    })).toBe('settled')
+    expect(await predictions.settle(settled)).toBe('already_settled')
+    expect((await players.get(created.playerId))?.score).toBe(1)
+    expect((await predictions.getOffer(created.playerId, offerId))?.status).toBe('OPEN')
+
+    const acceptAt = '2026-10-11T15:01:08.000Z'
+    const bonus = (key: string, byte: number) => buildPrediction({
+      now: new Date(acceptAt),
+      playerId: created.playerId,
+      direction: 'UP',
+      idempotencyKey: key,
+      entryPrice: '83000.00',
+      entryTradeTime: acceptAt,
+      entryFetchedAt: acceptAt,
+      nextBytes: (size) => Buffer.alloc(size, byte),
+      mode: 'DOUBLE_DOWN',
+      parentPredictionId: built.prediction.predictionId,
+      offerId,
+    })
+    const first = bonus('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 13)
+    const second = bonus('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 14)
+    const [left, right] = await Promise.all([
+      predictions.acceptOffer({ ...first, offerId, now: acceptAt }),
+      predictions.acceptOffer({ ...second, offerId, now: acceptAt }),
+    ])
+    expect([left, right].sort()).toEqual(['accepted', 'conflict'])
+    expect((await predictions.getOffer(created.playerId, offerId))?.status).toBe('ACCEPTED')
+  })
+
+  it('keeps a single round when accept and create race, and one extension when the deadline is stale', async () => {
+    const { predictions, created, built } = await playerAndRound(
+      'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      15,
+    )
+    expect(await predictions.create(built)).toBe('created')
+    const offerId = offerIdFor(built.prediction.predictionId)
+    expect(await predictions.settle({
+      ...settlement(created.playerId, built.prediction.predictionId),
+      createOffer: { offerId, direction: 'UP', parentPredictionId: built.prediction.predictionId },
+    })).toBe('settled')
+    const at = '2026-10-11T15:01:08.000Z'
+    const seen = (await predictions.getOffer(created.playerId, offerId))?.expiresAt ?? ''
+    const [extended, stale] = await Promise.all([
+      predictions.extendOffer(created.playerId, offerId, seen, at),
+      predictions.extendOffer(created.playerId, offerId, seen, at),
+    ])
+    expect([extended, stale].sort()).toEqual(['conflict', 'extended'])
+    expect((await predictions.getOffer(created.playerId, offerId))?.extensions).toBe(1)
+
+    const standard = buildPrediction({
+      now: new Date(at),
+      playerId: created.playerId,
+      direction: 'DOWN',
+      idempotencyKey: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      entryPrice: '83000.00',
+      entryTradeTime: at,
+      entryFetchedAt: at,
+      nextBytes: (size) => Buffer.alloc(size, 16),
+    })
+    const bonus = buildPrediction({
+      now: new Date(at),
+      playerId: created.playerId,
+      direction: 'UP',
+      idempotencyKey: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+      entryPrice: '83000.00',
+      entryTradeTime: at,
+      entryFetchedAt: at,
+      nextBytes: (size) => Buffer.alloc(size, 17),
+      mode: 'DOUBLE_DOWN',
+      parentPredictionId: built.prediction.predictionId,
+      offerId,
+    })
+    const [createdRound, accepted] = await Promise.all([
+      predictions.create({ ...standard, replaceOfferId: offerId, now: at }),
+      predictions.acceptOffer({ ...bonus, offerId, now: at }),
+    ])
+    const outcomes = [createdRound, accepted].sort()
+    expect(outcomes.filter((outcome) => outcome === 'created' || outcome === 'accepted')).toHaveLength(1)
+    const player = await dynamoPlayerStore().get(created.playerId)
+    expect(player?.activePredictionId).toBeTruthy()
   })
 })
