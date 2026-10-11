@@ -40,6 +40,14 @@ export function invalidInput(requestId: string) {
   })
 }
 
+export function directionRequired(requestId: string) {
+  return json(400, {
+    code: 'DIRECTION_REQUIRED',
+    message: 'Choose up or down to start this round',
+    requestId,
+  })
+}
+
 export function activeRound(requestId: string) {
   return json(409, {
     code: 'ACTIVE_ROUND',

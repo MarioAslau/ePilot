@@ -5,7 +5,7 @@ or lower after at least one minute.
 
 ## Implementation status
 
-T00 through T12 are complete. Mario marked the local Double Down check done on 2026-10-11. The hosted site at `https://release.d2yczmbttcpoe9.amplifyapp.com` calls the deployed API and does not include history or Double Down until the next API deploy and Amplify rebuild. A deploy leaves Double Down off unless it passes `--param doubleDown=on`. On 2026-10-11 a hosted Up round was still running when the tab was closed, and after 5 minutes it had settled as a loss. The fuller pass before submission is the T14 section of `docs/implementation-plan.md`.
+T00 through T12 are complete. T13, Redemption, is implemented locally and awaiting manual verification. It is not deployed. Mario marked the local Double Down check done on 2026-10-11. The hosted site at `https://release.d2yczmbttcpoe9.amplifyapp.com` calls the deployed API and does not include history, Double Down, or Redemption until the next API deploy and Amplify rebuild. A deploy leaves Double Down off unless it passes `--param doubleDown=on`, and leaves Redemption off unless it passes `--param redemption=on`. On 2026-10-11 a hosted Up round was still running when the tab was closed, and after 5 minutes it had settled as a loss. The fuller pass before submission is the T14 section of `docs/implementation-plan.md`.
 
 ## Links
 
@@ -197,6 +197,16 @@ curl -X POST http://localhost:5173/api/__dev/next-prediction \
 ```
 
 That fault is local only. It is not on API Gateway. After the receipt, the offer shows +1 kept, the same direction, +2 for a pair total of +3, and −2 for a pair total of −1. Need more time adds 20 seconds, up to 10 times. The offer ends after the deadline. No thanks keeps the +1. Up or Down while it is open starts a normal round and ends the offer. A bonus win does not offer another bonus. `http://localhost:5173/?fixture=dd-offer` shows the offer without waiting. The other `dd-` names are in the preview banner. Hosted checks wait for a deploy with `--param doubleDown=on`.
+
+For the T13 local check, `yarn dev:local` turns Redemption on when `FEATURE_REDEMPTION` is unset. Set `FEATURE_REDEMPTION=off` before that command to hide it. The two flags are independent. Arm the next settlement as a loss, then place a round:
+
+```bash
+curl -X POST http://localhost:5173/api/__dev/next-prediction \
+  -H 'Content-Type: application/json' \
+  -d '{"mode":"next-resolution-loss"}'
+```
+
+That fault is local only. It is not on API Gateway. After the loss receipt, the offer shows −1 kept, Play Up and Play Down, +4 for a pair total of +3, and −2 for a pair total of −3. Need more time adds 20 seconds, up to 10 times. The offer ends after the deadline and the −1 stands. No thanks keeps the −1. The main Up or Down while it is open starts a normal round and ends the offer with no notice. A Redemption win or loss does not offer another round. `http://localhost:5173/?fixture=rd-offer` shows the offer without waiting. The other `rd-` names are in the preview banner, including `rd-second-call`. Hosted checks wait for a deploy with `--param redemption=on`. A deploy with `redemption=off` leaves Double Down and standard play unchanged. A Redemption round still takes at least 60 seconds. At roughly even odds, accepting is worth about +1, so declining is never the better score.
 
 ## Deployment
 

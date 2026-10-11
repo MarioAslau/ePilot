@@ -1,7 +1,7 @@
 import type { APIGatewayProxyHandlerV2 } from 'aws-lambda'
 import { MeResponseSchema } from 'contracts'
 import { authorizationHeader, json, unauthorized } from '../http.js'
-import { doubleDownEnabled, offerIsVisible, offerResponse } from '../offer.js'
+import { doubleDownEnabled, offerIsVisible, offerModeEnabled, offerResponse, redemptionEnabled } from '../offer.js'
 import { readPlayerAuthorization, tokenMatches } from '../player.js'
 import { dynamoPlayerStore, type PlayerStore } from '../playerStore.js'
 import type { PredictionRecord } from '../prediction.js'
@@ -32,6 +32,7 @@ export async function handleMe(
     predictions?: Pick<PredictionStore, 'getPrediction' | 'getOffer'>
     now?: () => Date
     doubleDown?: boolean
+    redemption?: boolean
   },
 ) {
   const auth = readPlayerAuthorization(header)
@@ -53,16 +54,21 @@ export async function handleMe(
     latest = await deps.predictions.getPrediction(auth.playerId, record.latestResolvedPredictionId)
   }
   const waitReason = waitReasonFor(active, clock)
-  const enabled = deps.doubleDown ?? doubleDownEnabled()
+  const flags = {
+    doubleDown: deps.doubleDown ?? doubleDownEnabled(),
+    redemption: deps.redemption ?? redemptionEnabled(),
+  }
   let offer = null
-  if (enabled && record.latestOfferId && deps.predictions) {
+  if (record.latestOfferId && deps.predictions) {
     const stored = await deps.predictions.getOffer(auth.playerId, record.latestOfferId)
-    if (stored && offerIsVisible(stored, clock)) offer = offerResponse(stored, clock)
+    if (stored && offerIsVisible(stored, clock) && offerModeEnabled(stored.mode, flags)) {
+      offer = offerResponse(stored, clock)
+    }
   }
   let parent: { predictionId: string; scoreDelta: NonNullable<PredictionRecord['scoreDelta']> } | undefined
   if (
     latest?.status === 'RESOLVED' &&
-    latest.mode === 'DOUBLE_DOWN' &&
+    (latest.mode === 'DOUBLE_DOWN' || latest.mode === 'REDEMPTION') &&
     latest.parentPredictionId &&
     deps.predictions
   ) {
@@ -84,7 +90,7 @@ export async function handleMe(
       waitReason,
       serverTime: clock.toISOString(),
       offer,
-      features: { doubleDown: enabled },
+      features: flags,
     }),
   )
 }

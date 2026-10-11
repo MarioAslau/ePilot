@@ -337,3 +337,312 @@ describe('POST /offers', () => {
     expect(later.offer).toBeNull()
   })
 })
+
+const redemptionOn = { doubleDown: true, redemption: true }
+
+async function lostStandard(byte = 21) {
+  const store = memoryGameStore()
+  const created = createPlayer(createdAt, (size) => Buffer.alloc(size, byte))
+  await store.putNew(created)
+  const response = await handleCreatePrediction(
+    header(created),
+    JSON.stringify({ direction: 'UP', idempotencyKey: '12121212-1212-4121-8121-121212121212' }),
+    'create',
+    { players: store, predictions: store, now: () => createdAt, quote: async () => entry },
+  )
+  const prediction = JSON.parse(response.body ?? '') as { predictionId: string; dueAt: string; playerId: string }
+  await handleResolvePrediction(
+    { playerId: prediction.playerId, predictionId: prediction.predictionId, dueAt: prediction.dueAt },
+    {
+      predictions: store,
+      players: store,
+      now: () => resolvedAt,
+      quote: async () => quoteAt('82000.00', resolvedAt),
+      ...redemptionOn,
+    },
+  )
+  const player = await store.get(created.playerId)
+  return { store, created, prediction, offerId: player?.openOfferId ?? '' }
+}
+
+describe('Redemption settlement', () => {
+  it('opens one direction-less offer on a standard loss and scores the follow-on once', async () => {
+    const logs: string[] = []
+    const spy = vi.spyOn(console, 'log').mockImplementation((line: unknown) => {
+      logs.push(String(line))
+    })
+    const { store, created, prediction, offerId } = await lostStandard()
+    expect(offerId).toBe(offerIdFor(prediction.predictionId))
+    const offer = await store.getOffer(created.playerId, offerId)
+    expect(offer).toMatchObject({ mode: 'REDEMPTION', status: 'OPEN' })
+    expect(offer?.direction).toBeUndefined()
+    expect((await store.get(created.playerId))?.score).toBe(-1)
+    await handleResolvePrediction(
+      { playerId: prediction.playerId, predictionId: prediction.predictionId, dueAt: prediction.dueAt },
+      { predictions: store, players: store, now: () => resolvedAt, quote: async () => quoteAt('82000.00', resolvedAt), ...redemptionOn },
+    )
+    expect((await store.get(created.playerId))?.score).toBe(-1)
+    expect(logs.some((line) => line.includes('"event":"offer.created"') && line.includes('"mode":"REDEMPTION"') && !line.includes(created.accessToken))).toBe(true)
+
+    const me = JSON.parse((await handleMe(header(created), 'me', { store, predictions: store, now: () => resolvedAt, ...redemptionOn })).body ?? '')
+    expect(me.offer).toMatchObject({
+      mode: 'REDEMPTION',
+      direction: null,
+      payout: { win: 4, loss: -2, parentDelta: -1 },
+    })
+    expect(me.features).toEqual({ doubleDown: true, redemption: true })
+
+    const quiet = memoryGameStore()
+    const quietPlayer = createPlayer(createdAt, (size) => Buffer.alloc(size, 22))
+    await quiet.putNew(quietPlayer)
+    const quietCreated = await handleCreatePrediction(
+      header(quietPlayer),
+      JSON.stringify({ direction: 'UP', idempotencyKey: '13131313-1313-4131-8131-131313131313' }),
+      'quiet',
+      { players: quiet, predictions: quiet, now: () => createdAt, quote: async () => entry },
+    )
+    const quietPrediction = JSON.parse(quietCreated.body ?? '') as { predictionId: string; dueAt: string; playerId: string }
+    await handleResolvePrediction(
+      { playerId: quietPrediction.playerId, predictionId: quietPrediction.predictionId, dueAt: quietPrediction.dueAt },
+      { predictions: quiet, players: quiet, now: () => resolvedAt, quote: async () => quoteAt('81000.00', resolvedAt), doubleDown: true, redemption: false },
+    )
+    expect((await quiet.get(quietPlayer.playerId))?.openOfferId).toBeUndefined()
+
+    const winStore = memoryGameStore()
+    const winner = createPlayer(createdAt, (size) => Buffer.alloc(size, 23))
+    await winStore.putNew(winner)
+    const winCreated = await handleCreatePrediction(
+      header(winner),
+      JSON.stringify({ direction: 'UP', idempotencyKey: '14141414-1414-4141-8141-141414141414' }),
+      'win',
+      { players: winStore, predictions: winStore, now: () => createdAt, quote: async () => entry },
+    )
+    const winPrediction = JSON.parse(winCreated.body ?? '') as { predictionId: string; dueAt: string; playerId: string }
+    await handleResolvePrediction(
+      { playerId: winPrediction.playerId, predictionId: winPrediction.predictionId, dueAt: winPrediction.dueAt },
+      { predictions: winStore, players: winStore, now: () => resolvedAt, quote: async () => quoteAt('85000.00', resolvedAt), ...redemptionOn },
+    )
+    expect((await winStore.getOffer(winner.playerId, offerIdFor(winPrediction.predictionId)))?.mode).toBe('DOUBLE_DOWN')
+    spy.mockRestore()
+  })
+
+  it('does not offer again after a redemption round, and a win stays Double Down', async () => {
+    const { store, created, offerId } = await lostStandard(24)
+    const acceptAt = new Date('2026-10-11T15:01:05.000Z')
+    const accepted = await handleAcceptOffer(
+      header(created),
+      offerId,
+      JSON.stringify({ idempotencyKey: '00000024-0000-4000-8000-000000000024', direction: 'DOWN' }),
+      'rd',
+      { ...redemptionOn, players: store, predictions: store, now: () => acceptAt, quote: async () => quoteAt('81000.00', acceptAt), startWorkflow: async () => undefined },
+    )
+    const bonus = JSON.parse(accepted.body ?? '') as { predictionId: string; dueAt: string; playerId: string; mode: string }
+    expect(bonus.mode).toBe('REDEMPTION')
+    const bonusResolved = new Date('2026-10-11T15:02:06.000Z')
+    await handleResolvePrediction(
+      { playerId: bonus.playerId, predictionId: bonus.predictionId, dueAt: bonus.dueAt },
+      { predictions: store, players: store, now: () => bonusResolved, quote: async () => quoteAt('80000.00', bonusResolved), ...redemptionOn },
+    )
+    expect(await store.getOffer(created.playerId, offerIdFor(bonus.predictionId))).toBeNull()
+    expect(await store.get(created.playerId)).toMatchObject({ score: 3, wins: 1, losses: 1 })
+    expect((await store.get(created.playerId))?.openOfferId).toBeUndefined()
+    const parent = JSON.parse((await handleMe(header(created), 'me', { store, predictions: store, now: () => bonusResolved, ...redemptionOn })).body ?? '')
+    expect(parent.latestResolvedPrediction.parent).toEqual({ predictionId: offerId.slice(2), scoreDelta: -1 })
+    expect((await store.getOffer(created.playerId, offerId))?.chosenDirection).toBe('DOWN')
+  })
+})
+
+describe('POST /offers redemption', () => {
+  it('requires a direction and keeps the offer open', async () => {
+    const { store, created, offerId } = await lostStandard(25)
+    const missing = await handleAcceptOffer(
+      header(created),
+      offerId,
+      JSON.stringify({ idempotencyKey: '00000025-0000-4000-8000-000000000025' }),
+      'missing',
+      { ...redemptionOn, players: store, predictions: store, now: () => resolvedAt, quote: async () => quoteAt('81000.00', resolvedAt) },
+    )
+    expect(missing.statusCode).toBe(400)
+    expect(JSON.parse(missing.body ?? '').code).toBe('DIRECTION_REQUIRED')
+    const invalid = await handleAcceptOffer(
+      header(created),
+      offerId,
+      JSON.stringify({ idempotencyKey: '00000025-0000-4000-8000-000000000025', direction: 'SIDEWAYS' }),
+      'bad',
+      { ...redemptionOn, players: store, predictions: store, now: () => resolvedAt },
+    )
+    expect(JSON.parse(invalid.body ?? '').code).toBe('DIRECTION_REQUIRED')
+    expect((await store.getOffer(created.playerId, offerId))?.status).toBe('OPEN')
+  })
+
+  it('starts the chosen direction, replays the same one, and conflicts on the other', async () => {
+    const { store, created, offerId } = await lostStandard(26)
+    const started: string[] = []
+    const acceptAt = new Date('2026-10-11T15:01:05.000Z')
+    const key = '00000026-0000-4000-8000-000000000026'
+    const response = await handleAcceptOffer(
+      header(created),
+      offerId,
+      JSON.stringify({ idempotencyKey: key, direction: 'UP' }),
+      'up',
+      {
+        ...redemptionOn,
+        players: store,
+        predictions: store,
+        now: () => acceptAt,
+        quote: async () => quoteAt('82100.00', acceptAt),
+        startWorkflow: async (input) => {
+          started.push(input.predictionId)
+        },
+      },
+    )
+    expect(response.statusCode).toBe(201)
+    const body = JSON.parse(response.body ?? '')
+    expect(body).toMatchObject({ mode: 'REDEMPTION', direction: 'UP', dueAt: '2026-10-11T15:02:05.000Z' })
+    expect(started).toEqual([body.predictionId])
+    expect((await store.getOffer(created.playerId, offerId))?.chosenDirection).toBe('UP')
+    const replay = await handleAcceptOffer(
+      header(created),
+      offerId,
+      JSON.stringify({ idempotencyKey: key, direction: 'UP' }),
+      'replay',
+      { ...redemptionOn, players: store, predictions: store, now: () => acceptAt, quote: async () => quoteAt('82100.00', acceptAt) },
+    )
+    expect(replay.statusCode).toBe(200)
+    expect(JSON.parse(replay.body ?? '').predictionId).toBe(body.predictionId)
+    const other = await handleAcceptOffer(
+      header(created),
+      offerId,
+      JSON.stringify({ idempotencyKey: key, direction: 'DOWN' }),
+      'other',
+      { ...redemptionOn, players: store, predictions: store, now: () => acceptAt },
+    )
+    expect(JSON.parse(other.body ?? '').code).toBe('IDEMPOTENCY_CONFLICT')
+    expect(started).toHaveLength(1)
+  })
+
+  it('expires, declines, extends, and keeps the flags independent', async () => {
+    const { store, created, offerId } = await lostStandard(27)
+    const expired = await handleAcceptOffer(
+      header(created),
+      offerId,
+      JSON.stringify({ idempotencyKey: '00000027-0000-4000-8000-000000000027', direction: 'DOWN' }),
+      'late',
+      { ...redemptionOn, players: store, predictions: store, now: () => new Date('2026-10-11T15:01:13.000Z'), quote: async () => quoteAt('81000.00', new Date('2026-10-11T15:01:13.000Z')) },
+    )
+    expect(JSON.parse(expired.body ?? '').code).toBe('OFFER_EXPIRED')
+
+    const fresh = await lostStandard(28)
+    const at = new Date('2026-10-11T15:01:05.000Z')
+    const extended = await handleExtendOffer(header(fresh.created), fresh.offerId, 'ext', { ...redemptionOn, players: fresh.store, predictions: fresh.store, now: () => at })
+    expect(JSON.parse(extended.body ?? '')).toMatchObject({ extensions: 1, mode: 'REDEMPTION' })
+    const declined = await handleDeclineOffer(header(fresh.created), fresh.offerId, 'no', { ...redemptionOn, players: fresh.store, predictions: fresh.store, now: () => at })
+    expect(declined.statusCode).toBe(200)
+    const after = await handleAcceptOffer(
+      header(fresh.created),
+      fresh.offerId,
+      JSON.stringify({ idempotencyKey: '00000028-0000-4000-8000-000000000028', direction: 'UP' }),
+      'after',
+      { ...redemptionOn, players: fresh.store, predictions: fresh.store, now: () => at, quote: async () => quoteAt('81000.00', at) },
+    )
+    expect(JSON.parse(after.body ?? '').code).toBe('OFFER_DECLINED')
+
+    const hidden = await handleAcceptOffer(
+      header(created),
+      offerId,
+      JSON.stringify({ idempotencyKey: '00000027-0000-4000-8000-000000000127', direction: 'UP' }),
+      'flag',
+      { players: store, predictions: store, now: () => resolvedAt, doubleDown: true, redemption: false },
+    )
+    expect(hidden.statusCode).toBe(404)
+    const { offerId: bonusId, created: winner, store: winStore } = await wonStandard(29)
+    const hiddenDown = await handleAcceptOffer(
+      header(winner),
+      bonusId,
+      JSON.stringify({ idempotencyKey: '00000029-0000-4000-8000-000000000029' }),
+      'dd-off',
+      { players: winStore, predictions: winStore, now: () => resolvedAt, doubleDown: false, redemption: true },
+    )
+    expect(hiddenDown.statusCode).toBe(404)
+  })
+
+  it('lets one of two accepts win, and one of accept or create', async () => {
+    const { store, created, offerId } = await lostStandard(30)
+    const acceptAt = new Date('2026-10-11T15:01:05.000Z')
+    const deps = {
+      ...redemptionOn,
+      players: store,
+      predictions: store,
+      now: () => acceptAt,
+      quote: async () => quoteAt('81000.00', acceptAt),
+    }
+    const [left, right] = await Promise.all([
+      handleAcceptOffer(header(created), offerId, JSON.stringify({ idempotencyKey: '00000030-0000-4000-8000-000000000030', direction: 'UP' }), 'a', deps),
+      handleAcceptOffer(header(created), offerId, JSON.stringify({ idempotencyKey: '00000030-0000-4000-8000-000000000031', direction: 'DOWN' }), 'b', deps),
+    ])
+    expect([left.statusCode, right.statusCode].sort()).toEqual([201, 409])
+    expect((await store.get(created.playerId))?.activePredictionId).toBeTruthy()
+
+    const race = await lostStandard(31)
+    const [accepted, createdRound] = await Promise.all([
+      handleAcceptOffer(
+        header(race.created),
+        race.offerId,
+        JSON.stringify({ idempotencyKey: '00000031-0000-4000-8000-000000000031', direction: 'DOWN' }),
+        'accept',
+        { ...deps, players: race.store, predictions: race.store },
+      ),
+      handleCreatePrediction(
+        header(race.created),
+        JSON.stringify({ direction: 'UP', idempotencyKey: '00000031-0000-4000-8000-000000000032' }),
+        'create',
+        { players: race.store, predictions: race.store, now: () => acceptAt, quote: async () => quoteAt('81000.00', acceptAt) },
+      ),
+    ])
+    expect([accepted.statusCode, createdRound.statusCode].sort()).toEqual([201, 409])
+    const player = await race.store.get(race.created.playerId)
+    expect(player?.activePredictionId).toBeTruthy()
+    expect(player?.openOfferId).toBeUndefined()
+  })
+
+  it('replaces an open redemption offer when a normal round starts', async () => {
+    const { store, created, offerId } = await lostStandard(32)
+    const at = new Date('2026-10-11T15:01:06.000Z')
+    const createdRound = await handleCreatePrediction(
+      header(created),
+      JSON.stringify({ direction: 'UP', idempotencyKey: '00000032-0000-4000-8000-000000000032' }),
+      'replace',
+      { players: store, predictions: store, now: () => at, quote: async () => quoteAt('82100.00', at) },
+    )
+    expect(createdRound.statusCode).toBe(201)
+    expect((await store.getOffer(created.playerId, offerId))?.status).toBe('REPLACED')
+    const accepted = await handleAcceptOffer(
+      header(created),
+      offerId,
+      JSON.stringify({ idempotencyKey: '00000032-0000-4000-8000-000000000033', direction: 'DOWN' }),
+      'gone',
+      { ...redemptionOn, players: store, predictions: store, now: () => at, quote: async () => quoteAt('82100.00', at) },
+    )
+    expect(JSON.parse(accepted.body ?? '').code).toBe('OFFER_REPLACED')
+  })
+
+  it('scores a redemption loss as minus 2', async () => {
+    const { store, created, offerId } = await lostStandard(33)
+    const acceptAt = new Date('2026-10-11T15:01:05.000Z')
+    const accepted = await handleAcceptOffer(
+      header(created),
+      offerId,
+      JSON.stringify({ idempotencyKey: '00000033-0000-4000-8000-000000000033', direction: 'UP' }),
+      'up',
+      { ...redemptionOn, players: store, predictions: store, now: () => acceptAt, quote: async () => quoteAt('82100.00', acceptAt), startWorkflow: async () => undefined },
+    )
+    const bonus = JSON.parse(accepted.body ?? '') as { predictionId: string; dueAt: string; playerId: string }
+    const bonusResolved = new Date('2026-10-11T15:02:06.000Z')
+    await handleResolvePrediction(
+      { playerId: bonus.playerId, predictionId: bonus.predictionId, dueAt: bonus.dueAt },
+      { predictions: store, players: store, now: () => bonusResolved, quote: async () => quoteAt('81000.00', bonusResolved), ...redemptionOn },
+    )
+    expect(await store.get(created.playerId)).toMatchObject({ score: -3, wins: 0, losses: 2 })
+    expect(await store.getOffer(created.playerId, offerIdFor(bonus.predictionId))).toBeNull()
+  })
+})

@@ -34,6 +34,20 @@ export type FixtureName =
   | 'dd-loss'
   | 'dd-history'
   | 'dd-reduced-motion'
+  | 'rd-offer'
+  | 'rd-offer-narrow'
+  | 'rd-submitting'
+  | 'rd-expired'
+  | 'rd-declined'
+  | 'rd-used'
+  | 'rd-replaced'
+  | 'rd-restored'
+  | 'rd-active'
+  | 'rd-win'
+  | 'rd-loss'
+  | 'rd-history'
+  | 'rd-reduced-motion'
+  | 'rd-second-call'
 
 export const FIXTURE_NAMES: FixtureName[] = [
   'ready',
@@ -59,6 +73,20 @@ export const FIXTURE_NAMES: FixtureName[] = [
   'dd-loss',
   'dd-history',
   'dd-reduced-motion',
+  'rd-offer',
+  'rd-offer-narrow',
+  'rd-submitting',
+  'rd-expired',
+  'rd-declined',
+  'rd-used',
+  'rd-replaced',
+  'rd-restored',
+  'rd-active',
+  'rd-win',
+  'rd-loss',
+  'rd-history',
+  'rd-reduced-motion',
+  'rd-second-call',
 ]
 
 const NOW = new Date('2026-10-06T14:00:00Z')
@@ -96,7 +124,11 @@ export interface FixtureState {
   history?: HistoryRound[]
   offerPreview?: 'open' | 'extended' | 'submitting' | 'expired' | 'declined' | 'used' | 'replaced'
   doubleDownHelp?: boolean
+  redemptionHelp?: boolean
+  redemptionName?: string
+  restored?: boolean
   bonus?: boolean
+  followOn?: 'DOUBLE_DOWN' | 'REDEMPTION'
 }
 
 function ddBase(label: string, extra: Partial<FixtureState> = {}): FixtureState {
@@ -325,4 +357,70 @@ export const fixtures: Record<FixtureName, FixtureState> = {
     },
   ] }),
   'dd-reduced-motion': ddBase('DD reduced motion', { offerPreview: 'open' }),
+  ...rdFixtures(),
+}
+
+function rdBase(label: string, extra: Partial<FixtureState> = {}): FixtureState {
+  return {
+    label,
+    price: '65432.10',
+    priceStatus: 'live',
+    score: -1,
+    wins: 0,
+    losses: 1,
+    redemptionHelp: true,
+    followOn: 'REDEMPTION',
+    result: {
+      outcome: 'LOSS',
+      direction: 'UP',
+      entryPrice: '65432.10',
+      resolutionPrice: '65000.00',
+      entryTime: NOW,
+      resolutionTime: LATER,
+      predictionId: 'p_0000000002000_ccccdddd',
+    },
+    ...extra,
+  }
+}
+
+function rdFixtures(): Record<Extract<FixtureName, `rd-${string}`>, FixtureState> {
+  const parent = 'p_0000000002000_ccccdddd'
+  const child = 'p_0000000003000_eeeeffff'
+  return {
+    'rd-offer': rdBase('RD offer', { offerPreview: 'open' }),
+    'rd-offer-narrow': rdBase('RD narrow', { offerPreview: 'open' }),
+    'rd-submitting': rdBase('RD submitting', { offerPreview: 'submitting' }),
+    'rd-expired': rdBase('RD expired', { offerPreview: 'expired' }),
+    'rd-declined': rdBase('RD declined', { offerPreview: 'declined' }),
+    'rd-used': rdBase('RD used', { offerPreview: 'used', activeRound: {
+      direction: 'DOWN', entryPrice: '65432.10', entryTime: NOW, deadline: LATER, predictionId: child, state: 'WAITING_FOR_DEADLINE', secondsRemaining: 40,
+    } }),
+    'rd-replaced': rdBase('RD replaced', { offerPreview: 'replaced', activeRound: {
+      direction: 'UP', entryPrice: '65432.10', entryTime: NOW, deadline: LATER, predictionId: child, state: 'WAITING_FOR_DEADLINE', secondsRemaining: 40,
+    } }),
+    'rd-restored': rdBase('RD restored', { offerPreview: 'open', restored: true }),
+    'rd-active': rdBase('RD active', { activeRound: {
+      direction: 'DOWN', entryPrice: '65432.10', entryTime: NOW, deadline: LATER, predictionId: child, state: 'WAITING_FOR_DEADLINE', secondsRemaining: 40,
+    } }),
+    'rd-win': rdBase('RD win', { score: 3, wins: 1, result: {
+      outcome: 'WIN', direction: 'DOWN', entryPrice: '65432.10', resolutionPrice: '65000.00', entryTime: NOW, resolutionTime: LATER, predictionId: child,
+    } }),
+    'rd-loss': rdBase('RD loss', { score: -3, losses: 2, result: {
+      outcome: 'LOSS', direction: 'UP', entryPrice: '65432.10', resolutionPrice: '65000.00', entryTime: NOW, resolutionTime: LATER, predictionId: child,
+    } }),
+    'rd-history': rdBase('RD history', { score: 3, wins: 1, history: [
+      {
+        predictionId: child, direction: 'DOWN', entryPrice: '65432.10', resolutionPrice: '65000.00',
+        entryTradeTime: '2026-10-06T14:02:00.000Z', resolutionTradeTime: '2026-10-06T14:03:02.000Z',
+        outcome: 'WIN', scoreDelta: 4, parentPredictionId: parent, mode: 'REDEMPTION',
+      },
+      {
+        predictionId: parent, direction: 'UP', entryPrice: '64000.00', resolutionPrice: '64120.50',
+        entryTradeTime: '2026-10-06T14:00:00.000Z', resolutionTradeTime: '2026-10-06T14:01:02.000Z',
+        outcome: 'LOSS', scoreDelta: -1, mode: 'STANDARD',
+      },
+    ] }),
+    'rd-reduced-motion': rdBase('RD reduced motion', { offerPreview: 'open' }),
+    'rd-second-call': rdBase('RD second call', { offerPreview: 'open', redemptionName: 'Second Call' }),
+  }
 }

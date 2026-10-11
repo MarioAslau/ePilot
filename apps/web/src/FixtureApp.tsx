@@ -13,8 +13,9 @@ import { useEffect, useState } from 'react'
 import { AppHeader } from './components/AppHeader'
 import { DirectionButtons } from './components/DirectionButtons'
 import { DoubleDownOffer } from './components/DoubleDownOffer'
+import { OfferEndNotice } from './components/OfferEndNotice'
+import { RedemptionOffer } from './components/RedemptionOffer'
 import { HowItWorks } from './components/HowItWorks'
-import { OfferNotice } from './components/OfferNotice'
 import { PredictionPanel } from './components/PredictionPanel'
 import { MarketCard } from './components/MarketCard'
 import { ResultReceipt } from './components/ResultReceipt'
@@ -51,10 +52,16 @@ export function FixtureApp() {
   const state = fixtures[current]
   const offerPreview = state.offerPreview
   const relocate = offerPreview === 'open' || offerPreview === 'extended' || offerPreview === 'submitting' || offerPreview === 'expired' || offerPreview === 'declined'
+  const redemption = state.followOn === 'REDEMPTION'
+  const settledRedemption = redemption && state.result?.predictionId === 'p_0000000003000_eeeeffff'
   const sampleOffer = {
     offerId: 'o_p_0000000002000_ccccdddd',
     parentPredictionId: 'p_0000000002000_ccccdddd',
-    direction: 'UP' as const,
+    mode: redemption ? 'REDEMPTION' as const : 'DOUBLE_DOWN' as const,
+    direction: redemption ? null : 'UP' as const,
+    payout: redemption
+      ? { win: 4, loss: -2, parentDelta: -1 }
+      : { win: 2, loss: -2, parentDelta: 1 },
     issuedAt: '2026-10-06T14:01:02.000Z',
     expiresAt: offerPreview === 'extended' ? '2026-10-06T14:01:42.000Z' : '2026-10-06T14:01:12.000Z',
     extensions: offerPreview === 'extended' ? 1 : 0,
@@ -107,7 +114,9 @@ export function FixtureApp() {
                   secondsRemaining={state.activeRound.secondsRemaining}
                   latestPrice={state.price ?? undefined}
                   bonus={state.bonus}
-                  parentPredictionId={state.bonus ? 'p_0000000002000_ccccdddd' : undefined}
+                  followOn={state.followOn}
+                  payout={state.followOn === 'REDEMPTION' ? sampleOffer.payout : undefined}
+                  parentPredictionId={state.bonus || state.followOn ? 'p_0000000002000_ccccdddd' : undefined}
                 />
               )}
 
@@ -126,40 +135,54 @@ export function FixtureApp() {
                   entryTime={state.result.entryTime}
                   resolutionTime={state.result.resolutionTime}
                   predictionId={state.result.predictionId}
-                  scoreDelta={state.bonus ? (state.result.outcome === 'WIN' ? 2 : -2) : undefined}
-                  parent={state.bonus ? { predictionId: 'p_0000000002000_ccccdddd', scoreDelta: 1 } : undefined}
+                  scoreDelta={settledRedemption
+                    ? (state.result.outcome === 'WIN' ? 4 : -2)
+                    : state.bonus ? (state.result.outcome === 'WIN' ? 2 : -2) : undefined}
+                  parent={settledRedemption
+                    ? { predictionId: 'p_0000000002000_ccccdddd', scoreDelta: -1 }
+                    : state.bonus ? { predictionId: 'p_0000000002000_ccccdddd', scoreDelta: 1 } : undefined}
+                  followOn={settledRedemption ? 'REDEMPTION' : state.bonus ? 'DOUBLE_DOWN' : undefined}
                 />
               )}
               {(offerPreview === 'open' || offerPreview === 'extended' || offerPreview === 'submitting') && (
-                <div className={current === 'dd-reduced-motion' ? 'dd-force-pips' : undefined}>
-                  <DoubleDownOffer
-                    offer={sampleOffer}
-                    serverNowMs={Date.parse('2026-10-06T14:01:05.000Z')}
-                    submitting={offerPreview === 'submitting'}
-                    error={null}
-                    busy={offerPreview === 'submitting'}
-                    onAccept={() => undefined}
-                    onDecline={() => undefined}
-                    onExtend={() => undefined}
-                  />
+                <div className={current.endsWith('reduced-motion') ? 'dd-force-pips' : undefined} style={current === 'rd-offer-narrow' ? { maxWidth: 375 } : undefined}>
+                  {redemption ? (
+                    <RedemptionOffer
+                      offer={sampleOffer}
+                      name={state.redemptionName}
+                      restored={state.restored}
+                      serverNowMs={Date.parse('2026-10-06T14:01:05.000Z')}
+                      submitting={offerPreview === 'submitting'}
+                      pendingDirection={offerPreview === 'submitting' ? 'DOWN' : null}
+                      error={null}
+                      busy={offerPreview === 'submitting'}
+                      onAccept={() => undefined}
+                      onDecline={() => undefined}
+                      onExtend={() => undefined}
+                    />
+                  ) : (
+                    <DoubleDownOffer
+                      offer={sampleOffer}
+                      serverNowMs={Date.parse('2026-10-06T14:01:05.000Z')}
+                      submitting={offerPreview === 'submitting'}
+                      error={null}
+                      busy={offerPreview === 'submitting'}
+                      onAccept={() => undefined}
+                      onDecline={() => undefined}
+                      onExtend={() => undefined}
+                    />
+                  )}
                 </div>
               )}
-              {offerPreview === 'expired' && (
-                <OfferNotice tone="neutral" icon="clock" message={<><b>Offer ended. Your +1 is kept.</b> Pick Up or Down whenever you're ready for a normal round.</>} />
-              )}
-              {offerPreview === 'declined' && (
-                <OfferNotice tone="neutral" icon="check" message={<><b>No bonus round. Your +1 is kept.</b> Pick Up or Down whenever you're ready.</>} />
-              )}
-              {offerPreview === 'used' && (
-                <OfferNotice tone="info" icon="ban" message={<><b>Offer no longer available.</b> You already doubled down on round #CCDDDD in another tab. Your +1 is kept.</>} />
-              )}
-              {offerPreview === 'replaced' && (
-                <OfferNotice tone="info" icon="copy" message={<><b>Offer no longer available.</b> A new round was started in another tab. Your +1 is kept.</>} />
+              {(offerPreview === 'expired' || offerPreview === 'declined' || offerPreview === 'used' || offerPreview === 'replaced') && (
+                <OfferEndNotice mode={sampleOffer.mode} phase={offerPreview} parentPredictionId={sampleOffer.parentPredictionId} name={state.redemptionName} />
               )}
               {relocate && (
                 <PredictionPanel
                   price={state.price}
-                  title={offerPreview === 'open' || offerPreview === 'extended' ? 'Nice call. Bonus round?' : undefined}
+                  title={offerPreview === 'open' || offerPreview === 'extended' || offerPreview === 'submitting'
+                    ? (redemption ? 'Go again?' : 'Nice call. Bonus round?')
+                    : undefined}
                   disabled={offerPreview === 'submitting'}
                   isSubmitting={offerPreview === 'submitting'}
                   onPredict={() => undefined}
@@ -189,7 +212,7 @@ export function FixtureApp() {
                 onLoadMore={() => undefined}
                 onRetry={() => undefined}
               />
-              <HowItWorks doubleDown={state.doubleDownHelp} />
+              <HowItWorks doubleDown={state.doubleDownHelp} redemption={state.redemptionHelp} />
             </div>
           </div>
         </main>

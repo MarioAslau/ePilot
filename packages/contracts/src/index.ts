@@ -38,10 +38,19 @@ export type PlayerId = z.infer<typeof PlayerIdSchema>
 
 export const IdempotencyKeySchema = z.string().uuid()
 
-export const ModeSchema = z.enum(['STANDARD', 'DOUBLE_DOWN'])
+export const ModeSchema = z.enum(['STANDARD', 'DOUBLE_DOWN', 'REDEMPTION'])
 export type Mode = z.infer<typeof ModeSchema>
 
-export const ScoreDeltaSchema = z.union([z.literal(1), z.literal(-1), z.literal(2), z.literal(-2)])
+export const OfferModeSchema = z.enum(['DOUBLE_DOWN', 'REDEMPTION'])
+export type OfferMode = z.infer<typeof OfferModeSchema>
+
+export const ScoreDeltaSchema = z.union([
+  z.literal(1),
+  z.literal(-1),
+  z.literal(2),
+  z.literal(-2),
+  z.literal(4),
+])
 export type ScoreDelta = z.infer<typeof ScoreDeltaSchema>
 
 export const PredictionSchema = z.object({
@@ -77,10 +86,20 @@ export type Prediction = z.infer<typeof PredictionSchema>
 export const OfferStatusSchema = z.enum(['OPEN', 'ACCEPTED', 'DECLINED', 'EXPIRED', 'REPLACED'])
 export type OfferStatus = z.infer<typeof OfferStatusSchema>
 
+export const OfferPayoutSchema = z.object({
+  win: z.number().int(),
+  loss: z.number().int(),
+  parentDelta: z.number().int(),
+})
+export type OfferPayout = z.infer<typeof OfferPayoutSchema>
+
 export const OfferSchema = z.object({
   offerId: z.string().min(1),
   parentPredictionId: z.string().min(1),
-  direction: DirectionSchema,
+  mode: OfferModeSchema,
+  /** Null when the player still has to choose, which is every open Redemption offer. */
+  direction: DirectionSchema.nullable(),
+  payout: OfferPayoutSchema,
   issuedAt: z.string().datetime(),
   /** ISO deadline. Not the numeric DynamoDB TTL attribute. */
   expiresAt: z.string().datetime(),
@@ -88,6 +107,8 @@ export const OfferSchema = z.object({
   status: OfferStatusSchema,
   bonusPredictionId: z.string().min(1).optional(),
   replacedByPredictionId: z.string().min(1).optional(),
+  /** Set once a Redemption offer is accepted. */
+  chosenDirection: DirectionSchema.optional(),
 })
 export type Offer = z.infer<typeof OfferSchema>
 
@@ -119,7 +140,9 @@ export const MeResponseSchema = z.object({
   waitReason: WaitReasonSchema.nullable(),
   serverTime: z.string().datetime(),
   offer: OfferSchema.nullable().default(null),
-  features: z.object({ doubleDown: z.boolean() }).default({ doubleDown: false }),
+  features: z
+    .object({ doubleDown: z.boolean(), redemption: z.boolean() })
+    .default({ doubleDown: false, redemption: false }),
 })
 export type MeResponse = z.infer<typeof MeResponseSchema>
 
@@ -141,6 +164,8 @@ export type CreatePredictionRequest = z.infer<typeof CreatePredictionRequestSche
 
 export const OfferActionRequestSchema = z.object({
   idempotencyKey: IdempotencyKeySchema,
+  /** Required for Redemption. Ignored for Double Down. */
+  direction: DirectionSchema.optional(),
 })
 export type OfferActionRequest = z.infer<typeof OfferActionRequestSchema>
 
@@ -180,6 +205,7 @@ export const ErrorCodeSchema = z.enum([
   'OFFER_REPLACED',
   'OFFER_NOT_FOUND',
   'MAX_EXTENSIONS',
+  'DIRECTION_REQUIRED',
 ])
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>
 

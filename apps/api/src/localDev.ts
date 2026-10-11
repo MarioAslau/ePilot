@@ -9,7 +9,7 @@ import { handleMarket } from './handlers/market.js'
 import { handleMe } from './handlers/me.js'
 import { handleResolvePrediction } from './handlers/resolvePrediction.js'
 import { memoryGameStore } from './memoryStore.js'
-import { localDoubleDownEnabled } from './offer.js'
+import { localDoubleDownEnabled, localRedemptionEnabled } from './offer.js'
 
 function favourablePrice(entry: string, direction: 'UP' | 'DOWN'): string {
   const [whole = '0', frac] = entry.split('.')
@@ -29,8 +29,10 @@ export function createLocalApp() {
   let nextFault: DevFault | null = null
   let equalNext = false
   let winNext = false
+  let lossNext = false
   let resolutionHolds = 0
   const doubleDown = localDoubleDownEnabled()
+  const redemption = localRedemptionEnabled()
 
   function scheduleResolution(input: { playerId: string; predictionId: string; dueAt: string }) {
     const run = async () => {
@@ -42,6 +44,7 @@ export function createLocalApp() {
           predictions: store,
           players: store,
           doubleDown,
+          redemption,
           quote: async () => {
             if (resolutionHolds > 0) {
               resolutionHolds -= 1
@@ -55,6 +58,11 @@ export function createLocalApp() {
             if (winNext) {
               winNext = false
               return { ...ticker, price: favourablePrice(current.entryPrice, current.direction) }
+            }
+            if (lossNext) {
+              lossNext = false
+              const opposite = current.direction === 'UP' ? 'DOWN' : 'UP'
+              return { ...ticker, price: favourablePrice(current.entryPrice, opposite) }
             }
             return ticker
           },
@@ -109,6 +117,10 @@ export function createLocalApp() {
           winNext = true
           return { statusCode: 204, body: '' }
         }
+        if (mode === 'next-resolution-loss') {
+          lossNext = true
+          return { statusCode: 204, body: '' }
+        }
         return {
           statusCode: 400,
           body: JSON.stringify({
@@ -123,7 +135,7 @@ export function createLocalApp() {
         return handleCreatePlayer('local', { store })
       }
       if (method === 'GET' && path === '/api/me') {
-        return handleMe(authorization, 'local', { store, predictions: store, doubleDown })
+        return handleMe(authorization, 'local', { store, predictions: store, doubleDown, redemption })
       }
       if (method === 'GET' && path === '/api/market') {
         return handleMarket('local')
@@ -137,7 +149,7 @@ export function createLocalApp() {
       const offerPath = /^\/api\/offers\/([^/]+)\/(accept|decline|extend)$/.exec(path)
       if (method === 'POST' && offerPath?.[1] && offerPath[2]) {
         const offerId = decodeURIComponent(offerPath[1])
-        const offerDeps = { players: store, predictions: store, doubleDown }
+        const offerDeps = { players: store, predictions: store, doubleDown, redemption }
         if (offerPath[2] === 'decline') return handleDeclineOffer(authorization, offerId, 'local', offerDeps)
         if (offerPath[2] === 'extend') return handleExtendOffer(authorization, offerId, 'local', offerDeps)
         return handleAcceptOffer(authorization, offerId, rawBody, 'local', {

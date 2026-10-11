@@ -72,6 +72,7 @@ export async function postOffer(
   offerId: string,
   action: 'accept' | 'decline' | 'extend',
   idempotencyKey?: string,
+  direction?: Direction,
 ): Promise<OfferPostResult> {
   try {
     const response = await fetch(`${baseUrl}/offers/${encodeURIComponent(offerId)}/${action}`, {
@@ -80,7 +81,7 @@ export async function postOffer(
         Authorization: `Bearer ${session.playerId}.${session.accessToken}`,
         ...(idempotencyKey ? { 'Content-Type': 'application/json' } : {}),
       },
-      body: idempotencyKey ? JSON.stringify({ idempotencyKey }) : undefined,
+      body: idempotencyKey ? JSON.stringify({ idempotencyKey, ...(direction ? { direction } : {}) }) : undefined,
       signal: AbortSignal.timeout(8_000),
     })
     if (response.status === 200 || response.status === 201) {

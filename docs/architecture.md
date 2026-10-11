@@ -2,14 +2,14 @@
 
 ## Status
 
-T11 and T12 are complete locally. Mario confirmed history on 2026-10-11 and marked Double Down done the same day. The Double Down flag defaults off. `yarn dev:local` defaults it on. The hosted site `https://release.d2yczmbttcpoe9.amplifyapp.com` still shows the T10 build until the next API deploy and Amplify rebuild. History and Double Down are in the packaged template and are not in the account until that deploy. A deploy leaves Double Down off unless it passes `--param doubleDown=on`. T10's hosted check still stands: on 2026-10-11 Mario pressed Up, closed the tab while the round was running, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14.
+T11 and T12 are complete locally. T13, Redemption, is implemented locally and awaiting manual verification. It is not deployed. Mario confirmed history on 2026-10-11 and marked Double Down done the same day. Both optional flags default off. `yarn dev:local` defaults each one on when its variable is unset. The hosted site `https://release.d2yczmbttcpoe9.amplifyapp.com` still shows the T10 build until the next API deploy and Amplify rebuild. History, Double Down, and Redemption are in the packaged template and are not in the account until that deploy. A deploy leaves Double Down off unless it passes `--param doubleDown=on`, and leaves Redemption off unless it passes `--param redemption=on`. T10's hosted check still stands: on 2026-10-11 Mario pressed Up, closed the tab while the round was running, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14.
 
 ## Product goal
 
 A player should understand the game quickly, trust the result and
 return to their saved progress without needing to register.
 
-The standard prediction loop is the game. Momentum Double Down is an optional continuation after a standard win. It is off until a deploy passes `--param doubleDown=on`.
+The standard prediction loop is the game. Momentum Double Down is an optional continuation after a standard win. Redemption is an optional continuation after a standard loss. Each one is off until a deploy passes `--param doubleDown=on` or `--param redemption=on`.
 
 ## Standard rules
 
@@ -197,7 +197,7 @@ Do not log tokens or render unsafe user-provided HTML.
   Implemented. Returns the authenticated player's settled rounds, newest first. `limit` is an integer from 1 to 50 and defaults to 20. `cursor` is the base64url encoding of the last returned sort key. The handler rebuilds the DynamoDB key with the authenticated player id, so a cursor cannot read another player's partition. A cursor that is not `PREDICTION#p_` plus 13 digits, `_`, and 8 hex characters is `400 INVALID_INPUT`. Pending rounds are omitted. `nextCursor` is null when that player's resolved rounds are exhausted.
 
 - POST /offers/{offerId}/accept
-  Implemented. Body is `{ idempotencyKey }`. Any client `direction` is ignored. The bonus round uses the parent direction, a fresh entry quote, and `dueAt` 60 seconds after `createdAt`. The same key and the same offer returns the stored bonus round. The same key used for another offer, or for a standard create, is `409 IDEMPOTENCY_CONFLICT` with the message “This idempotency key was already used”. A provider failure or a trade older than 10 seconds writes nothing and leaves the offer open.
+  Implemented. Body is `{ idempotencyKey, direction? }`. Double Down ignores a client direction and uses the direction stored on the offer. Redemption requires `direction` of `UP` or `DOWN`. A missing or invalid direction is `400 DIRECTION_REQUIRED` and writes nothing, so the offer stays open. The follow-on round uses that direction, a fresh entry quote, `mode` from the offer, and `dueAt` 60 seconds after `createdAt`. The same key, the same offer, and the same direction returns the stored round. The same key with a different direction, another offer, or a standard create is `409 IDEMPOTENCY_CONFLICT` with the message “This idempotency key was already used”. A provider failure or a trade older than 10 seconds writes nothing and leaves the offer open.
 
 - POST /offers/{offerId}/decline
   Implemented. No body. Decline is conditional and a second decline returns the declined offer.
@@ -233,8 +233,9 @@ not a settlement input.
 `evaluate` is a pure function. The caller passes `createdAt` and
 `resolvedAt`. It does not read the clock. If fewer than 60 seconds
 have elapsed it returns `TOO_EARLY` and does not look at the price.
-An equal price returns `EQUAL_PRICE`. Otherwise the score delta is
-exactly `+1` or `-1`.
+An equal price returns `EQUAL_PRICE`. `evaluate()` still returns a
+score delta of exactly `+1` or `-1`. `scoreFor(mode, outcome)` maps
+`STANDARD` to ±1, `DOUBLE_DOWN` to ±2, and `REDEMPTION` to +4 or −2.
 
 `GET /me` returns `activePrediction`, `latestResolvedPrediction`
 (identified by `predictionId`), `serverTime`, and `waitReason`.
@@ -252,17 +253,22 @@ Do not mint a new key until the server answers or rejects the request.
 Error codes: `INVALID_INPUT`, `UNAUTHORIZED`, `ACTIVE_ROUND`,
 `IDEMPOTENCY_CONFLICT`, `PROVIDER_UNAVAILABLE`, `OFFER_EXPIRED`,
 `OFFER_ACCEPTED`, `OFFER_DECLINED`, `OFFER_REPLACED`, `MAX_EXTENSIONS`,
-and `OFFER_NOT_FOUND`. Offer conflicts are 409. A missing offer, another
-player's offer, or any offer while the flag is off is 404
-`OFFER_NOT_FOUND`. Only `PROVIDER_UNAVAILABLE` is in
-`RECOVERABLE_ERROR_CODES`.
+`OFFER_NOT_FOUND`, and `DIRECTION_REQUIRED`. Offer conflicts are 409.
+A missing offer, another player's offer, or an offer whose mode flag is
+off is 404 `OFFER_NOT_FOUND`. `DIRECTION_REQUIRED` is 400. Only
+`PROVIDER_UNAVAILABLE` is in `RECOVERABLE_ERROR_CODES`.
 
-`GET /me` also returns `offer` and `features.doubleDown`. `offer` is the
-latest offer while it is open, and for 60 seconds after its deadline.
-After that it is null. A resolved bonus round includes
-`parent: { predictionId, scoreDelta }`. The flag comes from
-`FEATURE_DOUBLE_DOWN`, which is on only when the Serverless param
-`doubleDown` is `on`. The default is off.
+`GET /me` also returns `offer` and `features`, with `doubleDown` and
+`redemption`. `offer` is the latest offer while it is open, and for 60
+seconds after its deadline, and only when that offer's mode flag is on.
+After that it is null. The offer includes `mode`, `direction` (null when
+the player has not chosen), `payout` (`win`, `loss`, `parentDelta`), and
+`chosenDirection` after a Redemption accept. `payout` is computed by
+`payoutFor`. It is not stored. A resolved follow-on includes
+`parent: { predictionId, scoreDelta }`, which is +1 for Double Down and
+−1 for Redemption. `FEATURE_DOUBLE_DOWN` is on only when the Serverless
+param `doubleDown` is `on`. `FEATURE_REDEMPTION` is on only when
+`redemption` is `on`. Both default off.
 
 ## Proposed data model
 
@@ -282,7 +288,7 @@ Player:
 - latestOfferId
 - createdAt
 
-`openOfferId` is set when a standard win creates an offer and removed on accept, decline, or replace. `latestOfferId` stays so `GET /me` can still show the offer after it ends. An offer item uses `pk = PLAYER#<playerId>` and `sk = OFFER#<offerId>`. `offerId` is `o_` plus the parent prediction id. The deadline is an ISO string named `expiresAt`. It must not be a number: the table TTL deletes numeric `expiresAt`, and that attribute is only for idempotency rows. Expiry is not written as a status. `OPEN` with `now >= expiresAt` is expired when the offer is read. A standard create while the offer is still open sets `REPLACED` in the same transaction. That replace still runs when the flag is off, so a leftover offer cannot trap the player. Accept and create cannot both succeed: accept sets `activePredictionId` only when none exists, and create requires that none exists.
+`openOfferId` is set when a standard win creates a Double Down offer or a standard loss creates a Redemption offer, and removed on accept, decline, or replace. `latestOfferId` stays so `GET /me` can still show the offer after it ends. An offer item uses `pk = PLAYER#<playerId>` and `sk = OFFER#<offerId>`. `offerId` is `o_` plus the parent prediction id. The deadline is an ISO string named `expiresAt`. It must not be a number: the table TTL deletes numeric `expiresAt`, and that attribute is only for idempotency rows. Expiry is not written as a status. `OPEN` with `now >= expiresAt` is expired when the offer is read. A standard create while the offer is still open sets `REPLACED` in the same transaction. That replace still runs when the flag is off, so a leftover offer cannot trap the player. Accept and create cannot both succeed: accept sets `activePredictionId` only when none exists, and create requires that none exists.
 
 Prediction item: `pk = PLAYER#<playerId>`, `sk = PREDICTION#<predictionId>`. `predictionId` is `p_`, a 13-digit epoch millisecond value, `_`, and 8 hex characters.
 
@@ -290,7 +296,7 @@ Prediction:
 - predictionId
 - playerId
 - direction (`UP` or `DOWN`)
-- mode (`STANDARD`)
+- mode (`STANDARD`, `DOUBLE_DOWN`, or `REDEMPTION`)
 - status (`PENDING` or `RESOLVED`)
 - pendingKey (`PENDING` while unresolved; removed on settlement; not an API field)
 - pendingDueAt (same instant as `dueAt` while unresolved; removed on settlement; not an API field)
@@ -322,7 +328,9 @@ Offer, optional:
 - offerId
 - playerId
 - parentPredictionId
-- mode
+- mode (`DOUBLE_DOWN` or `REDEMPTION`; an old item with no mode reads as `DOUBLE_DOWN`)
+- direction, optional (the parent direction on Double Down; omitted on an open Redemption offer)
+- chosenDirection, optional (set when a Redemption offer is accepted)
 - expiresAt
 - status
 - acceptedPredictionId
@@ -653,7 +661,7 @@ The countdown offset is `serverTime − (t0 + t1) / 2`, where `t0` and `t1` are 
 
 If `/me` fails after a player has loaded, the score is labelled Last confirmed, Up and Down stay disabled, and a warn notice offers Retry. Polling continues. A first load with no player yet keeps the existing retry notice. A rejected token still offers a new player.
 
-One polite live region announces a placement, the end of the minimum wait, an equal-price or provider hold, and a result with the new score. It does not announce price ticks or countdown seconds. The score flash and the result announcement run once per prediction. The browser stores that id at `hunch.seenResult.<playerId>`. If storage throws, the marker stays in memory for the page. The receipt stays on screen until the next round is placed.
+One polite live region announces a placement, the end of the minimum wait, an equal-price or provider hold, and a result with the new score. It does not announce price ticks or countdown seconds. The score flash and the result announcement run once per prediction. The browser stores that id at `hunch.seenResult.<playerId>`. If storage throws, the marker stays in memory for the page. Offer ids the tab has shown, for both modes, are the last 10 values at `hunch.seenOffers` in `sessionStorage`. If that write throws, the same list stays in memory for the page. An ended offer this tab has seen can show its notice after a refresh. An ended offer this tab has not seen shows nothing. The receipt stays on screen until the next round is placed.
 
 Status labels:
 - Live feed: "Latest available" or "Updated X seconds ago · Coinbase"
@@ -726,7 +734,7 @@ The following prototype behaviours must NOT appear in production:
 
 ## Optional modes
 
-Redemption is still a proposal. Momentum Double Down is implemented and off by default.
+Momentum Double Down and Redemption are both implemented locally and off by default.
 
 ### Momentum Double Down
 
@@ -734,14 +742,7 @@ Implemented locally. A `STANDARD` win creates one offer only when `FEATURE_DOUBL
 
 ### Redemption Round
 
-- Eligible after a standard loss.
-- Original -1 settles immediately.
-- Offer lasts 10 seconds.
-- Player chooses direction for a fresh round.
-- Target combined result: +3 or -3.
-- Bonus score delta: +4 on win or -2 on loss.
-- Decline/expiry leaves original -1.
-- No chains.
+Implemented locally, awaiting manual verification. A `STANDARD` loss creates one offer only when `FEATURE_REDEMPTION` is `on`. The offer has no direction. The original −1 is already settled and is not rewritten. The window, the extension, and the single-use accept are the same offer path as Double Down. Accept starts `REDEMPTION` in the direction the player sends. `scoreFor` maps a win to +4 and a loss to −2. The pair totals are +3 and −3. Decline, expiry, and a replacement standard round leave the −1. A Redemption settlement creates no further offer. The visible name is the constant `REDEMPTION_NAME` in `apps/web/src/featureNames.ts`, currently `Redemption`. See D8.
 
 Both:
 - Backend owns eligibility and expiry.
@@ -784,7 +785,7 @@ These names exist after the T08 deploy of stage `dev` in `eu-north-1`. They are 
 - Table `hunch-dev`, index `pending-by-due`.
 - State machine `hunch-dev-resolution`.
 - Functions `hunch-dev-resolvePrediction`, `hunch-dev-recoverStuckPredictions`, `hunch-dev-getPredictionHistory`, `hunch-dev-acceptOffer`, `hunch-dev-declineOffer`, and `hunch-dev-extendOffer`.
-- Roles `hunch-dev-predictions`, `hunch-dev-resolver`, `hunch-dev-recovery`, `hunch-dev-resolution`, `hunch-dev-history`, and `hunch-dev-offers`. `hunch-dev-history` can `GetItem` and `Query` the table. It cannot scan or write. `hunch-dev-offers` can `GetItem`, `PutItem`, `UpdateItem`, and `TransactWriteItems`, and can start a resolution execution. The resolver can also `PutItem`, because the win transaction puts the offer. These functions and roles are in the packaged template. They are in the account only after the next deploy. The deploy param `doubleDown` defaults to `off`. Pass `--param doubleDown=on` to turn the feature on.
+- Roles `hunch-dev-predictions`, `hunch-dev-resolver`, `hunch-dev-recovery`, `hunch-dev-resolution`, `hunch-dev-history`, and `hunch-dev-offers`. `hunch-dev-history` can `GetItem` and `Query` the table. It cannot scan or write. `hunch-dev-offers` can `GetItem`, `PutItem`, `UpdateItem`, and `TransactWriteItems`, and can start a resolution execution. The resolver can also `PutItem`, because the win transaction puts the offer. These functions and roles are in the packaged template. They are in the account only after the next deploy. The deploy param `doubleDown` defaults to `off`. Pass `--param doubleDown=on` to turn that feature on. The deploy param `redemption` defaults to `off`. Pass `--param redemption=on` to turn Redemption on. The two params are independent. Turning Redemption off does not change Double Down or standard scoring.
 - Topic `hunch-dev-alerts`. Email subscription only when deploy passes `--param alarmEmail=...`. Confirm that email or the alarms have no subscriber.
 - Alarms, all to that topic, period 300 seconds, threshold 1, missing data does not breach: `hunch-dev-resolution-failed`, `hunch-dev-resolution-timed-out`, `hunch-dev-resolver-errors`, `hunch-dev-recovery-errors`, `hunch-dev-workflow-start-failed`.
 
@@ -1070,3 +1071,20 @@ The table TTL deletes any item whose `expiresAt` is a number. That attribute is 
 
 **Tradeoff or limitation.**
 String comparison is safe only because both values are `toISOString()`. The offer stays in the table after it ends. Idempotency rows still use a numeric `expiresAt` and are the only rows the TTL deletes.
+
+---
+
+### D8 — Redemption keeps +4/−2, and the name is a constant
+
+**Decision.**
+A Redemption win adds 4 and a loss subtracts 2. The parent −1 stays. The pair is therefore +3 or −3. The on-screen name is `REDEMPTION_NAME` in `apps/web/src/featureNames.ts`. It is `Redemption`. The `rd-second-call` fixture passes another string as a prop so the layout can be checked with a different label. There is no name config.
+
+**Reason.**
+The ticket fixes the arithmetic. At roughly even odds, accepting is worth about +1: half the time +4 and half the time −2 averages +1, on top of the −1 already booked. Declining adds nothing, so it keeps −1. Declining is never the better score on that assumption. Changing the deltas to make decline attractive would be a different game. A constant keeps every screen on one word without a settings system.
+
+**Alternatives considered.**
+- Score the follow-on so that declining can be the better expected value: rejected. That changes the ticket.
+- A remote or env name: rejected. One string does not need a config system.
+
+**Tradeoff or limitation.**
+A player who wants to stop does not improve the expected score by declining. The copy stays neutral and does not say the decline is a better bet. The hosted flag stays off until a deploy passes `--param redemption=on`.

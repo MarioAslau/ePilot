@@ -1,5 +1,12 @@
 import { idempotencyConflict, json, offerError, unauthorized } from '../http.js'
-import { doubleDownEnabled, offerResponse, type OfferConflict, type OfferRecord } from '../offer.js'
+import {
+  doubleDownEnabled,
+  offerModeEnabled,
+  offerResponse,
+  redemptionEnabled,
+  type OfferConflict,
+  type OfferRecord,
+} from '../offer.js'
 import { readPlayerAuthorization, tokenMatches } from '../player.js'
 import type { PlayerRecord, PlayerStore } from '../playerStore.js'
 import type { PredictionStore } from '../predictionStore.js'
@@ -15,11 +22,10 @@ export async function loadOffer(
     predictions: PredictionStore
     now?: () => Date
     doubleDown?: boolean
+    redemption?: boolean
   },
 ): Promise<{ player: PlayerRecord; offer: OfferRecord; clock: Date } | { response: StepResult }> {
   if (!offerId) return { response: offerError(requestId, 'OFFER_NOT_FOUND') }
-  const enabled = deps.doubleDown ?? doubleDownEnabled()
-  if (!enabled) return { response: offerError(requestId, 'OFFER_NOT_FOUND') }
   const auth = readPlayerAuthorization(header)
   if (!auth) return { response: unauthorized(requestId) }
   const player = await deps.players.get(auth.playerId)
@@ -28,6 +34,11 @@ export async function loadOffer(
   }
   const offer = await deps.predictions.getOffer(auth.playerId, offerId)
   if (!offer || offer.playerId !== auth.playerId) return { response: offerError(requestId, 'OFFER_NOT_FOUND') }
+  const enabled = offerModeEnabled(offer.mode, {
+    doubleDown: deps.doubleDown ?? doubleDownEnabled(),
+    redemption: deps.redemption ?? redemptionEnabled(),
+  })
+  if (!enabled) return { response: offerError(requestId, 'OFFER_NOT_FOUND') }
   return { player, offer, clock: (deps.now ?? (() => new Date()))() }
 }
 

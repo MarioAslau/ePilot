@@ -6,7 +6,9 @@ import type { Offer } from 'contracts'
 const offer: Offer = {
   offerId: 'o_p_parent0001',
   parentPredictionId: 'p_parent0001',
+  mode: 'DOUBLE_DOWN',
   direction: 'UP',
+  payout: { win: 2, loss: -2, parentDelta: 1 },
   issuedAt: '2026-10-11T15:00:00.000Z',
   expiresAt: '2026-10-11T15:00:10.000Z',
   extensions: 0,

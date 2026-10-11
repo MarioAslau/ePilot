@@ -1,4 +1,4 @@
-import type { Direction, ScoreDelta } from 'contracts'
+import type { Direction, Mode, ScoreDelta } from 'contracts'
 
 export const ROUND_MS = 60_000
 export const ENTRY_MAX_TRADE_AGE_MS = 10_000
@@ -13,7 +13,7 @@ export interface PredictionRecord {
   predictionId: string
   playerId: string
   direction: Direction
-  mode: 'STANDARD' | 'DOUBLE_DOWN'
+  mode: Mode
   status: 'PENDING' | 'RESOLVED'
   parentPredictionId?: string
   createdAt: string
@@ -57,7 +57,7 @@ export function buildPrediction(input: {
   entryTradeTime: string
   entryFetchedAt: string
   nextBytes: (size: number) => Buffer
-  mode?: 'STANDARD' | 'DOUBLE_DOWN'
+  mode?: Mode
   parentPredictionId?: string
   offerId?: string
 }): { prediction: PredictionRecord; idempotency: IdempotencyRecord } {

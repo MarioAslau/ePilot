@@ -8,10 +8,10 @@ Then add optional features that demonstrate product judgment.
 
 ## Current progress
 
-- Active ticket: none
-- Status: T12 complete
+- Active ticket: T13
+- Status: Awaiting manual verification
 
-T12 is complete. Mario marked the local Double Down check done on 2026-10-11. The flag is off unless a deploy passes `--param doubleDown=on`. `yarn dev:local` defaults it on. History and Double Down are not on the hosted site until the next API deploy and Amplify rebuild. On 2026-10-11 Mario pressed Up on the hosted site, closed the tab, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14. T13 has not started.
+T13 is awaiting manual verification. Redemption is implemented locally and is not deployed. `FEATURE_REDEMPTION` is off unless a deploy passes `--param redemption=on`. `yarn dev:local` defaults Redemption on when that variable is unset, the same way it defaults Double Down on. History, Double Down, and Redemption are not on the hosted site until the next API deploy and Amplify rebuild. T12 stays complete: Mario marked the local Double Down check done on 2026-10-11, and that flag stays off unless a deploy passes `--param doubleDown=on`. On 2026-10-11 Mario pressed Up on the hosted site, closed the tab, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14.
 
 ## Working agreement
 
@@ -112,7 +112,7 @@ The HTML uses a seeded random price walk, an in-page mock server, fake in-memory
 | T10 | Verified deployed MVP; extras begin only after this gate. |
 | T11 | Real history. Complete locally on 2026-10-11. Not on the hosted site until the next deploy. |
 | T12 | Momentum Double Down. Complete locally on 2026-10-11. Off on a deploy unless `--param doubleDown=on`. Not on the hosted site until the next deploy. |
-| T13 | Redemption. Not started. |
+| T13 | Redemption. Awaiting manual verification. Not deployed. |
 
 A local fixture view helps test presentation without waiting for markets. It is not proof of backend fairness. Each backend ticket gets API/integration checks and its relevant browser checkpoint.
 
@@ -869,7 +869,7 @@ feat: add optional momentum double-down rounds
 
 ## T13 — Redemption Round
 
-Status: Not started
+Status: Awaiting manual verification
 
 Dependencies: T11; shared offer primitives can follow T12.
 
@@ -1349,6 +1349,26 @@ If time runs short:
 - Decision or tradeoff: The offer deadline is an ISO string so the idempotency TTL does not delete it. See D7. The initial window stays 10 seconds. Need more time is the WCAG 2.2.1 extension, 20 seconds, 10 times. Wins and losses still count a bonus round as one round.
 - Remaining limitation: Hosted Double Down stays off until a deploy passes `--param doubleDown=on`. The DynamoDB race tests did not run on this machine. A bonus round still takes at least 60 seconds.
 - Commit: Pending. Suggested message: `feat: add optional momentum double-down rounds`
+
+### T13
+
+- Status: Awaiting manual verification. Not deployed. Not marked complete.
+- What changed:
+  - A standard loss creates one Redemption offer when `FEATURE_REDEMPTION` is `on`. The offer has no direction. A standard win still creates only a Double Down offer, and only when that flag is on. A follow-on settlement creates no offer. The parent −1 is not rewritten. `scoreFor('REDEMPTION', WIN)` is +4 and `LOSS` is −2. `payoutFor` returns `{ win: 4, loss: -2, parentDelta: -1 }`, so the pair totals are +3 and −3. Decline, expiry, and a new standard round keep the −1. Accept requires `UP` or `DOWN` before any write. A missing or invalid direction is `400 DIRECTION_REQUIRED` and leaves the offer open. Double Down still ignores a client direction.
+  - The same idempotency key with the same offer and a different direction is `409 IDEMPOTENCY_CONFLICT`. The same direction replays. Accept stores `chosenDirection` and starts a fresh 60-second round in mode `REDEMPTION`. `wins` and `losses` still increase by 1. An old offer item with no `mode` still reads as `DOUBLE_DOWN`.
+  - `FEATURE_REDEMPTION` defaults off in `serverless.yml`. `yarn dev:local` defaults it on when the variable is unset. `next-resolution-loss` is a local-only fault. No new routes or IAM roles.
+  - The offer card is shared with Double Down. Redemption shows “Go again?”, the loss receipt, tiles from `offer.payout`, and three equal buttons: Play Up, Play Down, and No thanks. Seen offer ids for both modes are the last 10 in `sessionStorage` at `hunch.seenOffers`. The visible name is the constant `REDEMPTION_NAME` (`Redemption`). `?fixture=rd-offer` and the other `rd-` names are in the preview list, including `rd-second-call`.
+- Checks run and results:
+  - `yarn typecheck` — exit 0.
+  - `yarn lint` — exit 0.
+  - `yarn test` — api 91 passed and 10 skipped, web 66 passed, contracts 11 passed. The 10 skipped tests are `dynamo.int.test.ts`, because `DYNAMODB_ENDPOINT` was not set. `yarn workspace api test:int` skipped the same 10. Docker is not installed on this machine, so those cases did not run. CI runs them. The file includes the Redemption settle-once accept race and the accept-versus-create race.
+  - `yarn workspace web build` — exit 0. `apps/web/dist` does not contain `FixtureApp`, `__dev/next-prediction`, or `seeded`.
+  - `yarn workspace web e2e` — 8 passed. Six cover a stubbed Redemption loss through Play Down and a +4 pair, expiry, No thanks, a main Up with no notice, another tab, refresh, a 375px layout, and reduced-motion pips. The two existing journeys still pass.
+  - `yarn serverless package --stage dev --region eu-north-1` from `apps/api` — exit 0. The template has `FEATURE_REDEMPTION` defaulting to `off` on the existing functions. It has no new Lambda or IAM role, and no `dynamodb:Scan`. Lambda still reports the known `nodejs20.x` deprecation warning.
+- Manual verification: Not yet. The steps are in the T13 section of the README.
+- Decision or tradeoff: The arithmetic stays +4/−2. At roughly even odds, accepting is worth about +1, so declining is never the better score. That note is D8. The name is a constant, not a config system. Welcome-back copy is only for a Redemption round that settled while the page was closed.
+- Remaining limitation: Hosted Redemption stays off until a deploy passes `--param redemption=on`. The DynamoDB race tests did not run on this machine. A Redemption round still takes at least 60 seconds. The ticket strip uses the offer payout, so that strip is gone once the offer leaves `GET /me`.
+- Commit: Pending. Suggested message: `feat: add optional redemption rounds`
 
 ### Future entry template
 

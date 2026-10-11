@@ -14,6 +14,7 @@ export async function handleDeclineOffer(
     predictions: PredictionStore
     now?: () => Date
     doubleDown?: boolean
+    redemption?: boolean
   },
 ) {
   const loaded = await loadOffer(header, offerId, requestId, deps)
@@ -27,7 +28,7 @@ export async function handleDeclineOffer(
   const outcome = await deps.predictions.declineOffer(player.playerId, offerId)
   const stored = await deps.predictions.getOffer(player.playerId, offerId)
   if (outcome === 'declined' && stored) {
-    console.log(JSON.stringify({ event: 'offer.declined', requestId, playerId: player.playerId, offerId }))
+    console.log(JSON.stringify({ event: 'offer.declined', requestId, playerId: player.playerId, offerId, mode: offer.mode }))
     return offerJson(stored, clock)
   }
   if (stored?.status === 'DECLINED') return offerJson(stored, clock)

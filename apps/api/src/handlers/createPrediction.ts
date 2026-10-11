@@ -119,6 +119,9 @@ export async function handleCreatePrediction(
     return providerUnavailable(requestId)
   }
 
+  const openOffer = player.openOfferId
+    ? await deps.predictions.getOffer(auth.playerId, player.openOfferId)
+    : null
   const built = buildPrediction({
     now: clock,
     playerId: auth.playerId,
@@ -157,7 +160,13 @@ export async function handleCreatePrediction(
   }
 
   if (replacedOfferId) {
-    log('offer.replaced', { requestId, playerId: auth.playerId, offerId: replacedOfferId, predictionId: built.prediction.predictionId })
+    log('offer.replaced', {
+      requestId,
+      playerId: auth.playerId,
+      offerId: replacedOfferId,
+      mode: openOffer?.mode,
+      predictionId: built.prediction.predictionId,
+    })
   }
   const priorRounds = player.wins + player.losses
   log('prediction.created', {

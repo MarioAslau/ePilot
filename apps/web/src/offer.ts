@@ -1,5 +1,6 @@
-import type { Offer } from 'contracts'
+import type { MeResponse, Offer, OfferPayout } from 'contracts'
 import type { HistoryRound } from './components/RoundHistory'
+import { REDEMPTION_NAME } from './featureNames'
 
 export type OfferPhase = 'open' | 'submitting' | 'expired' | 'declined' | 'used' | 'replaced'
 
@@ -46,6 +47,36 @@ export function pairFromHistory(rows: HistoryRound[]): HistoryEntry[] {
     if (row) entries.push({ kind: 'round', round: row })
   }
   return entries
+}
+
+export function shownOffer(me: MeResponse | null | undefined): Offer | null {
+  const offer = me?.offer
+  if (!me || !offer) return null
+  if (offer.mode === 'REDEMPTION') return me.features.redemption ? offer : null
+  return me.features.doubleDown ? offer : null
+}
+
+function spoken(value: number): string {
+  return value > 0 ? `plus ${value}` : `minus ${Math.abs(value)}`
+}
+
+export function lossOfferAnnouncement(score: number, payout: OfferPayout): string {
+  const winPair = payout.parentDelta + payout.win
+  const lossPair = payout.parentDelta + payout.loss
+  return `Result: incorrect, minus 1 point. Your score is now ${score}. Optional ${REDEMPTION_NAME} round: your minus 1 is kept. You can choose up or down for one fresh round. If right, plus ${payout.win}, pair total plus ${winPair}. If wrong, minus ${Math.abs(payout.loss)}, pair total minus ${Math.abs(lossPair)}. The offer ends in 10 seconds; use Need more time to extend it.`
+}
+
+export function redemptionResultAnnouncement(outcome: 'WIN' | 'LOSS', score: number, parentDelta: number, delta: number): string {
+  const pair = parentDelta + delta
+  if (outcome === 'WIN') {
+    return `${REDEMPTION_NAME} round correct, plus ${delta} points. Pair total ${spoken(pair)}. Your score is now ${score}.`
+  }
+  return `${REDEMPTION_NAME} round missed, minus ${Math.abs(delta)} points. Pair total ${spoken(pair)}. Your score is now ${score}.`
+}
+
+export function redemptionStartedAnnouncement(direction: 'UP' | 'DOWN', entryPrice: string, payout: OfferPayout): string {
+  const word = direction === 'DOWN' ? 'down' : 'up'
+  return `${REDEMPTION_NAME} round started: ${word}, entry price ${entryPrice}. Plus ${payout.win} if right, minus ${Math.abs(payout.loss)} if wrong. The earliest result is in 60 seconds.`
 }
 
 export function winOfferAnnouncement(score: number, direction: 'UP' | 'DOWN'): string {

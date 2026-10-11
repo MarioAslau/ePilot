@@ -26,6 +26,7 @@ provider:
   environment:
     TABLE_NAME: hunch-${sls:stage}
     FEATURE_DOUBLE_DOWN: ${param:doubleDown, 'off'}
+    FEATURE_REDEMPTION: ${param:redemption, 'off'}
   httpApi:
     cors:
       allowedOrigins:

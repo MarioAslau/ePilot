@@ -177,7 +177,9 @@ test('accepts a double down and shows the pair, expiry, and a replaced offer', a
     return {
       offerId,
       parentPredictionId: parentId,
+      mode: 'DOUBLE_DOWN',
       direction: 'UP',
+      payout: { win: 2, loss: -2, parentDelta: 1 },
       issuedAt: issued,
       expiresAt: expires,
       extensions: 0,
@@ -236,7 +238,7 @@ test('accepts a double down and shows the pair, expiry, and a replaced offer', a
   }
 
   function me() {
-    const base = { playerId, losses: 0, serverTime: start.toISOString(), features: { doubleDown: true } }
+    const base = { playerId, losses: 0, serverTime: start.toISOString(), features: { doubleDown: true, redemption: false } }
     if (phase === 'won') return { ...base, score: 1, wins: 1, activePrediction: null, latestResolvedPrediction: parentSettled(), waitReason: null, offer: offer('OPEN') }
     if (phase === 'bonus') return { ...base, score: 1, wins: 1, activePrediction: bonusPending(), latestResolvedPrediction: parentSettled(), waitReason: 'WAITING_FOR_DEADLINE', offer: offer('ACCEPTED') }
     if (phase === 'bonus-won') return { ...base, score: 3, wins: 2, activePrediction: null, latestResolvedPrediction: bonusSettled(), waitReason: null, offer: null }
@@ -294,7 +296,7 @@ test('accepts a double down and shows the pair, expiry, and a replaced offer', a
 
   phase = 'expired'
   await page.reload()
-  await expect(page.getByText('Offer ended. Your +1 is kept.')).toHaveCount(0)
+  await expect(page.getByText('Offer ended. Your +1 is kept.')).toBeVisible()
 
   phase = 'won'
   await page.reload()
