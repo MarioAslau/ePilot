@@ -8,8 +8,8 @@ Then add optional features that demonstrate product judgment.
 
 ## Current progress
 
-- Active ticket: T03
-- Status: Complete
+- Active ticket: T04
+- Status: In progress
 
 - Starting point: Git repository created; application not implemented.
 
@@ -351,7 +351,7 @@ feat: define prediction contracts and tested scoring rules
 
 ## T04 — Deploy a minimal AWS slice
 
-Status: Not started
+Status: In progress
 
 Dependencies: T03.
 
@@ -361,7 +361,9 @@ Manual preparation:
 
 - Confirm the account using aws sts get-caller-identity.
 
-- Select one region and a dev stage.
+- Selected region: `eu-north-1` (Europe, Stockholm), stage `dev`. This project account cannot create resources in `eu-west-1`. See D6 in architecture.md.
+
+- Skip root MFA. The MFA page requires activating advanced features, which is permanent. See D6.
 
 - Enable billing alerts.
 
@@ -1096,6 +1098,27 @@ If time runs short:
   - `evaluate` is not called by a resolver yet. Nothing here fetches Coinbase or writes DynamoDB.
   - `minimumWaitMs` exists so tests can name the threshold. Production callers must leave it unset.
 - Commit: `feat: define prediction contracts and tested scoring rules`
+
+### T04
+
+- Status: In progress. Dev API is deployed in `eu-north-1`. Amplify is not connected yet.
+- What changed:
+  - `apps/api/serverless.yml` — on-demand table `hunch-<stage>` with `pk`/`sk`, no streams, retained on delete. HTTP API CORS allows `http://localhost:5173` and an `amplifyOrigin` parameter. Health Lambda has no DynamoDB permission. `build.esbuild` is false so Serverless 4 keeps the `serverless-esbuild` plugin. Default region is `eu-north-1`.
+  - `apps/web/src/App.tsx` — calls `GET /health`. Shows not configured, unreachable, or connected. No market card and no Up/Down buttons.
+  - `apps/web/src/test/App.test.tsx` — those three states.
+  - `amplify.yml` — Yarn workspace build, output `apps/web/dist`.
+  - `.env.example`, `README.md`, `docs/architecture.md` — public API URL, deploy commands, table keys, D6.
+- Checks run and results:
+  - `yarn workspace web test` — 8/8 passed.
+  - `yarn workspace web typecheck` — exit 0.
+  - `yarn workspace api typecheck` — exit 0.
+  - `yarn lint` — exit 0.
+  - `yarn serverless package --stage dev --region eu-north-1` — exit 0. Template has `GET /health`, on-demand `hunch-dev`, no stream, and the health role can write logs only.
+  - `yarn serverless deploy --stage dev --region eu-north-1` — exit 0. Stack `hunch-dev`. Health URL `https://6n3p7430tg.execute-api.eu-north-1.amazonaws.com/health` returned `{"status":"ok"}`.
+- Manual verification: API health check passed. Hosted frontend is still pending.
+- Decision or tradeoff: Public `/health` is a connectivity check. Cost abuse is an accepted MVP limit guarded by the account credits, not by hiding the URL. Dev deploy region is `eu-north-1` because the new project account is locked to Stockholm. Root MFA stays off so the account is not permanently upgraded. See D6 in architecture.md. Reviewers use the public site and do not sign in to AWS.
+- Remaining limitation: Amplify is not connected, so there is no public website yet. Amplify origin is added on the second deploy, after the site URL exists. Lambda `nodejs20.x` still deploys, and AWS stops allowing new functions on that runtime on 2027-02-01.
+- Commit: Pending. Suggested message: `feat: add deployable health API and honest connection shell`
 
 ### Future entry template
 

@@ -97,14 +97,30 @@ Planned coverage:
 
 ## Deployment
 
-Not implemented yet.
+The dev API is deployed in `eu-north-1`, stage `dev`. The frontend is not hosted yet.
 
-Planned:
-- Backend infrastructure through Serverless Framework.
-- Frontend through Amplify Hosting.
+Health check: `https://6n3p7430tg.execute-api.eu-north-1.amazonaws.com/health` returns `{"status":"ok"}`. That URL is public. It is not an AWS access key.
 
-Add exact account/profile, region, stage, commands, hosting settings
-and environment configuration after successful deployment.
+This project account is locked to Europe (Stockholm). These steps assume an AWS account and a configured CLI. They do not create the account.
+
+Backend, from `apps/api`:
+
+```bash
+yarn serverless package --stage dev --region eu-north-1
+yarn serverless deploy --stage dev --region eu-north-1
+```
+
+Frontend: connect Amplify Hosting to this repository. Set the app root to the repository root so `amplify.yml` can build the Yarn workspace. Set `VITE_API_BASE_URL` to the API Gateway URL before the Amplify build. Add a rewrite that sends unknown paths to `/index.html` with status 200.
+
+After Amplify has a URL, redeploy the API so the browser on that site is allowed:
+
+```bash
+yarn serverless deploy --stage dev --region eu-north-1 --param amplifyOrigin=https://<amplify-host>
+```
+
+`http://localhost:5173` is already allowed, so a local `yarn dev` can call the same public API. Copy `.env.example` to `.env` and paste the API Gateway URL into `VITE_API_BASE_URL`.
+
+To remove the dev stack later: `yarn serverless remove --stage dev --region eu-north-1`. The DynamoDB table is retained. Delete `hunch-dev` in the DynamoDB console if it should go too.
 
 ## How resolution works
 

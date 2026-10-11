@@ -2,12 +2,17 @@ service: hunch
 
 frameworkVersion: "^4"
 
+# Keep serverless-esbuild. Serverless 4's built-in esbuild conflicts with that plugin.
+build:
+  esbuild: false
+
 provider:
   name: aws
   runtime: nodejs20.x
   # Region and stage confirmed during T04 manual preparation.
-  # Use: serverless deploy --stage dev --region eu-west-1
-  region: ${opt:region, 'eu-west-1'}
+  # This project account is locked to Stockholm. See D6 in docs/architecture.md.
+  # Use: serverless deploy --stage dev --region eu-north-1
+  region: ${opt:region, 'eu-north-1'}
   stage: ${opt:stage, 'dev'}
   memorySize: 256
   timeout: 10
@@ -15,6 +20,18 @@ provider:
   tags:
     project: hunch
     stage: ${self:provider.stage}
+  # Health has no DynamoDB statements. Serverless still grants CloudWatch logs.
+  httpApi:
+    cors:
+      allowedOrigins:
+        - http://localhost:5173
+        - ${param:amplifyOrigin, 'http://localhost:5173'}
+      allowedHeaders:
+        - Content-Type
+        - Authorization
+      allowedMethods:
+        - GET
+      maxAge: 600
 
 plugins:
   - serverless-esbuild
@@ -37,3 +54,27 @@ functions:
       - httpApi:
           path: /health
           method: GET
+
+resources:
+  Resources:
+    GameTable:
+      Type: AWS::DynamoDB::Table
+      DeletionPolicy: Retain
+      Properties:
+        TableName: hunch-${sls:stage}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: pk
+            AttributeType: S
+          - AttributeName: sk
+            AttributeType: S
+        KeySchema:
+          - AttributeName: pk
+            KeyType: HASH
+          - AttributeName: sk
+            KeyType: RANGE
+        Tags:
+          - Key: project
+            Value: hunch
+          - Key: stage
+            Value: ${sls:stage}

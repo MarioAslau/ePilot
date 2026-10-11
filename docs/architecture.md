@@ -248,8 +248,7 @@ Only `PROVIDER_UNAVAILABLE` is in `RECOVERABLE_ERROR_CODES`.
 
 ## Proposed data model
 
-Use one DynamoDB table with partition/sort keys designed around
-actual access patterns. Finalise exact indexes during implementation.
+Use one DynamoDB table named `hunch-<stage>`. Partition key `pk` and sort key `sk` are strings. Billing is on-demand. Streams are off. No GSI yet; player history must not scan the table, and its index waits until history is implemented. The dev table is retained if the stack is deleted. The health Lambda cannot read or write it.
 
 Player:
 - playerId
@@ -767,6 +766,7 @@ Security:
 - Restrict IAM to required resources.
 - Configure CORS for intended origins.
 - Treat CORS as browser policy, not authentication.
+- This dev account cannot enable root MFA without a permanent upgrade. See D6.
 
 Costs:
 - Use modest polling intervals.
@@ -963,3 +963,20 @@ Accuracy percentage is only meaningful after several rounds. For a player
 with one round it shows 100% or 0%, which is technically correct but not
 very informative. The ScoreCard hides stats until at least one round
 is settled to avoid this edge case looking odd.
+
+---
+
+### D6 — Dev account: deploy in eu-north-1 and skip root MFA
+
+**Decision.**
+The dev AWS account is a new project account, created with Sign up for AWS (new). The active project is ePilot - Hunch. Europe accounts on that signup are locked to Europe (Stockholm), `eu-north-1`. Deploy the dev stage there. Do not activate advanced features, and do not enable root MFA on this account.
+
+**Reason.**
+The root security-credentials page only appears after activating advanced features. That activation is permanent, requires a paid upgrade, and removes the account spend limit. Lambda, API Gateway, DynamoDB, Step Functions and Amplify are already included, so the game does not need that upgrade. Reviewers and players use the public Amplify URL and the public API Gateway URL. They do not sign in to this AWS account, so the missing MFA does not affect them.
+
+**Alternatives considered.**
+- Activate advanced features and deploy in `eu-west-1` with root MFA: unlocks the region picker and the MFA page, at the cost of a permanent account change and no spend limit.
+- Keep the documented `eu-west-1` default and deploy there anyway: this account rejects regional resources outside Stockholm.
+
+**Tradeoff or limitation.**
+The dev stack cannot move to another region unless the account is permanently upgraded. The CLI user `hunch-dev` has an access key and no console password. That key stays on Mario's Mac and out of Git. A reviewer who deploys their own copy on a classic AWS account can pass a different `--region`.
