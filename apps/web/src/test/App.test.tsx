@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { App } from '../App'
@@ -656,7 +656,9 @@ describe('App predictions', () => {
     const first = render(<App />)
     expect(await screen.findByText('Correct', { selector: '#receipt-heading' })).toBeInTheDocument()
     expect(screen.getByText('Exact 83000.001 vs 83000.004')).toBeInTheDocument()
-    expect(document.querySelector('.flash-win')).toBeTruthy()
+    await waitFor(() => {
+      expect(document.querySelector('.flash-win')).toBeTruthy()
+    })
     expect(screen.getByText('Correct. Score 1.')).toBeInTheDocument()
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
@@ -665,6 +667,9 @@ describe('App predictions', () => {
 
     render(<App />)
     expect(await screen.findByText('Correct', { selector: '#receipt-heading' })).toBeInTheDocument()
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
     expect(document.querySelector('.flash-win')).toBeNull()
     expect(screen.queryByText('Correct. Score 1.')).not.toBeInTheDocument()
   })
