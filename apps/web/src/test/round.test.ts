@@ -29,6 +29,8 @@ function me(overrides: Partial<MeResponse> = {}): MeResponse {
     latestResolvedPrediction: null,
     waitReason: null,
     serverTime: '2026-10-11T15:00:00.000Z',
+    offer: null,
+    features: { doubleDown: false },
     ...overrides,
   }
 }

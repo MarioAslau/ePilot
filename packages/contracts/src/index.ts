@@ -38,11 +38,17 @@ export type PlayerId = z.infer<typeof PlayerIdSchema>
 
 export const IdempotencyKeySchema = z.string().uuid()
 
+export const ModeSchema = z.enum(['STANDARD', 'DOUBLE_DOWN'])
+export type Mode = z.infer<typeof ModeSchema>
+
+export const ScoreDeltaSchema = z.union([z.literal(1), z.literal(-1), z.literal(2), z.literal(-2)])
+export type ScoreDelta = z.infer<typeof ScoreDeltaSchema>
+
 export const PredictionSchema = z.object({
   predictionId: z.string().min(1),
   playerId: PlayerIdSchema,
   direction: DirectionSchema,
-  mode: z.literal('STANDARD'),
+  mode: ModeSchema,
   status: PredictionStatusSchema,
   createdAt: z.string().datetime(),
   dueAt: z.string().datetime(),
@@ -56,9 +62,34 @@ export const PredictionSchema = z.object({
   /** When this server fetched the compared ticker. Not the exchange trade time. */
   resolutionFetchedAt: z.string().datetime().optional(),
   outcome: OutcomeSchema.optional(),
-  scoreDelta: z.union([z.literal(1), z.literal(-1)]).optional(),
+  scoreDelta: ScoreDeltaSchema.optional(),
+  parentPredictionId: z.string().min(1).optional(),
+  /** Set on a resolved bonus round in GET /me, so the receipt can show the pair. */
+  parent: z
+    .object({
+      predictionId: z.string().min(1),
+      scoreDelta: ScoreDeltaSchema,
+    })
+    .optional(),
 })
 export type Prediction = z.infer<typeof PredictionSchema>
+
+export const OfferStatusSchema = z.enum(['OPEN', 'ACCEPTED', 'DECLINED', 'EXPIRED', 'REPLACED'])
+export type OfferStatus = z.infer<typeof OfferStatusSchema>
+
+export const OfferSchema = z.object({
+  offerId: z.string().min(1),
+  parentPredictionId: z.string().min(1),
+  direction: DirectionSchema,
+  issuedAt: z.string().datetime(),
+  /** ISO deadline. Not the numeric DynamoDB TTL attribute. */
+  expiresAt: z.string().datetime(),
+  extensions: z.number().int().min(0).max(10),
+  status: OfferStatusSchema,
+  bonusPredictionId: z.string().min(1).optional(),
+  replacedByPredictionId: z.string().min(1).optional(),
+})
+export type Offer = z.infer<typeof OfferSchema>
 
 export const PlayerSchema = z.object({
   playerId: PlayerIdSchema,
@@ -87,6 +118,8 @@ export const MeResponseSchema = z.object({
   /** Null when there is no active prediction. */
   waitReason: WaitReasonSchema.nullable(),
   serverTime: z.string().datetime(),
+  offer: OfferSchema.nullable().default(null),
+  features: z.object({ doubleDown: z.boolean() }).default({ doubleDown: false }),
 })
 export type MeResponse = z.infer<typeof MeResponseSchema>
 
@@ -105,6 +138,11 @@ export const CreatePredictionRequestSchema = z.object({
   idempotencyKey: IdempotencyKeySchema,
 })
 export type CreatePredictionRequest = z.infer<typeof CreatePredictionRequestSchema>
+
+export const OfferActionRequestSchema = z.object({
+  idempotencyKey: IdempotencyKeySchema,
+})
+export type OfferActionRequest = z.infer<typeof OfferActionRequestSchema>
 
 /**
  * Lost POST /predictions response: send this same body again.
@@ -136,6 +174,12 @@ export const ErrorCodeSchema = z.enum([
   'ACTIVE_ROUND',
   'IDEMPOTENCY_CONFLICT',
   'PROVIDER_UNAVAILABLE',
+  'OFFER_EXPIRED',
+  'OFFER_ACCEPTED',
+  'OFFER_DECLINED',
+  'OFFER_REPLACED',
+  'OFFER_NOT_FOUND',
+  'MAX_EXTENSIONS',
 ])
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>
 

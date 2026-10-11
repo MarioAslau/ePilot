@@ -25,6 +25,7 @@ provider:
   # keeps the hosted site allowed. Omitting it falls back to localhost.
   environment:
     TABLE_NAME: hunch-${sls:stage}
+    FEATURE_DOUBLE_DOWN: ${param:doubleDown, 'off'}
   httpApi:
     cors:
       allowedOrigins:
@@ -104,6 +105,35 @@ functions:
       - httpApi:
           path: /predictions
           method: GET
+  acceptOffer:
+    handler: src/handlers/acceptOffer.handler
+    description: Start a bonus round from an open Double Down offer
+    role:
+      Fn::GetAtt: [OfferLambdaRole, Arn]
+    environment:
+      STATE_MACHINE_ARN: arn:aws:states:${aws:region}:${aws:accountId}:stateMachine:hunch-${sls:stage}-resolution
+    events:
+      - httpApi:
+          path: /offers/{offerId}/accept
+          method: POST
+  declineOffer:
+    handler: src/handlers/declineOffer.handler
+    description: Decline an open Double Down offer
+    role:
+      Fn::GetAtt: [OfferLambdaRole, Arn]
+    events:
+      - httpApi:
+          path: /offers/{offerId}/decline
+          method: POST
+  extendOffer:
+    handler: src/handlers/extendOffer.handler
+    description: Add 20 seconds to an open Double Down offer
+    role:
+      Fn::GetAtt: [OfferLambdaRole, Arn]
+    events:
+      - httpApi:
+          path: /offers/{offerId}/extend
+          method: POST
   resolvePrediction:
     handler: src/handlers/resolvePrediction.handler
     description: Settle one prediction after its deadline
@@ -275,6 +305,47 @@ resources:
                     - states:StartExecution
                   Resource:
                     Fn::Sub: arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:hunch-${sls:stage}-resolution
+    OfferLambdaRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: hunch-${sls:stage}-offers
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: offer-table
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - dynamodb:GetItem
+                    - dynamodb:PutItem
+                    - dynamodb:UpdateItem
+                    - dynamodb:TransactWriteItems
+                  Resource:
+                    Fn::GetAtt: [GameTable, Arn]
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogStream
+                    - logs:CreateLogGroup
+                    - logs:TagResource
+                  Resource:
+                    Fn::Sub: arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/hunch-${sls:stage}-*:*
+                - Effect: Allow
+                  Action:
+                    - logs:PutLogEvents
+                  Resource:
+                    Fn::Sub: arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/hunch-${sls:stage}-*:*:*
+                - Effect: Allow
+                  Action:
+                    - states:StartExecution
+                  Resource:
+                    Fn::Sub: arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:hunch-${sls:stage}-resolution
     ResolverLambdaRole:
       Type: AWS::IAM::Role
       Properties:
@@ -294,6 +365,7 @@ resources:
                 - Effect: Allow
                   Action:
                     - dynamodb:GetItem
+                    - dynamodb:PutItem
                     - dynamodb:UpdateItem
                     - dynamodb:TransactWriteItems
                   Resource:

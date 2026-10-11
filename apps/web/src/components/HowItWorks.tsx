@@ -4,7 +4,7 @@ import { ChevronDown } from 'lucide-react'
  * Collapsible explainer using a native <details> element.
  * No JS state — the browser handles open/close for free.
  */
-export function HowItWorks() {
+export function HowItWorks({ doubleDown = false }: { doubleDown?: boolean }) {
   return (
     <section className="card">
       <details className="how">
@@ -45,6 +45,15 @@ export function HowItWorks() {
               Each settled round stays in the list with its direction, entry price, compared price, and point change.
             </div>
           </li>
+          {doubleDown && (
+            <li>
+              <div>
+                <b>Double Down</b>
+                After a correct standard round, you can play one bonus round in the same direction.
+                Your +1 stays. A correct bonus adds 2 (pair +3). A miss subtracts 2 (pair −1). The offer lasts 10 seconds, and Need more time adds 20 seconds.
+              </div>
+            </li>
+          )}
         </ol>
 
         <div className="rulebox">

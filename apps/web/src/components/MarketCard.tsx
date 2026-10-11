@@ -16,6 +16,7 @@ interface Props {
   isSubmitting?: boolean
   predictionDisabled?: boolean
   predictionReason?: string | null
+  predictionTitle?: string
 }
 
 /**
@@ -32,6 +33,7 @@ export function MarketCard({
   isSubmitting,
   predictionDisabled,
   predictionReason,
+  predictionTitle,
 }: Props) {
   return (
     <article className="card stage" aria-label="BTC/USD market and prediction">
@@ -48,6 +50,7 @@ export function MarketCard({
             isSubmitting={isSubmitting ?? false}
             disabled={predictionDisabled}
             reason={predictionReason}
+            title={predictionTitle}
           />
         </div>
       )}

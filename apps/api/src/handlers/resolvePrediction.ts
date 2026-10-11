@@ -1,4 +1,5 @@
 import { fetchTicker, ProviderUnavailableError, type TickerQuote } from '../coinbase.js'
+import { doubleDownEnabled, offerIdFor } from '../offer.js'
 import { dynamoPlayerStore, type PlayerStore } from '../playerStore.js'
 import { decide } from '../resolution.js'
 import { dynamoPredictionStore, type PredictionStore } from '../predictionStore.js'
@@ -29,6 +30,7 @@ export async function handleResolvePrediction(
     players: PlayerStore
     now?: () => Date
     quote?: () => Promise<TickerQuote>
+    doubleDown?: boolean
   },
 ) {
   const now = deps.now ?? (() => new Date())
@@ -77,6 +79,16 @@ export async function handleResolvePrediction(
 
   const decision = decide(prediction, clock, quote)
   if (decision.status === 'RESOLVED') {
+    const enabled = deps.doubleDown ?? doubleDownEnabled()
+    const createOffer =
+      enabled && prediction.mode === 'STANDARD' && decision.outcome === 'WIN'
+        ? {
+            offerId: offerIdFor(prediction.predictionId),
+            direction: prediction.direction,
+            parentPredictionId: prediction.predictionId,
+          }
+        : undefined
+    const resolvedAt = clock.toISOString()
     const outcome = await deps.predictions.settle({
       playerId: input.playerId,
       predictionId: input.predictionId,
@@ -85,11 +97,19 @@ export async function handleResolvePrediction(
       resolutionPrice: decision.resolutionPrice,
       resolutionTradeTime: decision.resolutionTradeTime,
       resolutionFetchedAt: decision.resolutionFetchedAt,
-      resolvedAt: clock.toISOString(),
+      resolvedAt,
+      ...(createOffer ? { createOffer } : {}),
     })
     const status = outcome === 'settled' ? 'SETTLED' : 'ALREADY_SETTLED'
     if (status === 'ALREADY_SETTLED') await deps.predictions.clearPending(input.playerId, input.predictionId)
     log('prediction.settled', { ...base, executionName: input.executionName, reason: status })
+    if (status === 'SETTLED' && createOffer) {
+      log('offer.created', {
+        playerId: input.playerId,
+        parentPredictionId: prediction.predictionId,
+        offerId: createOffer.offerId,
+      })
+    }
     return { ...base, status }
   }
 

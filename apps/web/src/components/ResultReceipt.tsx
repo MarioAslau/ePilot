@@ -1,4 +1,7 @@
+import type { ScoreDelta } from 'contracts'
 import { ChevronDown, ChevronUp, Minus, Plus } from 'lucide-react'
+import { roundLabel } from '../offer'
+import { DoubleDownBadge } from './DoubleDownBadge'
 
 interface Props {
   outcome: 'WIN' | 'LOSS'
@@ -10,6 +13,8 @@ interface Props {
   fetchedAt?: Date
   settledAt?: Date
   predictionId: string
+  scoreDelta?: ScoreDelta
+  parent?: { predictionId: string; scoreDelta: ScoreDelta }
 }
 
 function formatPrice(raw: string): string {
@@ -42,9 +47,13 @@ export function ResultReceipt({
   fetchedAt,
   settledAt,
   predictionId,
+  scoreDelta,
+  parent,
 }: Props) {
   const isWin  = outcome === 'WIN'
   const isUp   = direction === 'UP'
+  const points = scoreDelta ?? (isWin ? 1 : -1)
+  const bonus = parent !== undefined
   const sameDisplay = formatPrice(entryPrice) === formatPrice(resolutionPrice) && entryPrice !== resolutionPrice
   const finishedAt = settledAt ?? resolutionTime
 
@@ -52,7 +61,10 @@ export function ResultReceipt({
     <aside className={`receipt ${isWin ? 'win' : 'loss'}`} aria-label={`Result: ${outcome}`}>
       <div className="rc-top">
         <div>
-          <p className="rc-title" id="receipt-heading" tabIndex={-1}>{isWin ? 'Correct' : 'Not this time'}</p>
+          {bonus && <DoubleDownBadge />}
+          <p className="rc-title" id="receipt-heading" tabIndex={-1}>
+            {bonus ? (isWin ? 'Bonus round correct' : 'Bonus round missed') : (isWin ? 'Correct' : 'Not this time')}
+          </p>
           <p className="rc-sub">
             {isUp
               ? <><ChevronUp className="ic" size={12} aria-hidden="true" /> Predicted Up</>
@@ -60,16 +72,23 @@ export function ResultReceipt({
           </p>
         </div>
 
-        <div className={`rc-pts num`} aria-label={`${isWin ? 'plus' : 'minus'} 1 point`}>
-          {isWin
-            ? <><Plus className="ic" size={18} aria-hidden="true" />1</>
-            : <><Minus className="ic" size={18} aria-hidden="true" />1</>}
+        <div className="rc-pts num" aria-label={`${points > 0 ? 'plus' : 'minus'} ${Math.abs(points)} points`}>
+          {points > 0
+            ? <><Plus className="ic" size={18} aria-hidden="true" />{points}</>
+            : <><Minus className="ic" size={18} aria-hidden="true" />{Math.abs(points)}</>}
         </div>
       </div>
+      {bonus && parent && (
+        <p className="dd-pair" aria-label={`Round ${roundLabel(parent.predictionId)} plus ${parent.scoreDelta}, bonus ${points > 0 ? 'plus' : 'minus'} ${Math.abs(points)}. Pair total ${parent.scoreDelta + points > 0 ? 'plus' : 'minus'} ${Math.abs(parent.scoreDelta + points)}. `}>
+          Round {roundLabel(parent.predictionId)} <b>{parent.scoreDelta > 0 ? `+${parent.scoreDelta}` : `−${Math.abs(parent.scoreDelta)}`}</b>
+          {' + Bonus '}<b>{points > 0 ? `+${points}` : `−${Math.abs(points)}`}</b>
+          {' · Pair total '}<b>{parent.scoreDelta + points > 0 ? `+${parent.scoreDelta + points}` : `−${Math.abs(parent.scoreDelta + points)}`}</b>
+        </p>
+      )}
 
       <dl className="kv">
         <div>
-          <dt>Entry price</dt>
+          <dt>{bonus ? 'Bonus entry' : 'Entry price'}</dt>
           <dd className="num">{formatPrice(entryPrice)}</dd>
         </div>
         <div>

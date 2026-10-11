@@ -1,3 +1,4 @@
+import { EXTENSION_MS, offerExpiresAt, type OfferRecord } from './offer.js'
 import type { PlayerRecord, PlayerStore } from './playerStore.js'
 import type { IdempotencyRecord, PredictionRecord } from './prediction.js'
 import type { PredictionStore } from './predictionStore.js'
@@ -12,6 +13,7 @@ export function memoryGameStore(): PlayerStore & PredictionStore & { failNextSet
   const players = new Map<string, StoredPlayer>()
   const predictions = new Map<string, PredictionRecord>()
   const idempotency = new Map<string, IdempotencyRecord>()
+  const offers = new Map<string, OfferRecord>()
   let failSettle = false
 
   return {
@@ -40,15 +42,81 @@ export function memoryGameStore(): PlayerStore & PredictionStore & { failNextSet
       return idempotency.get(`${playerId}#${key}`) ?? null
     },
 
-    async create({ prediction, idempotency: record }) {
+    async create({ prediction, idempotency: record, replaceOfferId, clearOpenOffer, now }) {
       const player = players.get(prediction.playerId)
       const idempotencyId = `${prediction.playerId}#${record.idempotencyKey}`
       if (idempotency.has(idempotencyId)) return 'duplicate_key'
       if (!player || player.activePredictionId) return 'active_round'
+      const offer = replaceOfferId ? offers.get(`${prediction.playerId}#${replaceOfferId}`) : undefined
+      if (replaceOfferId) {
+        const clock = now ? new Date(now).getTime() : 0
+        if (!offer || offer.status !== 'OPEN' || new Date(offer.expiresAt).getTime() <= clock) return 'offer_changed'
+        if (player.openOfferId !== replaceOfferId) return 'offer_changed'
+      }
       predictions.set(`${prediction.playerId}#${prediction.predictionId}`, prediction)
       idempotency.set(idempotencyId, record)
       player.activePredictionId = prediction.predictionId
+      if (offer && replaceOfferId) {
+        offer.status = 'REPLACED'
+        offer.replacedByPredictionId = prediction.predictionId
+        delete player.openOfferId
+      } else if (clearOpenOffer) {
+        delete player.openOfferId
+      }
       return 'created'
+    },
+
+    async getOffer(playerId, offerId) {
+      return offers.get(`${playerId}#${offerId}`) ?? null
+    },
+
+    async acceptOffer({ prediction, idempotency: record, offerId, now }) {
+      const player = players.get(prediction.playerId)
+      const offer = offers.get(`${prediction.playerId}#${offerId}`)
+      const idempotencyId = `${prediction.playerId}#${record.idempotencyKey}`
+      if (idempotency.has(idempotencyId)) return 'duplicate_key'
+      if (
+        !player ||
+        !offer ||
+        offer.status !== 'OPEN' ||
+        new Date(offer.expiresAt).getTime() <= new Date(now).getTime() ||
+        player.openOfferId !== offerId ||
+        player.activePredictionId
+      ) {
+        return 'conflict'
+      }
+      offer.status = 'ACCEPTED'
+      offer.bonusPredictionId = prediction.predictionId
+      predictions.set(`${prediction.playerId}#${prediction.predictionId}`, prediction)
+      idempotency.set(idempotencyId, record)
+      player.activePredictionId = prediction.predictionId
+      delete player.openOfferId
+      return 'accepted'
+    },
+
+    async declineOffer(playerId, offerId) {
+      const player = players.get(playerId)
+      const offer = offers.get(`${playerId}#${offerId}`)
+      if (!player || !offer || offer.status !== 'OPEN' || player.openOfferId !== offerId) return 'conflict'
+      offer.status = 'DECLINED'
+      delete player.openOfferId
+      return 'declined'
+    },
+
+    async extendOffer(playerId, offerId, seenExpiresAt, now) {
+      const offer = offers.get(`${playerId}#${offerId}`)
+      if (
+        !offer ||
+        offer.status !== 'OPEN' ||
+        offer.expiresAt !== seenExpiresAt ||
+        new Date(offer.expiresAt).getTime() <= new Date(now).getTime() ||
+        offer.extensions >= 10
+      ) {
+        return 'conflict'
+      }
+      offer.expiresAt = new Date(new Date(seenExpiresAt).getTime() + EXTENSION_MS).toISOString()
+      offer.extensions += 1
+      return 'extended'
     },
 
     failNextSettle() {
@@ -83,6 +151,22 @@ export function memoryGameStore(): PlayerStore & PredictionStore & { failNextSet
       else player.losses += 1
       delete player.activePredictionId
       player.latestResolvedPredictionId = input.predictionId
+      if (input.createOffer) {
+        const offerId = input.createOffer.offerId
+        offers.set(`${input.playerId}#${offerId}`, {
+          offerId,
+          playerId: input.playerId,
+          parentPredictionId: input.createOffer.parentPredictionId,
+          direction: input.createOffer.direction,
+          issuedAt: input.resolvedAt,
+          expiresAt: offerExpiresAt(input.resolvedAt),
+          extensions: 0,
+          status: 'OPEN',
+          createdAt: input.resolvedAt,
+        })
+        player.openOfferId = offerId
+        player.latestOfferId = offerId
+      }
       return 'settled'
     },
 

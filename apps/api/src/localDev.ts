@@ -1,11 +1,22 @@
 import { fetchTicker, ProviderUnavailableError } from './coinbase.js'
+import { handleAcceptOffer } from './handlers/acceptOffer.js'
 import { handleCreatePlayer } from './handlers/createPlayer.js'
 import { handleCreatePrediction } from './handlers/createPrediction.js'
+import { handleDeclineOffer } from './handlers/declineOffer.js'
+import { handleExtendOffer } from './handlers/extendOffer.js'
 import { handleGetPredictionHistory } from './handlers/getPredictionHistory.js'
 import { handleMarket } from './handlers/market.js'
 import { handleMe } from './handlers/me.js'
 import { handleResolvePrediction } from './handlers/resolvePrediction.js'
 import { memoryGameStore } from './memoryStore.js'
+import { localDoubleDownEnabled } from './offer.js'
+
+function favourablePrice(entry: string, direction: 'UP' | 'DOWN'): string {
+  const [whole = '0', frac] = entry.split('.')
+  const next = direction === 'UP' ? BigInt(whole) + 1n : BigInt(whole) - 1n
+  const safe = next < 0n ? 0n : next
+  return frac === undefined ? String(safe) : `${safe}.${frac}`
+}
 
 export type DevFault = 'drop-response' | 'provider-down'
 
@@ -17,7 +28,9 @@ export function createLocalApp() {
   const store = memoryGameStore()
   let nextFault: DevFault | null = null
   let equalNext = false
+  let winNext = false
   let resolutionHolds = 0
+  const doubleDown = localDoubleDownEnabled()
 
   function scheduleResolution(input: { playerId: string; predictionId: string; dueAt: string }) {
     const run = async () => {
@@ -28,6 +41,7 @@ export function createLocalApp() {
         {
           predictions: store,
           players: store,
+          doubleDown,
           quote: async () => {
             if (resolutionHolds > 0) {
               resolutionHolds -= 1
@@ -37,6 +51,10 @@ export function createLocalApp() {
             if (equalNext) {
               equalNext = false
               return { ...ticker, price: current.entryPrice }
+            }
+            if (winNext) {
+              winNext = false
+              return { ...ticker, price: favourablePrice(current.entryPrice, current.direction) }
             }
             return ticker
           },
@@ -87,6 +105,10 @@ export function createLocalApp() {
           resolutionHolds = 2
           return { statusCode: 204, body: '' }
         }
+        if (mode === 'next-resolution-win') {
+          winNext = true
+          return { statusCode: 204, body: '' }
+        }
         return {
           statusCode: 400,
           body: JSON.stringify({
@@ -101,7 +123,7 @@ export function createLocalApp() {
         return handleCreatePlayer('local', { store })
       }
       if (method === 'GET' && path === '/api/me') {
-        return handleMe(authorization, 'local', { store, predictions: store })
+        return handleMe(authorization, 'local', { store, predictions: store, doubleDown })
       }
       if (method === 'GET' && path === '/api/market') {
         return handleMarket('local')
@@ -110,6 +132,25 @@ export function createLocalApp() {
         return handleGetPredictionHistory(authorization, query, 'local', {
           players: store,
           predictions: store,
+        })
+      }
+      const offerPath = /^\/api\/offers\/([^/]+)\/(accept|decline|extend)$/.exec(path)
+      if (method === 'POST' && offerPath?.[1] && offerPath[2]) {
+        const offerId = decodeURIComponent(offerPath[1])
+        const offerDeps = { players: store, predictions: store, doubleDown }
+        if (offerPath[2] === 'decline') return handleDeclineOffer(authorization, offerId, 'local', offerDeps)
+        if (offerPath[2] === 'extend') return handleExtendOffer(authorization, offerId, 'local', offerDeps)
+        return handleAcceptOffer(authorization, offerId, rawBody, 'local', {
+          ...offerDeps,
+          quote:
+            fault === 'provider-down'
+              ? async () => {
+                  throw new ProviderUnavailableError('network')
+                }
+              : () => fetchTicker(),
+          startWorkflow: async (input) => {
+            scheduleResolution(input)
+          },
         })
       }
       if (method === 'POST' && path === '/api/predictions') {

@@ -1,4 +1,4 @@
-import type { Direction } from 'contracts'
+import type { Direction, ScoreDelta } from 'contracts'
 
 export const ROUND_MS = 60_000
 export const ENTRY_MAX_TRADE_AGE_MS = 10_000
@@ -13,8 +13,9 @@ export interface PredictionRecord {
   predictionId: string
   playerId: string
   direction: Direction
-  mode: 'STANDARD'
+  mode: 'STANDARD' | 'DOUBLE_DOWN'
   status: 'PENDING' | 'RESOLVED'
+  parentPredictionId?: string
   createdAt: string
   dueAt: string
   entryPrice: string
@@ -24,7 +25,7 @@ export interface PredictionRecord {
   pendingDueAt?: string
   lastCheck?: LastCheck
   outcome?: 'WIN' | 'LOSS'
-  scoreDelta?: 1 | -1
+  scoreDelta?: ScoreDelta
   resolutionPrice?: string
   resolutionTradeTime?: string
   resolutionFetchedAt?: string
@@ -38,6 +39,8 @@ export interface IdempotencyRecord {
   predictionId: string
   createdAt: string
   expiresAt: number
+  kind?: 'OFFER_ACCEPT'
+  offerId?: string
 }
 
 export function newPredictionId(now: Date, nextBytes: (size: number) => Buffer): string {
@@ -54,6 +57,9 @@ export function buildPrediction(input: {
   entryTradeTime: string
   entryFetchedAt: string
   nextBytes: (size: number) => Buffer
+  mode?: 'STANDARD' | 'DOUBLE_DOWN'
+  parentPredictionId?: string
+  offerId?: string
 }): { prediction: PredictionRecord; idempotency: IdempotencyRecord } {
   const createdAt = input.now.toISOString()
   const dueAt = new Date(input.now.getTime() + ROUND_MS).toISOString()
@@ -63,8 +69,9 @@ export function buildPrediction(input: {
       predictionId,
       playerId: input.playerId,
       direction: input.direction,
-      mode: 'STANDARD',
+      mode: input.mode ?? 'STANDARD',
       status: 'PENDING',
+      ...(input.parentPredictionId ? { parentPredictionId: input.parentPredictionId } : {}),
       createdAt,
       dueAt,
       entryPrice: input.entryPrice,
@@ -80,6 +87,7 @@ export function buildPrediction(input: {
       predictionId,
       createdAt,
       expiresAt: Math.floor((input.now.getTime() + IDEMPOTENCY_TTL_MS) / 1000),
+      ...(input.offerId ? { kind: 'OFFER_ACCEPT' as const, offerId: input.offerId } : {}),
     },
   }
 }

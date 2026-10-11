@@ -1,6 +1,8 @@
-import type { Prediction } from 'contracts'
+import type { Prediction, ScoreDelta } from 'contracts'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useEffect, useRef } from 'react'
+import { pairFromHistory, type HistoryEntry } from '../offer'
+import { DoubleDownBadge } from './DoubleDownBadge'
 import { StatusNotice } from './StatusNotice'
 
 export interface HistoryRound {
@@ -11,7 +13,8 @@ export interface HistoryRound {
   entryTradeTime: string
   resolutionTradeTime: string
   outcome: 'WIN' | 'LOSS'
-  scoreDelta: 1 | -1
+  scoreDelta: ScoreDelta
+  parentPredictionId?: string
 }
 
 export function historyRound(prediction: Prediction): HistoryRound | null {
@@ -33,7 +36,12 @@ export function historyRound(prediction: Prediction): HistoryRound | null {
     resolutionTradeTime: prediction.resolutionTradeTime,
     outcome: prediction.outcome,
     scoreDelta: prediction.scoreDelta,
+    ...(prediction.parentPredictionId ? { parentPredictionId: prediction.parentPredictionId } : {}),
   }
+}
+
+function points(delta: number): string {
+  return delta > 0 ? `+${delta}` : `−${Math.abs(delta)}`
 }
 
 function formatPrice(raw: string): string {
@@ -53,6 +61,53 @@ function formatTime(iso: string): string {
 function elapsed(from: string, to: string): string {
   const seconds = Math.max(0, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 1000))
   return `${seconds}s`
+}
+
+function RoundRow({ round, bonus = false, labelled = true }: { round: HistoryRound; bonus?: boolean; labelled?: boolean }) {
+  const up = round.direction === 'UP'
+  const win = round.outcome === 'WIN'
+  const entry = formatPrice(round.entryPrice)
+  const compared = formatPrice(round.resolutionPrice)
+  const sameDisplay = entry === compared && round.entryPrice !== round.resolutionPrice
+  return (
+    <li id={labelled ? `history-${round.predictionId}` : undefined} tabIndex={labelled ? -1 : undefined}>
+      <span className={`hd ${up ? 'up' : 'down'}`} aria-hidden="true">
+        {up
+          ? <ChevronUp className="ic" size={16} aria-hidden="true" />
+          : <ChevronDown className="ic" size={16} aria-hidden="true" />}
+      </span>
+      <div className="hm">
+        <b>{bonus || round.parentPredictionId ? 'Bonus ' : ''}{up ? 'Up' : 'Down'} at {formatTime(round.entryTradeTime)}</b>
+        <span className="num">
+          {entry} to {compared}, settled after {elapsed(round.entryTradeTime, round.resolutionTradeTime)}
+        </span>
+        {sameDisplay && (
+          <span className="exact num">Exact {round.entryPrice} vs {round.resolutionPrice}</span>
+        )}
+      </div>
+      <span className={`hp num ${win ? 'win' : 'loss'}`}>
+        <span className="sr-only">{win ? 'Correct, ' : 'Not this time, '}</span>
+        {points(round.scoreDelta)}
+      </span>
+    </li>
+  )
+}
+
+function PairRow({ entry }: { entry: Extract<HistoryEntry, { kind: 'pair' }> }) {
+  const total = points(entry.total)
+  const word = entry.total > 0 ? `plus ${entry.total}` : `minus ${Math.abs(entry.total)}`
+  return (
+    <li id={`history-${entry.bonus.predictionId}`} tabIndex={-1} className="hist-pair">
+      <div className="pair-head">
+        <DoubleDownBadge label="Double Down pair" />
+        <span className={`hp num ${entry.total > 0 ? 'win' : 'loss'}`}>Pair {total}</span>
+      </div>
+      <ol className="pair" aria-label={`Double Down pair, total ${word}`}>
+        <RoundRow round={entry.bonus} bonus labelled={false} />
+        <RoundRow round={entry.parent} labelled={false} />
+      </ol>
+    </li>
+  )
 }
 
 interface Props {
@@ -121,35 +176,11 @@ export function RoundHistory({
       )}
       {predictions.length > 0 && (
         <ol className="hist">
-          {predictions.map((round) => {
-            const up = round.direction === 'UP'
-            const win = round.outcome === 'WIN'
-            const entry = formatPrice(round.entryPrice)
-            const compared = formatPrice(round.resolutionPrice)
-            const sameDisplay = entry === compared && round.entryPrice !== round.resolutionPrice
-            return (
-              <li key={round.predictionId} id={`history-${round.predictionId}`} tabIndex={-1}>
-                <span className={`hd ${up ? 'up' : 'down'}`} aria-hidden="true">
-                  {up
-                    ? <ChevronUp className="ic" size={16} aria-hidden="true" />
-                    : <ChevronDown className="ic" size={16} aria-hidden="true" />}
-                </span>
-                <div className="hm">
-                  <b>{up ? 'Up' : 'Down'} at {formatTime(round.entryTradeTime)}</b>
-                  <span className="num">
-                    {entry} to {compared}, settled after {elapsed(round.entryTradeTime, round.resolutionTradeTime)}
-                  </span>
-                  {sameDisplay && (
-                    <span className="exact num">Exact {round.entryPrice} vs {round.resolutionPrice}</span>
-                  )}
-                </div>
-                <span className={`hp num ${win ? 'win' : 'loss'}`}>
-                  <span className="sr-only">{win ? 'Correct, ' : 'Not this time, '}</span>
-                  {round.scoreDelta > 0 ? '+1' : '−1'}
-                </span>
-              </li>
-            )
-          })}
+          {pairFromHistory(predictions).map((entry) => (
+            entry.kind === 'pair'
+              ? <PairRow key={entry.bonus.predictionId} entry={entry} />
+              : <RoundRow key={entry.round.predictionId} round={entry.round} />
+          ))}
         </ol>
       )}
       {status !== 'loading' && hasMore && (

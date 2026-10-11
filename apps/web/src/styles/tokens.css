@@ -528,7 +528,32 @@ button { font: inherit; color: inherit }
   gap: var(--s3); align-items: center; padding: var(--s3) 0;
   border-top: 1px solid var(--line);
 }
-.hist li:first-child { border-top: 0 }
+.hist > li:first-child { border-top: 0 }
+.hist > li.hist-pair { display: block }
+.pair { margin: var(--s2) 0 0 8px; padding-left: 15px; border-left: 2px solid color-mix(in srgb, var(--accent) 35%, transparent) }
+.pair-head { display: flex; justify-content: space-between; align-items: center; gap: var(--s3) }
+.dd {
+  position: relative; overflow: hidden; margin-top: var(--s4);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: 10px; background: var(--raised); padding: var(--s4);
+  display: grid; gap: var(--s3);
+}
+.dd-meter { position: absolute; top: 0; left: 0; right: 0; height: 3px; background: color-mix(in srgb, var(--accent) 12%, transparent) }
+.dd-meter > span { display: block; height: 100%; background: var(--accent); transform-origin: left center }
+.dd-pips { display: none; gap: 3px; height: 4px }
+.dd-pips i { flex: 1; background: color-mix(in srgb, var(--accent) 12%, transparent) }
+.dd-pips i.on { background: var(--accent) }
+.dd-top, .dd-actions, .dd-tiles { display: flex; gap: var(--s2); align-items: center; justify-content: space-between }
+.dd-tiles p { flex: 1; margin: 0; padding: var(--s2); border-radius: var(--r-sm); font-size: var(--t-cap) }
+.dd-tiles .win { background: var(--up-soft) }
+.dd-tiles .loss { background: var(--down-soft) }
+.dd-actions .btn { flex: 1; min-height: 48px }
+.dd-link { margin-left: var(--s3); min-height: 44px; background: none; border: 0; color: var(--muted); cursor: pointer }
+.dd-badge { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 2px 8px; background: var(--accent-soft); color: var(--accent); font-size: var(--t-cap); font-weight: 650 }
+.dd-strip, .dd-pair { margin: 0; padding: var(--s2) var(--s3); border-radius: var(--r-sm); background: var(--accent-soft); font-size: var(--t-small) }
+.dd-error { color: var(--down); margin: 0 }
+.ticket.bonus { outline: 1px solid color-mix(in srgb, var(--accent) 35%, transparent) }
+.dd-kept { display: flex; gap: 6px; align-items: flex-start }
 .hd { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; font-size: 15px }
 .hd.up   { background: var(--up-soft);   color: var(--up) }
 .hd.down { background: var(--down-soft); color: var(--down) }
@@ -613,4 +638,8 @@ footer.foot {
     transition-duration: 0s !important;
   }
   .spin { animation: none; border-top-color: var(--accent); border-color: var(--accent) }
+  .dd-meter { display: none }
+  .dd-pips { display: flex }
 }
+.dd-force-pips .dd-meter { display: none }
+.dd-force-pips .dd-pips { display: flex }
