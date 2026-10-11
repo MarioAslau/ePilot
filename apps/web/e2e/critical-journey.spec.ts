@@ -153,6 +153,9 @@ test('plays one round and can place another', async ({ page }) => {
   await page.clock.runFor(3_000)
   await expect(page.locator('#receipt-heading')).toHaveText('Correct')
   await expect(score).toContainText('+1')
+  // The receipt render schedules the history refetch with setTimeout(0).
+  // The page clock is paused, so that timer does not run until the clock moves.
+  await page.clock.runFor(1_000)
   const rounds = page.getByRole('region', { name: 'Your rounds' })
   await expect(rounds).toContainText('70,000.50 to 70,100.00')
   await expect(rounds).toContainText('+1')
@@ -177,7 +180,9 @@ test('accepts a double down and shows the pair, expiry, and a replaced offer', a
     return {
       offerId,
       parentPredictionId: parentId,
+      mode: 'DOUBLE_DOWN',
       direction: 'UP',
+      payout: { win: 2, loss: -2, parentDelta: 1 },
       issuedAt: issued,
       expiresAt: expires,
       extensions: 0,
@@ -236,7 +241,7 @@ test('accepts a double down and shows the pair, expiry, and a replaced offer', a
   }
 
   function me() {
-    const base = { playerId, losses: 0, serverTime: start.toISOString(), features: { doubleDown: true } }
+    const base = { playerId, losses: 0, serverTime: start.toISOString(), features: { doubleDown: true, redemption: false } }
     if (phase === 'won') return { ...base, score: 1, wins: 1, activePrediction: null, latestResolvedPrediction: parentSettled(), waitReason: null, offer: offer('OPEN') }
     if (phase === 'bonus') return { ...base, score: 1, wins: 1, activePrediction: bonusPending(), latestResolvedPrediction: parentSettled(), waitReason: 'WAITING_FOR_DEADLINE', offer: offer('ACCEPTED') }
     if (phase === 'bonus-won') return { ...base, score: 3, wins: 2, activePrediction: null, latestResolvedPrediction: bonusSettled(), waitReason: null, offer: null }
@@ -294,7 +299,7 @@ test('accepts a double down and shows the pair, expiry, and a replaced offer', a
 
   phase = 'expired'
   await page.reload()
-  await expect(page.getByText('Offer ended. Your +1 is kept.')).toHaveCount(0)
+  await expect(page.getByText('Offer ended. Your +1 is kept.')).toBeVisible()
 
   phase = 'won'
   await page.reload()

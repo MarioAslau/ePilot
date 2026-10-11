@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MeResponseSchema, OfferSchema, PredictionSchema } from './index.js'
+import { ErrorCodeSchema, MeResponseSchema, OfferSchema, PredictionSchema } from './index.js'
 
 const prediction = {
   predictionId: 'p_0000000000000_abcd1234',
@@ -19,6 +19,7 @@ describe('prediction contracts', () => {
   it('accepts a bonus score and rejects any other delta', () => {
     expect(PredictionSchema.parse({ ...prediction, mode: 'DOUBLE_DOWN', scoreDelta: 2 }).scoreDelta).toBe(2)
     expect(PredictionSchema.parse({ ...prediction, mode: 'DOUBLE_DOWN', scoreDelta: -2 }).scoreDelta).toBe(-2)
+    expect(PredictionSchema.parse({ ...prediction, mode: 'REDEMPTION', scoreDelta: 4 }).scoreDelta).toBe(4)
     expect(PredictionSchema.safeParse({ ...prediction, scoreDelta: 3 }).success).toBe(false)
     expect(PredictionSchema.safeParse({ ...prediction, scoreDelta: 0 }).success).toBe(false)
   })
@@ -36,18 +37,23 @@ describe('prediction contracts', () => {
     })
     expect(parsed.offer).toBeNull()
     expect(parsed.features.doubleDown).toBe(false)
+    expect(parsed.features.redemption).toBe(false)
   })
 
   it('round-trips an open offer', () => {
     const offer = {
       offerId: 'o_p_0000000000000_abcd1234',
       parentPredictionId: 'p_0000000000000_abcd1234',
-      direction: 'UP',
+      mode: 'REDEMPTION',
+      direction: null,
+      payout: { win: 4, loss: -2, parentDelta: -1 },
       issuedAt: '2026-10-11T15:01:03.000Z',
       expiresAt: '2026-10-11T15:01:13.000Z',
       extensions: 0,
       status: 'OPEN',
     }
     expect(OfferSchema.parse(offer)).toEqual(offer)
+    expect(OfferSchema.safeParse({ ...offer, direction: 'SIDEWAYS' }).success).toBe(false)
+    expect(ErrorCodeSchema.parse('DIRECTION_REQUIRED')).toBe('DIRECTION_REQUIRED')
   })
 })

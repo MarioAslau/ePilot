@@ -70,7 +70,7 @@ export function memoryGameStore(): PlayerStore & PredictionStore & { failNextSet
       return offers.get(`${playerId}#${offerId}`) ?? null
     },
 
-    async acceptOffer({ prediction, idempotency: record, offerId, now }) {
+    async acceptOffer({ prediction, idempotency: record, offerId, now, chosenDirection }) {
       const player = players.get(prediction.playerId)
       const offer = offers.get(`${prediction.playerId}#${offerId}`)
       const idempotencyId = `${prediction.playerId}#${record.idempotencyKey}`
@@ -87,6 +87,7 @@ export function memoryGameStore(): PlayerStore & PredictionStore & { failNextSet
       }
       offer.status = 'ACCEPTED'
       offer.bonusPredictionId = prediction.predictionId
+      if (chosenDirection) offer.chosenDirection = chosenDirection
       predictions.set(`${prediction.playerId}#${prediction.predictionId}`, prediction)
       idempotency.set(idempotencyId, record)
       player.activePredictionId = prediction.predictionId
@@ -157,7 +158,8 @@ export function memoryGameStore(): PlayerStore & PredictionStore & { failNextSet
           offerId,
           playerId: input.playerId,
           parentPredictionId: input.createOffer.parentPredictionId,
-          direction: input.createOffer.direction,
+          mode: input.createOffer.mode,
+          ...(input.createOffer.direction ? { direction: input.createOffer.direction } : {}),
           issuedAt: input.resolvedAt,
           expiresAt: offerExpiresAt(input.resolvedAt),
           extensions: 0,

@@ -30,7 +30,7 @@ function me(overrides: Partial<MeResponse> = {}): MeResponse {
     waitReason: null,
     serverTime: '2026-10-11T15:00:00.000Z',
     offer: null,
-    features: { doubleDown: false },
+    features: { doubleDown: false, redemption: false },
     ...overrides,
   }
 }

@@ -1,5 +1,5 @@
 import { fetchTicker, ProviderUnavailableError, type TickerQuote } from '../coinbase.js'
-import { doubleDownEnabled, offerIdFor } from '../offer.js'
+import { doubleDownEnabled, offerIdFor, redemptionEnabled } from '../offer.js'
 import { dynamoPlayerStore, type PlayerStore } from '../playerStore.js'
 import { decide } from '../resolution.js'
 import { dynamoPredictionStore, type PredictionStore } from '../predictionStore.js'
@@ -31,6 +31,7 @@ export async function handleResolvePrediction(
     now?: () => Date
     quote?: () => Promise<TickerQuote>
     doubleDown?: boolean
+    redemption?: boolean
   },
 ) {
   const now = deps.now ?? (() => new Date())
@@ -79,15 +80,25 @@ export async function handleResolvePrediction(
 
   const decision = decide(prediction, clock, quote)
   if (decision.status === 'RESOLVED') {
-    const enabled = deps.doubleDown ?? doubleDownEnabled()
+    const doubleDown = deps.doubleDown ?? doubleDownEnabled()
+    const redemption = deps.redemption ?? redemptionEnabled()
     const createOffer =
-      enabled && prediction.mode === 'STANDARD' && decision.outcome === 'WIN'
-        ? {
-            offerId: offerIdFor(prediction.predictionId),
-            direction: prediction.direction,
-            parentPredictionId: prediction.predictionId,
-          }
-        : undefined
+      prediction.mode !== 'STANDARD'
+        ? undefined
+        : decision.outcome === 'WIN' && doubleDown
+          ? {
+              offerId: offerIdFor(prediction.predictionId),
+              mode: 'DOUBLE_DOWN' as const,
+              direction: prediction.direction,
+              parentPredictionId: prediction.predictionId,
+            }
+          : decision.outcome === 'LOSS' && redemption
+            ? {
+                offerId: offerIdFor(prediction.predictionId),
+                mode: 'REDEMPTION' as const,
+                parentPredictionId: prediction.predictionId,
+              }
+            : undefined
     const resolvedAt = clock.toISOString()
     const outcome = await deps.predictions.settle({
       playerId: input.playerId,
@@ -108,6 +119,7 @@ export async function handleResolvePrediction(
         playerId: input.playerId,
         parentPredictionId: prediction.predictionId,
         offerId: createOffer.offerId,
+        mode: createOffer.mode,
       })
     }
     return { ...base, status }

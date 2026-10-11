@@ -1,10 +1,11 @@
 import { ChevronDown } from 'lucide-react'
+import { REDEMPTION_NAME } from '../featureNames'
 
 /**
  * Collapsible explainer using a native <details> element.
  * No JS state — the browser handles open/close for free.
  */
-export function HowItWorks({ doubleDown = false }: { doubleDown?: boolean }) {
+export function HowItWorks({ doubleDown = false, redemption = false }: { doubleDown?: boolean; redemption?: boolean }) {
   return (
     <section className="card">
       <details className="how">
@@ -51,6 +52,15 @@ export function HowItWorks({ doubleDown = false }: { doubleDown?: boolean }) {
                 <b>Double Down</b>
                 After a correct standard round, you can play one bonus round in the same direction.
                 Your +1 stays. A correct bonus adds 2 (pair +3). A miss subtracts 2 (pair −1). The offer lasts 10 seconds, and Need more time adds 20 seconds.
+              </div>
+            </li>
+          )}
+          {redemption && (
+            <li>
+              <div>
+                <b>{REDEMPTION_NAME}</b>
+                After a standard loss, the −1 stays. You can choose Up or Down for one fresh round.
+                Right adds 4 (pair +3). Wrong subtracts 2 (pair −3). Decline or expiry keeps the −1. The offer lasts 10 seconds, and Need more time adds 20 seconds.
               </div>
             </li>
           )}

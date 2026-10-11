@@ -1,8 +1,9 @@
 import type { APIGatewayProxyHandlerV2 } from 'aws-lambda'
-import { OfferActionRequestSchema } from 'contracts'
+import { IdempotencyKeySchema, OfferActionRequestSchema } from 'contracts'
+import { z } from 'zod'
 import { randomBytes } from 'node:crypto'
 import { fetchTicker, ProviderUnavailableError, type TickerQuote } from '../coinbase.js'
-import { authorizationHeader, invalidInput, json, providerUnavailable } from '../http.js'
+import { authorizationHeader, directionRequired, invalidInput, json, providerUnavailable } from '../http.js'
 import { offerConflict } from '../offer.js'
 import { dynamoPlayerStore, type PlayerStore } from '../playerStore.js'
 import { buildPrediction, tradeIsEntryFresh, workflowExecutionName } from '../prediction.js'
@@ -28,6 +29,7 @@ export async function handleAcceptOffer(
     quote?: () => Promise<TickerQuote>
     startWorkflow?: (input: { playerId: string; predictionId: string; dueAt: string }) => Promise<void>
     doubleDown?: boolean
+    redemption?: boolean
   },
 ) {
   const loaded = await loadOffer(header, offerId, requestId, deps)
@@ -42,11 +44,18 @@ export async function handleAcceptOffer(
     return invalidInput(requestId)
   }
   const body = OfferActionRequestSchema.safeParse(parsed)
-  if (!body.success) return invalidInput(requestId)
+  if (!body.success) {
+    const keyOnly = z.object({ idempotencyKey: IdempotencyKeySchema }).safeParse(parsed)
+    if (offer.mode === 'REDEMPTION' && keyOnly.success) return directionRequired(requestId)
+    return invalidInput(requestId)
+  }
+
+  const direction = offer.mode === 'REDEMPTION' ? body.data.direction : offer.direction
+  if (direction !== 'UP' && direction !== 'DOWN') return directionRequired(requestId)
 
   const existing = await deps.predictions.getIdempotency(player.playerId, body.data.idempotencyKey)
   if (existing) {
-    if (existing.kind !== 'OFFER_ACCEPT' || existing.offerId !== offerId) {
+    if (existing.kind !== 'OFFER_ACCEPT' || existing.offerId !== offerId || existing.direction !== direction) {
       return rejectOffer(requestId, 'IDEMPOTENCY_CONFLICT')
     }
     const stored = await deps.predictions.getPrediction(player.playerId, existing.predictionId)
@@ -74,13 +83,13 @@ export async function handleAcceptOffer(
   const built = buildPrediction({
     now: clock,
     playerId: player.playerId,
-    direction: offer.direction,
+    direction,
     idempotencyKey: body.data.idempotencyKey,
     entryPrice: quote.price,
     entryTradeTime: quote.tradeTime,
     entryFetchedAt: quote.fetchedAt,
     nextBytes: deps.nextBytes ?? randomBytes,
-    mode: 'DOUBLE_DOWN',
+    mode: offer.mode,
     parentPredictionId: offer.parentPredictionId,
     offerId,
   })
@@ -88,10 +97,13 @@ export async function handleAcceptOffer(
     ...built,
     offerId,
     now: clock.toISOString(),
+    ...(offer.mode === 'REDEMPTION' ? { chosenDirection: direction } : {}),
   })
   if (outcome === 'duplicate_key') {
     const raced = await deps.predictions.getIdempotency(player.playerId, body.data.idempotencyKey)
-    if (!raced || raced.offerId !== offerId) return rejectOffer(requestId, 'IDEMPOTENCY_CONFLICT')
+    if (!raced || raced.offerId !== offerId || raced.direction !== direction) {
+      return rejectOffer(requestId, 'IDEMPOTENCY_CONFLICT')
+    }
     const stored = await deps.predictions.getPrediction(player.playerId, raced.predictionId)
     if (!stored) return providerUnavailable(requestId)
     return json(200, predictionResponse(stored))
@@ -109,6 +121,7 @@ export async function handleAcceptOffer(
     requestId,
     playerId: player.playerId,
     offerId,
+    mode: offer.mode,
     predictionId: built.prediction.predictionId,
     executionName: workflowExecutionName(built.prediction.predictionId),
   })

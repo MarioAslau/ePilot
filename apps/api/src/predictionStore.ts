@@ -6,7 +6,7 @@ import {
   TransactWriteCommand,
   UpdateCommand,
 } from '@aws-sdk/lib-dynamodb'
-import type { ScoreDelta } from 'contracts'
+import type { Direction, ScoreDelta } from 'contracts'
 import { asOffer, offerExpiresAt, offerKey, type OfferRecord } from './offer.js'
 import { playerKeys } from './player.js'
 import type { IdempotencyRecord, LastCheck, PredictionRecord } from './prediction.js'
@@ -27,6 +27,7 @@ export interface PredictionStore {
     idempotency: IdempotencyRecord
     offerId: string
     now: string
+    chosenDirection?: Direction
   }): Promise<'accepted' | 'duplicate_key' | 'conflict'>
   declineOffer(playerId: string, offerId: string): Promise<'declined' | 'conflict'>
   extendOffer(playerId: string, offerId: string, seenExpiresAt: string, now: string): Promise<'extended' | 'conflict'>
@@ -56,7 +57,8 @@ export interface SettlementInput {
   resolvedAt: string
   createOffer?: {
     offerId: string
-    direction: PredictionRecord['direction']
+    mode: 'DOUBLE_DOWN' | 'REDEMPTION'
+    direction?: PredictionRecord['direction']
     parentPredictionId: string
   }
 }
@@ -105,7 +107,7 @@ function asPrediction(item: Record<string, unknown>): PredictionRecord {
     predictionId: String(item.predictionId),
     playerId: String(item.playerId),
     direction: item.direction === 'DOWN' ? 'DOWN' : 'UP',
-    mode: item.mode === 'DOUBLE_DOWN' ? 'DOUBLE_DOWN' : 'STANDARD',
+    mode: item.mode === 'REDEMPTION' ? 'REDEMPTION' : item.mode === 'DOUBLE_DOWN' ? 'DOUBLE_DOWN' : 'STANDARD',
     ...(typeof item.parentPredictionId === 'string' ? { parentPredictionId: item.parentPredictionId } : {}),
     status: resolved ? 'RESOLVED' : 'PENDING',
     createdAt: String(item.createdAt),
@@ -131,7 +133,7 @@ function asPrediction(item: Record<string, unknown>): PredictionRecord {
 }
 
 function scoreDeltaOf(value: unknown): ScoreDelta {
-  if (value === -1 || value === -2 || value === 2) return value
+  if (value === -1 || value === -2 || value === 2 || value === 4) return value
   return 1
 }
 
@@ -268,7 +270,18 @@ export function dynamoPredictionStore(
       return result.Item ? asOffer(result.Item) : null
     },
 
-    async acceptOffer({ prediction, idempotency, offerId, now }) {
+    async acceptOffer({ prediction, idempotency, offerId, now, chosenDirection }) {
+      const offerValues: Record<string, string> = {
+        ':accepted': 'ACCEPTED',
+        ':id': prediction.predictionId,
+        ':open': 'OPEN',
+        ':now': now,
+      }
+      let offerUpdate = 'SET #status = :accepted, bonusPredictionId = :id'
+      if (chosenDirection) {
+        offerUpdate += ', chosenDirection = :chosen'
+        offerValues[':chosen'] = chosenDirection
+      }
       try {
         await doc.send(
           new TransactWriteCommand({
@@ -277,15 +290,10 @@ export function dynamoPredictionStore(
                 Update: {
                   TableName: tableName,
                   Key: offerKey(prediction.playerId, offerId),
-                  UpdateExpression: 'SET #status = :accepted, bonusPredictionId = :id',
+                  UpdateExpression: offerUpdate,
                   ConditionExpression: '#status = :open AND expiresAt > :now',
                   ExpressionAttributeNames: { '#status': 'status' },
-                  ExpressionAttributeValues: {
-                    ':accepted': 'ACCEPTED',
-                    ':id': prediction.predictionId,
-                    ':open': 'OPEN',
-                    ':now': now,
-                  },
+                  ExpressionAttributeValues: offerValues,
                 },
               },
               {
@@ -436,7 +444,8 @@ export function dynamoPredictionStore(
               offerId: input.createOffer.offerId,
               playerId: input.playerId,
               parentPredictionId: input.createOffer.parentPredictionId,
-              direction: input.createOffer.direction,
+              mode: input.createOffer.mode,
+              ...(input.createOffer.direction ? { direction: input.createOffer.direction } : {}),
               issuedAt: input.resolvedAt,
               expiresAt: offerExpiresAt(input.resolvedAt),
               extensions: 0,

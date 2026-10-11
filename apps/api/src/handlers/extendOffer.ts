@@ -14,6 +14,7 @@ export async function handleExtendOffer(
     predictions: PredictionStore
     now?: () => Date
     doubleDown?: boolean
+    redemption?: boolean
   },
 ) {
   const loaded = await loadOffer(header, offerId, requestId, deps)
@@ -36,6 +37,7 @@ export async function handleExtendOffer(
     requestId,
     playerId: player.playerId,
     offerId,
+    mode: offer.mode,
     extensions: String(stored.extensions),
   }))
   return offerJson(stored, clock)

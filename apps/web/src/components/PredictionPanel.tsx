@@ -18,7 +18,7 @@ export function PredictionPanel({ price, onPredict, isSubmitting, disabled, reas
 
   return (
     <div>
-      <h2 id="play-title" className="play-title" tabIndex={-1}>{title}</h2>
+      <h2 id="play-title" className="play-title" tabIndex={-1} data-act="play-title">{title}</h2>
       <p className="play-sub">
         Make your call. We&apos;ll check in at least 60 seconds later and score your prediction.
       </p>

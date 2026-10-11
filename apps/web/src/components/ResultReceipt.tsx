@@ -1,7 +1,9 @@
 import type { ScoreDelta } from 'contracts'
 import { ChevronDown, ChevronUp, Minus, Plus } from 'lucide-react'
+import { REDEMPTION_NAME } from '../featureNames'
 import { roundLabel } from '../offer'
 import { DoubleDownBadge } from './DoubleDownBadge'
+import { ModeBadge } from './ModeBadge'
 
 interface Props {
   outcome: 'WIN' | 'LOSS'
@@ -15,6 +17,7 @@ interface Props {
   predictionId: string
   scoreDelta?: ScoreDelta
   parent?: { predictionId: string; scoreDelta: ScoreDelta }
+  followOn?: 'DOUBLE_DOWN' | 'REDEMPTION'
 }
 
 function formatPrice(raw: string): string {
@@ -49,11 +52,15 @@ export function ResultReceipt({
   predictionId,
   scoreDelta,
   parent,
+  followOn,
 }: Props) {
   const isWin  = outcome === 'WIN'
   const isUp   = direction === 'UP'
   const points = scoreDelta ?? (isWin ? 1 : -1)
-  const bonus = parent !== undefined
+  const redemption = followOn === 'REDEMPTION'
+  const bonus = parent !== undefined && !redemption
+  const pair = parent ? parent.scoreDelta + points : points
+  const word = direction === 'DOWN' ? 'Down' : 'Up'
   const sameDisplay = formatPrice(entryPrice) === formatPrice(resolutionPrice) && entryPrice !== resolutionPrice
   const finishedAt = settledAt ?? resolutionTime
 
@@ -61,14 +68,21 @@ export function ResultReceipt({
     <aside className={`receipt ${isWin ? 'win' : 'loss'}`} aria-label={`Result: ${outcome}`}>
       <div className="rc-top">
         <div>
+          {redemption && <ModeBadge mode="REDEMPTION" />}
           {bonus && <DoubleDownBadge />}
           <p className="rc-title" id="receipt-heading" tabIndex={-1}>
-            {bonus ? (isWin ? 'Bonus round correct' : 'Bonus round missed') : (isWin ? 'Correct' : 'Not this time')}
+            {redemption
+              ? (isWin ? `${REDEMPTION_NAME} round correct` : `${REDEMPTION_NAME} round missed`)
+              : bonus
+                ? (isWin ? 'Bonus round correct' : 'Bonus round missed')
+                : (isWin ? 'Correct' : 'Not this time')}
           </p>
           <p className="rc-sub">
-            {isUp
-              ? <><ChevronUp className="ic" size={12} aria-hidden="true" /> Predicted Up</>
-              : <><ChevronDown className="ic" size={12} aria-hidden="true" /> Predicted Down</>}
+            {redemption
+              ? <>You called {word}. Compared with the {REDEMPTION_NAME} entry.</>
+              : isUp
+                ? <><ChevronUp className="ic" size={12} aria-hidden="true" /> Predicted Up</>
+                : <><ChevronDown className="ic" size={12} aria-hidden="true" /> Predicted Down</>}
           </p>
         </div>
 
@@ -78,17 +92,24 @@ export function ResultReceipt({
             : <><Minus className="ic" size={18} aria-hidden="true" />{Math.abs(points)}</>}
         </div>
       </div>
+      {redemption && parent && (
+        <p className="dd-pair" aria-label={`Pair total ${pair > 0 ? 'plus' : 'minus'} ${Math.abs(pair)}: ${parent.scoreDelta > 0 ? 'plus' : 'minus'} ${Math.abs(parent.scoreDelta)} from round ${roundLabel(parent.predictionId)}, ${points > 0 ? 'plus' : 'minus'} ${Math.abs(points)} from the ${REDEMPTION_NAME} round`}>
+          Round {roundLabel(parent.predictionId)} <b>{parent.scoreDelta > 0 ? `+${parent.scoreDelta}` : `−${Math.abs(parent.scoreDelta)}`}</b>
+          {` + ${REDEMPTION_NAME} `}<b>{points > 0 ? `+${points}` : `−${Math.abs(points)}`}</b>
+          {' · Pair total '}<b>{pair > 0 ? `+${pair}` : `−${Math.abs(pair)}`}</b>
+        </p>
+      )}
       {bonus && parent && (
-        <p className="dd-pair" aria-label={`Round ${roundLabel(parent.predictionId)} plus ${parent.scoreDelta}, bonus ${points > 0 ? 'plus' : 'minus'} ${Math.abs(points)}. Pair total ${parent.scoreDelta + points > 0 ? 'plus' : 'minus'} ${Math.abs(parent.scoreDelta + points)}. `}>
+        <p className="dd-pair" aria-label={`Round ${roundLabel(parent.predictionId)} plus ${parent.scoreDelta}, bonus ${points > 0 ? 'plus' : 'minus'} ${Math.abs(points)}. Pair total ${pair > 0 ? 'plus' : 'minus'} ${Math.abs(pair)}. `}>
           Round {roundLabel(parent.predictionId)} <b>{parent.scoreDelta > 0 ? `+${parent.scoreDelta}` : `−${Math.abs(parent.scoreDelta)}`}</b>
           {' + Bonus '}<b>{points > 0 ? `+${points}` : `−${Math.abs(points)}`}</b>
-          {' · Pair total '}<b>{parent.scoreDelta + points > 0 ? `+${parent.scoreDelta + points}` : `−${Math.abs(parent.scoreDelta + points)}`}</b>
+          {' · Pair total '}<b>{pair > 0 ? `+${pair}` : `−${Math.abs(pair)}`}</b>
         </p>
       )}
 
       <dl className="kv">
         <div>
-          <dt>{bonus ? 'Bonus entry' : 'Entry price'}</dt>
+          <dt>{redemption ? `${REDEMPTION_NAME} entry` : bonus ? 'Bonus entry' : 'Entry price'}</dt>
           <dd className="num">{formatPrice(entryPrice)}</dd>
         </div>
         <div>

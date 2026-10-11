@@ -1,8 +1,10 @@
-import type { Direction, WaitReason } from 'contracts'
+import type { Direction, OfferPayout, WaitReason } from 'contracts'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useEffect, useRef } from 'react'
+import { REDEMPTION_NAME } from '../featureNames'
 import { roundLabel } from '../offer'
 import { DoubleDownBadge } from './DoubleDownBadge'
+import { ModeBadge } from './ModeBadge'
 
 interface Props {
   direction: Direction
@@ -17,6 +19,8 @@ interface Props {
   latestPrice?: string
   autoFocus?: boolean
   bonus?: boolean
+  followOn?: 'DOUBLE_DOWN' | 'REDEMPTION'
+  payout?: OfferPayout
   parentPredictionId?: string
 }
 
@@ -70,12 +74,16 @@ export function RoundTicket({
   latestPrice,
   autoFocus = false,
   bonus = false,
+  followOn,
+  payout,
   parentPredictionId,
 }: Props) {
   const heading = useRef<HTMLHeadingElement>(null)
   useEffect(() => {
     if (autoFocus) heading.current?.focus()
   }, [autoFocus])
+  const redemption = followOn === 'REDEMPTION'
+  const bonusRound = bonus || followOn === 'DOUBLE_DOWN'
   const isUp = direction === 'UP'
   const onHold = state === 'EQUAL_PRICE' || state === 'PROVIDER_HOLD'
   const counting = secondsRemaining != null && secondsRemaining > 0 && state === 'WAITING_FOR_DEADLINE'
@@ -88,11 +96,19 @@ export function RoundTicket({
   const offset = circumference * (1 - progress)
 
   return (
-    <div className={`ticket ${bonus ? 'bonus' : ''} ${onHold ? 'hold' : isUp ? 'up' : 'down'}`}>
-      <h2 id="round-heading" className="play-title" tabIndex={-1} ref={heading}>
-        {bonus
-          ? (onHold ? 'Bonus round on hold' : comparing ? 'Getting your bonus result' : 'Your bonus round is in')
-          : 'Your prediction'}
+    <div className={`ticket ${bonusRound || redemption ? 'bonus' : ''} ${onHold ? 'hold' : isUp ? 'up' : 'down'}`} aria-label={redemption ? `${REDEMPTION_NAME} round` : undefined}>
+      <h2 id="round-heading" className="play-title" tabIndex={-1} ref={heading} data-act="play-title">
+        {redemption
+          ? (state === 'EQUAL_PRICE'
+            ? 'Still waiting for a result'
+            : onHold
+              ? `${REDEMPTION_NAME} round on hold`
+              : state === 'CHECKING_PRICE'
+                ? 'Getting your result'
+                : `Your ${REDEMPTION_NAME} round is in`)
+          : bonusRound
+            ? (onHold ? 'Bonus round on hold' : comparing ? 'Getting your bonus result' : 'Your bonus round is in')
+            : 'Your prediction'}
       </h2>
       <div className="tk-head">
         <span className={`dirtag ${isUp ? 'up' : 'down'}`} aria-label={`Prediction: ${direction}`}>
@@ -101,9 +117,20 @@ export function RoundTicket({
             : <ChevronDown className="ic" aria-hidden="true" />}
           {isUp ? 'Going Up' : 'Going Down'}
         </span>
-        {bonus ? <DoubleDownBadge /> : <span className="tk-id fine">#{predictionId.slice(-6).toUpperCase()}</span>}
+        {redemption
+          ? <ModeBadge mode="REDEMPTION" />
+          : bonusRound
+            ? <DoubleDownBadge />
+            : <span className="tk-id fine">#{predictionId.slice(-6).toUpperCase()}</span>}
       </div>
-      {bonus && parentPredictionId && (
+      {redemption && parentPredictionId && payout && (
+        <p className="dd-strip">
+          Follows round {roundLabel(parentPredictionId)}, <b>−1 kept</b>
+          {' · '}Right <b className="up">+{payout.win}</b> (pair +{payout.parentDelta + payout.win})
+          {' · '}Wrong <b className="down">−{Math.abs(payout.loss)}</b> (pair −{Math.abs(payout.parentDelta + payout.loss)})
+        </p>
+      )}
+      {bonusRound && parentPredictionId && (
         <p className="dd-strip">
           Bonus on round {roundLabel(parentPredictionId)}, <b>+1 kept</b>. Right <b>+2</b> (pair +3). Wrong <b>−2</b> (pair −1).
         </p>

@@ -1,8 +1,10 @@
-import type { Prediction, ScoreDelta } from 'contracts'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import type { Mode, Prediction, ScoreDelta } from 'contracts'
+import { Check, ChevronDown, ChevronUp, X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
+import { REDEMPTION_NAME } from '../featureNames'
 import { pairFromHistory, type HistoryEntry } from '../offer'
 import { DoubleDownBadge } from './DoubleDownBadge'
+import { ModeBadge } from './ModeBadge'
 import { StatusNotice } from './StatusNotice'
 
 export interface HistoryRound {
@@ -15,6 +17,7 @@ export interface HistoryRound {
   outcome: 'WIN' | 'LOSS'
   scoreDelta: ScoreDelta
   parentPredictionId?: string
+  mode?: Mode
 }
 
 export function historyRound(prediction: Prediction): HistoryRound | null {
@@ -36,6 +39,7 @@ export function historyRound(prediction: Prediction): HistoryRound | null {
     resolutionTradeTime: prediction.resolutionTradeTime,
     outcome: prediction.outcome,
     scoreDelta: prediction.scoreDelta,
+    mode: prediction.mode,
     ...(prediction.parentPredictionId ? { parentPredictionId: prediction.parentPredictionId } : {}),
   }
 }
@@ -77,7 +81,7 @@ function RoundRow({ round, bonus = false, labelled = true }: { round: HistoryRou
           : <ChevronDown className="ic" size={16} aria-hidden="true" />}
       </span>
       <div className="hm">
-        <b>{bonus || round.parentPredictionId ? 'Bonus ' : ''}{up ? 'Up' : 'Down'} at {formatTime(round.entryTradeTime)}</b>
+        <b>{round.mode === 'REDEMPTION' ? `${REDEMPTION_NAME} ` : bonus || round.parentPredictionId || round.mode === 'DOUBLE_DOWN' ? 'Bonus ' : ''}{up ? 'Up' : 'Down'} at {formatTime(round.entryTradeTime)}</b>
         <span className="num">
           {entry} to {compared}, settled after {elapsed(round.entryTradeTime, round.resolutionTradeTime)}
         </span>
@@ -96,13 +100,19 @@ function RoundRow({ round, bonus = false, labelled = true }: { round: HistoryRou
 function PairRow({ entry }: { entry: Extract<HistoryEntry, { kind: 'pair' }> }) {
   const total = points(entry.total)
   const word = entry.total > 0 ? `plus ${entry.total}` : `minus ${Math.abs(entry.total)}`
+  const redemption = entry.bonus.mode === 'REDEMPTION'
+  const name = redemption ? `${REDEMPTION_NAME} pair` : 'Double Down pair'
+  const Mark = entry.total > 0 ? Check : X
   return (
     <li id={`history-${entry.bonus.predictionId}`} tabIndex={-1} className="hist-pair">
       <div className="pair-head">
-        <DoubleDownBadge label="Double Down pair" />
-        <span className={`hp num ${entry.total > 0 ? 'win' : 'loss'}`}>Pair {total}</span>
+        {redemption ? <ModeBadge mode="REDEMPTION" label={name} /> : <DoubleDownBadge label={name} />}
+        <span className={`hp num ${entry.total > 0 ? 'win' : 'loss'}`}>
+          {redemption && <Mark className="ic" size={14} aria-hidden="true" />}
+          Pair {total}
+        </span>
       </div>
-      <ol className="pair" aria-label={`Double Down pair, total ${word}`}>
+      <ol className="pair" aria-label={`${name}, total ${word}`}>
         <RoundRow round={entry.bonus} bonus labelled={false} />
         <RoundRow round={entry.parent} labelled={false} />
       </ol>

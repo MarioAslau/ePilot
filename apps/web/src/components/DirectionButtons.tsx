@@ -30,6 +30,7 @@ export function DirectionButtons({ onPredict, disabled, isSubmitting, activeDire
         className={`choice up${upDimmed ? ' dim' : ''}${isSubmitting && activeDirection === 'UP' ? ' loading' : ''}`}
         onClick={() => handleClick('UP')}
         disabled={Boolean(isSubmitting) || Boolean(disabled && !activeDirection)}
+        data-act="predict-up"
         aria-label="Predict Bitcoin will go Up"
         aria-pressed={activeDirection === 'UP'}
       >
@@ -48,6 +49,7 @@ export function DirectionButtons({ onPredict, disabled, isSubmitting, activeDire
         className={`choice down${downDimmed ? ' dim' : ''}${isSubmitting && activeDirection === 'DOWN' ? ' loading' : ''}`}
         onClick={() => handleClick('DOWN')}
         disabled={Boolean(isSubmitting) || Boolean(disabled && !activeDirection)}
+        data-act="predict-down"
         aria-label="Predict Bitcoin will go Down"
         aria-pressed={activeDirection === 'DOWN'}
       >

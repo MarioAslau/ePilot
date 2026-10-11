@@ -6,7 +6,9 @@ import type { Offer } from 'contracts'
 const offer: Offer = {
   offerId: 'o_p_parent',
   parentPredictionId: 'p_parent',
+  mode: 'DOUBLE_DOWN',
   direction: 'UP',
+  payout: { win: 2, loss: -2, parentDelta: 1 },
   issuedAt: '2026-10-11T15:00:00.000Z',
   expiresAt: '2026-10-11T15:00:10.000Z',
   extensions: 0,
@@ -24,7 +26,7 @@ function local(overrides: Partial<OfferLocal> = {}): OfferLocal {
   }
 }
 
-function row(id: string, delta: 1 | -1 | 2 | -2, parent?: string): HistoryRound {
+function row(id: string, delta: 1 | -1 | 2 | -2 | 4, parent?: string, mode?: HistoryRound['mode']): HistoryRound {
   return {
     predictionId: id,
     direction: 'UP',
@@ -35,6 +37,7 @@ function row(id: string, delta: 1 | -1 | 2 | -2, parent?: string): HistoryRound 
     outcome: delta > 0 ? 'WIN' : 'LOSS',
     scoreDelta: delta,
     parentPredictionId: parent,
+    ...(mode ? { mode } : {}),
   }
 }
 
@@ -64,5 +67,9 @@ describe('pairFromHistory', () => {
     const paired = pairFromHistory([row('bonus', 2, 'parent'), row('parent', 1)])
     expect(paired).toEqual([{ kind: 'pair', bonus: row('bonus', 2, 'parent'), parent: row('parent', 1), total: 3 }])
     expect(pairFromHistory([row('bonus', -2, 'missing')])).toEqual([{ kind: 'round', round: row('bonus', -2, 'missing') }])
+    const redeemed = pairFromHistory([row('child', 4, 'parent', 'REDEMPTION'), row('parent', -1)])
+    expect(redeemed).toEqual([{ kind: 'pair', bonus: row('child', 4, 'parent', 'REDEMPTION'), parent: row('parent', -1), total: 3 }])
+    const missed = pairFromHistory([row('child', -2, 'parent', 'REDEMPTION'), row('parent', -1)])
+    expect(missed[0]).toMatchObject({ kind: 'pair', total: -3 })
   })
 })
