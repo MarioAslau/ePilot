@@ -8,10 +8,11 @@ Then add optional features that demonstrate product judgment.
 
 ## Current progress
 
-- Active ticket: T03
+- Active ticket: T04
 - Status: Complete
+- Next ticket: T05, not started
 
-- Starting point: Git repository created; application not implemented.
+- Starting point for T05: the hosted shell calls the deployed health API. Play is not available yet.
 
 ## Working agreement
 
@@ -121,7 +122,7 @@ A local fixture view helps test presentation without waiting for markets. It is 
 - [x] T02 — Scaffold TypeScript projects and testable UI
 - [x] T03 — Define contracts and test game rules
 
-- [ ] T04 — Deploy a minimal AWS slice
+- [x] T04 — Deploy a minimal AWS slice
 
 - [ ] T05 — Create and restore anonymous players
 
@@ -351,7 +352,7 @@ feat: define prediction contracts and tested scoring rules
 
 ## T04 — Deploy a minimal AWS slice
 
-Status: Not started
+Status: Complete
 
 Dependencies: T03.
 
@@ -361,7 +362,9 @@ Manual preparation:
 
 - Confirm the account using aws sts get-caller-identity.
 
-- Select one region and a dev stage.
+- Selected region: `eu-north-1` (Europe, Stockholm), stage `dev`. This project account cannot create resources in `eu-west-1`. See D6 in architecture.md.
+
+- Skip root MFA. The MFA page requires activating advanced features, which is permanent. See D6.
 
 - Enable billing alerts.
 
@@ -1096,6 +1099,29 @@ If time runs short:
   - `evaluate` is not called by a resolver yet. Nothing here fetches Coinbase or writes DynamoDB.
   - `minimumWaitMs` exists so tests can name the threshold. Production callers must leave it unset.
 - Commit: `feat: define prediction contracts and tested scoring rules`
+
+### T04
+
+- Status: Complete. Mario confirmed the hosted page shows **Backend connected.** on 2026-10-11.
+- What changed:
+  - `apps/api/serverless.yml` — on-demand table `hunch-<stage>` with `pk`/`sk`, no streams, retained on delete. HTTP API CORS allows `http://localhost:5173` and an `amplifyOrigin` parameter. Health Lambda has no DynamoDB permission. `build.esbuild` is false so Serverless 4 keeps the `serverless-esbuild` plugin. Default region is `eu-north-1`.
+  - `apps/web/src/App.tsx` — calls `GET /health`. Shows not configured, unreachable, or connected. No market card and no Up/Down buttons.
+  - `apps/web/src/test/App.test.tsx` — those three states.
+  - `amplify.yml` — Yarn workspace build from the repository root, output `apps/web/dist`. Uses the monorepo `applications` list because Amplify has `AMPLIFY_MONOREPO_APP_ROOT=.`.
+  - `.env.example`, `README.md`, `docs/architecture.md` — public API URL, deploy commands, table keys, D6.
+- Checks run and results:
+  - `yarn workspace web test` — 8/8 passed.
+  - `yarn workspace web typecheck` — exit 0.
+  - `yarn workspace api typecheck` — exit 0.
+  - `yarn lint` — exit 0.
+  - `yarn serverless package --stage dev --region eu-north-1` — exit 0. Template has `GET /health`, on-demand `hunch-dev`, no stream, and the health role can write logs only.
+  - `yarn serverless deploy --stage dev --region eu-north-1` — exit 0. Stack `hunch-dev`. Health URL `https://6n3p7430tg.execute-api.eu-north-1.amazonaws.com/health` returned `{"status":"ok"}`.
+  - Second deploy with `amplifyOrigin=https://release.d2yczmbttcpoe9.amplifyapp.com` — exit 0. CORS preflight returns that origin. Before this deploy, the hosted page showed **Backend unreachable.** The health URL already returned `{"status":"ok"}` to `curl`. The browser blocked the call because only `http://localhost:5173` was allowed.
+  - Hosted page `https://release.d2yczmbttcpoe9.amplifyapp.com` shows **Backend connected.** and **Play is not available yet.** after the origin was allowed. Mario confirmed that on refresh.
+- Manual verification: Passed. Mario opened `https://release.d2yczmbttcpoe9.amplifyapp.com` on 2026-10-11 and saw **Backend connected.**
+- Decision or tradeoff: Public `/health` is a connectivity check. Cost abuse is an accepted MVP limit guarded by the account credits, not by hiding the URL. Dev deploy region is `eu-north-1` because the new project account is locked to Stockholm. Root MFA stays off so the account is not permanently upgraded. See D6 in architecture.md. Reviewers use the public site and do not sign in to AWS.
+- Remaining limitation: Play is not available yet. A monthly spend limit was not created, because this account only offers that after a paid upgrade. The 100 USD credits are the cap. Lambda `nodejs20.x` still deploys, and AWS stops allowing new functions on that runtime on 2027-02-01. The local `.env` file is still optional for `yarn dev`.
+- Commit: `a50fd5e` plus later `bc74f7e` on `release` for the Amplify file. Suggested message for any remaining doc edit: `docs: record the deployed health API and Amplify URL`
 
 ### Future entry template
 
