@@ -8,10 +8,10 @@ Then add optional features that demonstrate product judgment.
 
 ## Current progress
 
-- Active ticket: T06
+- Active ticket: T07
 - Status: Complete
 
-- Validated BTC-USD display prices are complete in the repo. The hosted site still serves the previous frontend until this API is deployed and Amplify rebuilds `release`. T07 is not started.
+- Pending predictions are complete in the repo. A round stays unresolved until T08. The hosted site does not include this until deploy.
 
 ## Working agreement
 
@@ -127,7 +127,7 @@ A local fixture view helps test presentation without waiting for markets. It is 
 
 - [x] T06 — Display validated BTC prices
 
-- [ ] T07 — Create predictions safely
+- [x] T07 — Create predictions safely
 
 - [ ] T08 — Implement durable resolution and playable core loop
 
@@ -496,7 +496,7 @@ feat: display validated BTC market prices
 
 ## T07 — Create predictions safely
 
-Status: Not started
+Status: Complete
 
 Dependencies: T06.
 
@@ -535,6 +535,8 @@ Manual checkpoint:
 Double-click and submit from two tabs.
 
 Confirm only one active prediction exists. Inspect the accepted entry and countdown; simulate a lost response and reconcile the same round.
+
+Mario confirmed this on 2026-10-11. A second tab shows the first tab's round immediately, so a hand-timed second click cannot land. The overlapping two-request case is the API test: one response is 201 and the other is 409.
 
 T07 limitation: durable settlement is implemented in T08. Use an isolated dev player for this checkpoint and an explicit dev-only cleanup procedure if necessary; do not expose a production reset/cancel action.
 
@@ -1172,6 +1174,27 @@ If time runs short:
 - Decision or tradeoff: A provider failure returns 503 and the browser keeps the last price. The server does not send a stale fallback. `/market` is public, with the same cost-abuse acceptance as `/health`. The client shows Delayed when the last good sample is more than 15 seconds old. Rejecting a prediction without an entry quote waits for T07.
 - Remaining limitation: The hosted page does not show this price until the API deploy and the `release` Amplify build. Display age uses the browser clock. The 1-minute change is a display subtraction, not a settlement comparison. The display cache is one quote per warm Lambda, so overlapping containers can each call Coinbase.
 - Commit: Pending. Suggested message: `feat: display validated BTC market prices`
+
+### T07
+
+- Status: Complete. Mario confirmed the local check on 2026-10-11. The hosted site has not been updated.
+- What changed:
+  - `packages/contracts` — a prediction requires `mode: STANDARD` and `entryTradeTime`. Direction remains `UP` or `DOWN`.
+  - `apps/api` — `POST /predictions` authenticates the player, ignores client price, time, and score, and records an uncached Coinbase entry quote. A trade older than 10 seconds, or a provider failure, returns `503` and writes nothing. The same key and direction returns the stored prediction. The same key and other direction returns `409 IDEMPOTENCY_CONFLICT`. Another key while locked returns `409 ACTIVE_ROUND` without a new quote. The DynamoDB transaction puts the prediction, sets `activePredictionId` only when it is absent, and puts the idempotency item. `GET /me` returns the active prediction and `WAITING_FOR_DEADLINE` or `CHECKING_PRICE`.
+  - `apps/api/serverless.yml` — `PredictionLambdaRole` allows `GetItem`, `PutItem`, `UpdateItem`, and `TransactWriteItems`. Table TTL uses `expiresAt` for idempotency items. No Step Functions call.
+  - `apps/web` — Up and Down appear when the player is loaded, the market is Live, and no round is active. A click keeps one idempotency key in memory, locks both buttons, and shows the server entry price and countdown. An unknown result retries that key after 1, 2, and 4 seconds, then offers Retry. At zero the ticket says Checking price and shows no result.
+  - `yarn dev:local` — the Vite server runs the same handlers on one in-memory store. `POST /api/__dev/next-prediction` can drop the next response or fail the next entry quote. That route is not deployed.
+- Checks run and results:
+  - `yarn workspace api test` — 37/37 passed.
+  - `yarn workspace web test` — 25/25 passed.
+  - `yarn typecheck` — exit 0 for api, web, and contracts.
+  - `yarn lint` — exit 0 after the countdown effect dependency fix.
+  - `yarn workspace web build` — exit 0. The local adapter is serve-only.
+  - `yarn serverless package --stage dev --region eu-north-1` — exit 0. Template has `POST /predictions`, role `hunch-dev-predictions` with `dynamodb:GetItem`, `PutItem`, `UpdateItem`, and `TransactWriteItems`, and table TTL on `expiresAt`. No `dynamodb:Scan`. Lambda still reports the known `nodejs20.x` deprecation warning.
+- Manual verification: Passed locally. On 2026-10-11 Mario placed a round, saw it stay on Resolving / Checking price after the deadline with score 0, and saw a second tab take the first tab's round immediately. A second click in that tab is not available by hand. He marked T07 complete from that check.
+- Decision or tradeoff: The one-active-prediction rule is the transaction condition. The in-memory store used by tests performs that check and write synchronously so two overlapping calls cannot both succeed. A real DynamoDB race is left for the later AWS check. Entry freshness is 10 seconds. Display freshness stays 60 seconds. `TransactWriteItems` is its own IAM action. A T07 round never settles.
+- Remaining limitation: There is no production cancel. A local round stays locked until the dev server restarts or the browser starts another player. After deploy, a dev player stays locked until the prediction item is deleted and `activePredictionId` is removed. Idempotency rows expire through TTL. The hosted site is unchanged until deploy.
+- Commit: Pending. Suggested message: `feat: create predictions with concurrency and retry protection`
 
 ### Future entry template
 

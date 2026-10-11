@@ -1,5 +1,6 @@
 import type { Direction, WaitReason } from 'contracts'
 import { ChevronDown, ChevronUp, Clock } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 
 interface Props {
   direction: Direction
@@ -10,6 +11,7 @@ interface Props {
   state?: WaitReason
   /** Seconds remaining until deadline (computed by parent) */
   secondsRemaining?: number
+  note?: string
 }
 
 function formatPrice(raw: string): string {
@@ -42,7 +44,11 @@ function stateDetail(state: WaitReason): string {
  * Active-round tracking card shown after a prediction is submitted.
  * Displays direction, entry price, deadline and live state copy.
  */
-export function RoundTicket({ direction, entryPrice, entryTime, deadline, predictionId, state = 'WAITING_FOR_DEADLINE', secondsRemaining }: Props) {
+export function RoundTicket({ direction, entryPrice, entryTime, deadline, predictionId, state = 'WAITING_FOR_DEADLINE', secondsRemaining, note }: Props) {
+  const heading = useRef<HTMLHeadingElement>(null)
+  useEffect(() => {
+    heading.current?.focus()
+  }, [])
   const isUp = direction === 'UP'
 
   const progress = secondsRemaining != null
@@ -53,6 +59,9 @@ export function RoundTicket({ direction, entryPrice, entryTime, deadline, predic
 
   return (
     <div className={`ticket ${isUp ? 'up' : 'down'}`} aria-live="polite">
+      <h2 id="round-heading" className="play-title" tabIndex={-1} ref={heading}>
+        Your prediction
+      </h2>
       <div className="tk-head">
         <span className={`dirtag ${isUp ? 'up' : 'down'}`} aria-label={`Prediction: ${direction}`}>
           {isUp
@@ -76,7 +85,7 @@ export function RoundTicket({ direction, entryPrice, entryTime, deadline, predic
         <div>
           <dt className="k">Entry price</dt>
           <dd className="v num">{formatPrice(entryPrice)}</dd>
-          <dd className="d fine">{formatTime(entryTime)}</dd>
+          <dd className="d fine">Trade {formatTime(entryTime)}</dd>
         </div>
         <div>
           <dt className="k">Resolution after</dt>
@@ -111,6 +120,7 @@ export function RoundTicket({ direction, entryPrice, entryTime, deadline, predic
           <div>
             <strong>{stateLabel(state)}</strong>
             <p>{stateDetail(state)}</p>
+            {note && <p>{note}</p>}
           </div>
         </div>
       </div>

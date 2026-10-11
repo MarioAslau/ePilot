@@ -25,6 +25,7 @@ export function PredictionPanel({ price, onPredict, isSubmitting }: Props) {
         disabled={disabled}
         isSubmitting={isSubmitting}
       />
+      {isSubmitting && <p className="play-sub">Recording entry</p>}
 
       <div className="payout">
         <span><b>+1</b> point for a correct call</span>

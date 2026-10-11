@@ -84,6 +84,15 @@ functions:
       - httpApi:
           path: /market
           method: GET
+  createPrediction:
+    handler: src/handlers/createPrediction.handler
+    description: Record one pending prediction for the authenticated player
+    role:
+      Fn::GetAtt: [PredictionLambdaRole, Arn]
+    events:
+      - httpApi:
+          path: /predictions
+          method: POST
 
 resources:
   Resources:
@@ -103,6 +112,9 @@ resources:
             KeyType: HASH
           - AttributeName: sk
             KeyType: RANGE
+        TimeToLiveSpecification:
+          AttributeName: expiresAt
+          Enabled: true
         Tags:
           - Key: project
             Value: hunch
@@ -128,6 +140,42 @@ resources:
                   Action:
                     - dynamodb:GetItem
                     - dynamodb:PutItem
+                  Resource:
+                    Fn::GetAtt: [GameTable, Arn]
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogStream
+                    - logs:CreateLogGroup
+                    - logs:TagResource
+                  Resource:
+                    Fn::Sub: arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/hunch-${sls:stage}-*:*
+                - Effect: Allow
+                  Action:
+                    - logs:PutLogEvents
+                  Resource:
+                    Fn::Sub: arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/hunch-${sls:stage}-*:*:*
+    PredictionLambdaRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: hunch-${sls:stage}-predictions
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: prediction-table
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - dynamodb:GetItem
+                    - dynamodb:PutItem
+                    - dynamodb:UpdateItem
+                    - dynamodb:TransactWriteItems
                   Resource:
                     Fn::GetAtt: [GameTable, Arn]
                 - Effect: Allow

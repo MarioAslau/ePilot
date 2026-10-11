@@ -13,6 +13,7 @@ export interface PlayerRecord {
   wins: number
   losses: number
   createdAt: string
+  activePredictionId?: string
 }
 
 export interface PlayerStore {
@@ -27,10 +28,19 @@ export function dynamoPlayerStore(tableName = process.env.TABLE_NAME): PlayerSto
   return {
     async putNew(record) {
       try {
+        const item = {
+          ...playerKeys(record.playerId),
+          playerId: record.playerId,
+          accessTokenHash: record.accessTokenHash,
+          score: record.score,
+          wins: record.wins,
+          losses: record.losses,
+          createdAt: record.createdAt,
+        }
         await doc.send(
           new PutCommand({
             TableName: tableName,
-            Item: { ...playerKeys(record.playerId), ...record },
+            Item: item,
             ConditionExpression: 'attribute_not_exists(pk)',
           }),
         )
@@ -62,6 +72,9 @@ export function dynamoPlayerStore(tableName = process.env.TABLE_NAME): PlayerSto
         wins: Number(item.wins),
         losses: Number(item.losses),
         createdAt: String(item.createdAt),
+        ...(item.activePredictionId
+          ? { activePredictionId: String(item.activePredictionId) }
+          : {}),
       }
     },
   }

@@ -42,10 +42,13 @@ export const PredictionSchema = z.object({
   predictionId: z.string().min(1),
   playerId: PlayerIdSchema,
   direction: DirectionSchema,
+  mode: z.literal('STANDARD'),
   status: PredictionStatusSchema,
   createdAt: z.string().datetime(),
   dueAt: z.string().datetime(),
   entryPrice: PriceStringSchema,
+  /** Coinbase ticker time of the entry trade. Not a client-supplied value. */
+  entryTradeTime: z.string().datetime(),
   resolvedAt: z.string().datetime().optional(),
   resolutionPrice: PriceStringSchema.optional(),
   /** Exchange timestamp of the compared trade (Coinbase ticker `time`). */
