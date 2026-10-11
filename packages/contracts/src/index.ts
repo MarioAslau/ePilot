@@ -32,15 +32,11 @@ export type PriceString = z.infer<typeof PriceStringSchema>
 export const AccessTokenSchema = z.string().regex(/^[0-9a-f]{64}$/)
 export type AccessToken = z.infer<typeof AccessTokenSchema>
 
-/** `anon_` plus 8 hex characters. A shorter example in the docs is only an illustration. */
-export const PlayerIdSchema = z.string().regex(/^anon_[0-9a-f]{8}$/)
-export type PlayerId = z.infer<typeof PlayerIdSchema>
-
 export const IdempotencyKeySchema = z.string().uuid()
 
 export const PredictionSchema = z.object({
   predictionId: z.string().min(1),
-  playerId: PlayerIdSchema,
+  playerId: z.string().min(1),
   direction: DirectionSchema,
   status: PredictionStatusSchema,
   createdAt: z.string().datetime(),
@@ -56,7 +52,7 @@ export const PredictionSchema = z.object({
 export type Prediction = z.infer<typeof PredictionSchema>
 
 export const PlayerSchema = z.object({
-  playerId: PlayerIdSchema,
+  playerId: z.string().min(1),
   score: z.number().int(),
   wins: z.number().int().nonnegative(),
   losses: z.number().int().nonnegative(),
@@ -66,14 +62,14 @@ export const PlayerSchema = z.object({
 export type Player = z.infer<typeof PlayerSchema>
 
 export const CreatePlayerResponseSchema = z.object({
-  playerId: PlayerIdSchema,
+  playerId: z.string().min(1),
   /** Raw token, returned once. The server stores only its SHA-256 hash. */
   accessToken: AccessTokenSchema,
 })
 export type CreatePlayerResponse = z.infer<typeof CreatePlayerResponseSchema>
 
 export const MeResponseSchema = z.object({
-  playerId: PlayerIdSchema,
+  playerId: z.string().min(1),
   score: z.number().int(),
   wins: z.number().int().nonnegative(),
   losses: z.number().int().nonnegative(),

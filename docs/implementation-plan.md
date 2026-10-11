@@ -8,10 +8,11 @@ Then add optional features that demonstrate product judgment.
 
 ## Current progress
 
-- Active ticket: T05
+- Active ticket: T04
 - Status: Complete
+- Next ticket: T05, not started
 
-- Anonymous create and restore are complete in the repo. The hosted site still serves the T04 health shell until the next API deploy and Amplify build. T06 is not started.
+- Starting point for T05: the hosted shell calls the deployed health API. Play is not available yet.
 
 ## Working agreement
 
@@ -123,7 +124,7 @@ A local fixture view helps test presentation without waiting for markets. It is 
 
 - [x] T04 — Deploy a minimal AWS slice
 
-- [x] T05 — Create and restore anonymous players
+- [ ] T05 — Create and restore anonymous players
 
 - [ ] T06 — Display validated BTC prices
 
@@ -410,7 +411,7 @@ feat: deploy initial AWS API and hosted frontend
 
 ## T05 — Create and restore anonymous players
 
-Status: Complete
+Status: Not started
 
 Dependencies: T04.
 
@@ -1121,32 +1122,6 @@ If time runs short:
 - Decision or tradeoff: Public `/health` is a connectivity check. Cost abuse is an accepted MVP limit guarded by the account credits, not by hiding the URL. Dev deploy region is `eu-north-1` because the new project account is locked to Stockholm. Root MFA stays off so the account is not permanently upgraded. See D6 in architecture.md. Reviewers use the public site and do not sign in to AWS.
 - Remaining limitation: Play is not available yet. A monthly spend limit was not created, because this account only offers that after a paid upgrade. The 100 USD credits are the cap. Lambda `nodejs20.x` still deploys, and AWS stops allowing new functions on that runtime on 2027-02-01. The local `.env` file is still optional for `yarn dev`.
 - Commit: `a50fd5e` plus later `bc74f7e` on `release` for the Amplify file. Suggested message for any remaining doc edit: `docs: record the deployed health API and Amplify URL`
-
-### T05
-
-- Status: Complete. Code is in the repo. The hosted site has not been updated.
-- What changed:
-  - `packages/contracts` — player ids are `anon_` plus 8 hex characters.
-  - `apps/api/src/player.ts` — creates a score-0 player, hashes the token, and compares with `timingSafeEqual`.
-  - `apps/api/src/playerStore.ts` — `PutItem` / `GetItem` at `PLAYER#<playerId>` / `PLAYER`, conditional on a new id.
-  - `apps/api/src/handlers/createPlayer.ts` and `me.ts` — `POST /players` returns the raw token once. `GET /me` returns the score and null prediction fields. A bad token is `401`.
-  - `apps/api/serverless.yml` — those two routes. CORS allows `POST`. Player Lambdas use `PlayerLambdaRole` (`GetItem`, `PutItem` only). Health stays on the log-only role.
-  - `apps/web` — `hunch.session` in `localStorage`. First visit creates a player. A return visit calls `GET /me` only. Network failure keeps the session and offers retry. A rejected token does not create a replacement until the player asks. Header shows the id and score. Footer uses the server-persistence sentence.
-  - Local development — `yarn dev:local` serves the frontend with an in-memory `/api` for manual create/restore testing before deployment. Restarting the dev server clears its players. It does not emulate AWS.
-- Checks run and results:
-  - `yarn workspace api test` — 10/10 passed.
-  - `yarn workspace api typecheck` — exit 0.
-  - `yarn workspace web test` — 10/10 passed.
-  - `yarn workspace web typecheck` — exit 0.
-  - `yarn workspace web build` — exit 0 with the local adapter excluded from the production app.
-  - `yarn workspace contracts typecheck` — exit 0.
-  - `yarn lint` — exit 0.
-  - `yarn serverless package --stage dev --region eu-north-1` — exit 0. Template has `POST /players`, `GET /me`, and `GET /health`. Health role has log permissions only. Player role has `dynamodb:GetItem` and `dynamodb:PutItem`.
-  - Local API smoke test — `POST /api/players` followed by authenticated `GET /api/me` returned the same `anon_` player with score 0.
-- Manual verification: Passed locally. On 2026-10-11 Mario ran `yarn dev` and saw **API address is not configured.** because `VITE_API_BASE_URL` was empty. `yarn dev:local` set that address to `/api`, the message disappeared, and the local player page loaded. He marked T05 complete from that check. The live site still shows the T04 health shell.
-- Decision or tradeoff: Player ids are 8 hex characters, not the 4-character illustration. `GET /me` does not read predictions yet. There is no 3-second score poll. A `401` stays on the saved session until the player chooses "Start a new player". The local API is an in-memory browser-flow adapter, not a DynamoDB emulator.
-- Remaining limitation: The hosted page and API do not include this ticket until deploy. That deploy must pass `--param amplifyOrigin=https://release.d2yczmbttcpoe9.amplifyapp.com`. A lost `POST /players` response can create an extra orphan player on retry, because the token was never saved. Play is still unavailable.
-- Commit: Pending. Suggested message: `feat: persist anonymous player identity and score`
 
 ### Future entry template
 

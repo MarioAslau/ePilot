@@ -5,21 +5,17 @@
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "echo 'api: no tests yet'",
     "package": "serverless package"
   },
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.1149.0",
-    "@aws-sdk/lib-dynamodb": "^3.1149.0",
     "contracts": "*"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.145",
-    "@types/node": "^26.6.5",
     "esbuild": "^0.24.0",
     "serverless": "^4.4.0",
     "serverless-esbuild": "^1.52.0",
-    "typescript": "^5.6.0",
-    "vitest": "^2.1.0"
+    "typescript": "^5.6.0"
   }
 }

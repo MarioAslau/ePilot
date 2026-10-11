@@ -7,7 +7,6 @@
   ],
   "scripts": {
     "dev": "yarn workspace web dev",
-    "dev:local": "yarn workspace web dev:local",
     "build": "yarn workspaces run build",
     "typecheck": "yarn workspaces run typecheck",
     "lint": "eslint .",
