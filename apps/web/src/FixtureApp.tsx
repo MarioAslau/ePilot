@@ -123,11 +123,10 @@ export function FixtureApp() {
                   </>
                 ) : (
                   <PredictionPanel
-                    price={state.price}
                     title={state.result || relocate ? 'Go again?' : undefined}
                     subtitle={state.result || relocate ? null : undefined}
-                    disabled={offerPreview === 'submitting' || state.isSubmitting}
-                    isSubmitting={state.isSubmitting || offerPreview === 'submitting'}
+                    disabled={offerPreview === 'submitting' || Boolean(state.isSubmitting)}
+                    isSubmitting={Boolean(state.isSubmitting) || offerPreview === 'submitting'}
                     onPredict={() => undefined}
                   >
                     {state.result && (

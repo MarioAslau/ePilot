@@ -13,7 +13,6 @@ const quote: TickerQuote = {
   price: '84000.00',
   tradeTime: '2026-10-11T14:59:58.000Z',
   fetchedAt: now.toISOString(),
-  source: 'COINBASE_EXCHANGE',
 }
 
 describe('lifecycle logs', () => {
@@ -30,7 +29,7 @@ describe('lifecycle logs', () => {
     const created = createPlayer(now, (size) => Buffer.alloc(size, 7))
     await store.putNew(created)
     const minted = await handleCreatePlayer('create-player', {
-      store,
+      players: store,
       now: () => now,
       nextBytes: (size) => Buffer.alloc(size, 8),
     })

@@ -10,6 +10,7 @@ import { handleGetPredictionHistory } from './handlers/getPredictionHistory.js'
 import { handleMarket } from './handlers/market.js'
 import { handleMe } from './handlers/me.js'
 import { handleResolvePrediction } from './handlers/resolvePrediction.js'
+import { errorResponse } from './http.js'
 import { memoryGameStore } from './memoryStore.js'
 import type { DevFault, LocalApp } from './localDevTypes.js'
 import { readFeatures } from './offer.js'
@@ -124,13 +125,10 @@ export function createLocalApp(): LocalApp {
           arm()
           return { statusCode: 204, body: '' }
         }
-        return {
-          statusCode: 400,
-          body: JSON.stringify({ code: 'INVALID_INPUT', message: 'Invalid prediction request', requestId: 'local' }),
-        }
+        return errorResponse('INVALID_INPUT', 'local', 'Unknown dev mode')
       }
 
-      if (method === 'POST' && path === '/api/players') return handleCreatePlayer('local', { store })
+      if (method === 'POST' && path === '/api/players') return handleCreatePlayer('local', { players: store })
       if (method === 'GET' && path === '/api/me') {
         return handleMe(authorization, 'local', { players: store, predictions: store, features })
       }

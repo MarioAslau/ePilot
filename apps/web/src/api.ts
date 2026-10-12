@@ -1,10 +1,12 @@
 import {
   CreatePlayerResponseSchema,
+  ErrorCodeSchema,
   MeResponseSchema,
   OfferSchema,
   PredictionHistoryResponseSchema,
   PredictionSchema,
   type Direction,
+  type ErrorCode,
   type MeResponse,
   type Offer,
   type Prediction,
@@ -55,7 +57,7 @@ export async function fetchHistory(
  * The result of a write the server may or may not have applied.
  * `unknown` means no answer arrived, so the caller must reconcile before trying something new.
  */
-type WriteResult<T> = { kind: 'ok'; value: T } | { kind: 'rejected'; code: string } | { kind: 'unknown' }
+type WriteResult<T> = { kind: 'ok'; value: T } | { kind: 'rejected'; code: ErrorCode } | { kind: 'unknown' }
 
 const REJECTED = new Set([400, 401, 409, 503])
 
@@ -76,7 +78,8 @@ async function postJson<T>(
     if (response.status === 200 || response.status === 201) return { kind: 'ok', value: parse(await response.json()) }
     if (!REJECTED.has(response.status)) return { kind: 'unknown' }
     const error = (await response.json().catch(() => null)) as { code?: unknown } | null
-    return { kind: 'rejected', code: typeof error?.code === 'string' ? error.code : 'INVALID_INPUT' }
+    const code = ErrorCodeSchema.safeParse(error?.code)
+    return { kind: 'rejected', code: code.success ? code.data : 'INVALID_INPUT' }
   } catch {
     return { kind: 'unknown' }
   }

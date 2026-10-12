@@ -6,6 +6,7 @@ import { layoutSlot } from '../layout'
 import { ModeBadge } from './ModeBadge'
 import { OfferPayoutTiles } from './offers/OfferPayoutTiles'
 import { OfferTimer } from './offers/OfferTimer'
+import { EXTENSION_SECONDS, OFFER_SECONDS, WAIT_SECONDS } from '../timing'
 
 interface Props {
   offer: Offer
@@ -34,7 +35,7 @@ export function RedemptionOffer({
 }: Props) {
   const { payout } = offer
   const pair = pairTotals(payout)
-  const description = `Optional. Choose up or down for one fresh round. If right, ${spokenPoints(payout.win)}, pair total ${spokenPoints(pair.win)}. If wrong, ${spokenPoints(payout.loss)}, pair total ${spokenPoints(pair.loss)}. The offer lasts 10 seconds; Need more time adds 20 seconds.`
+  const description = `Optional. Choose up or down for one fresh round. If right, ${spokenPoints(payout.win)}, pair total ${spokenPoints(pair.win)}. If wrong, ${spokenPoints(payout.loss)}, pair total ${spokenPoints(pair.loss)}. The offer lasts ${OFFER_SECONDS} seconds; Need more time adds ${EXTENSION_SECONDS} seconds.`
 
   return (
     <section className="dd rd" {...layoutSlot('offer')} aria-labelledby="rd-title" aria-describedby="rd-desc" aria-busy={submitting}>
@@ -59,7 +60,7 @@ export function RedemptionOffer({
               <span><b>{signedPoints(payout.parentDelta)} kept</b> from round {roundLabel(offer.parentPredictionId)}. Whatever you choose, it stays.</span>
             </p>
             <OfferPayoutTiles payout={offer.payout} />
-            <p className="fine"><b>Pick a direction to start it</b> · fresh entry price, at least 60 seconds</p>
+            <p className="fine"><b>Pick a direction to start it</b> · fresh entry price, at least {WAIT_SECONDS} seconds</p>
             <div className="rd-actions" role="group" aria-label={`${REDEMPTION_NAME} round: pick a direction or decline`}>
               {(['UP', 'DOWN'] as const).map((direction) => {
                 const chosen = submitting && pendingDirection === direction

@@ -5,6 +5,7 @@ import { layoutSlot } from '../layout'
 import { ModeBadge } from './ModeBadge'
 import { OfferPayoutTiles } from './offers/OfferPayoutTiles'
 import { OfferTimer } from './offers/OfferTimer'
+import { WAIT_SECONDS } from '../timing'
 
 interface Props {
   offer: Offer
@@ -58,7 +59,7 @@ export function DoubleDownOffer({
               Direction is fixed: {offer.direction === 'DOWN'
                 ? <ChevronDown className="ic" size={14} aria-hidden="true" />
                 : <ChevronUp className="ic" size={14} aria-hidden="true" />}
-              <b> {word}</b>. New entry price, at least 60 seconds again.
+              <b> {word}</b>. New entry price, at least {WAIT_SECONDS} seconds again.
             </p>
             <OfferPayoutTiles payout={offer.payout} bonusWord />
             <p id="dd-desc" className="sr-only">{description}</p>

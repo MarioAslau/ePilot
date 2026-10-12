@@ -250,6 +250,7 @@ button { font: inherit; color: inherit }
   font-stretch: 94%;
 }
 .mk-price.stale { color: var(--subtle) }
+.mk-price-sk { display: block; width: 220px; height: 40px }
 .mk-meta {
   display: flex;
   flex-wrap: wrap;
@@ -368,6 +369,8 @@ button { font: inherit; color: inherit }
   background: var(--raised); font-size: var(--t-small); margin-top: var(--s4);
 }
 .notice .ic    { font-size: 18px; margin-top: 1px }
+.notice-body   { flex: 1; min-width: 0 }
+.notice-detail { margin-top: 4px }
 .notice strong { display: block; font-weight: 650; color: var(--text); font-size: var(--t-body) }
 .notice p      { color: var(--muted) }
 .notice.warn   { border-color: rgba(240,165,58,.35); background: var(--warn-soft) }

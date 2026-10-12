@@ -37,7 +37,7 @@ export function PriceStatus({ price, status, ageSeconds }: Props) {
 
       <div className="mk-row">
         {status === 'loading' ? (
-          <span className="sk" style={{ width: 220, height: 40, display: 'block' }} aria-hidden="true" />
+          <span className="sk mk-price-sk" aria-hidden="true" />
         ) : (
           <p
             className={`mk-price num${status === 'stale' ? ' stale' : ''}`}

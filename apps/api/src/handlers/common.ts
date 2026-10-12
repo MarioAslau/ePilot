@@ -2,7 +2,7 @@ import type { Features } from 'contracts'
 import { randomBytes } from 'node:crypto'
 import type { z } from 'zod'
 import { fetchTicker, ProviderUnavailableError, SETTLEMENT_TRADE_AGE_MS, tradeAgeWithin, type TickerQuote } from '../coinbase.js'
-import { json, providerUnavailable } from '../http.js'
+import { errorResponse, json } from '../http.js'
 import { log } from '../log.js'
 import { readFeatures } from '../offer.js'
 import { readPlayerAuthorization, tokenMatches } from '../player.js'
@@ -96,7 +96,7 @@ export async function replayPrediction(
   requestId: string,
 ) {
   const stored = await predictions.getPrediction(record.playerId, record.predictionId)
-  return stored ? json(200, predictionResponse(stored)) : providerUnavailable(requestId)
+  return stored ? json(200, predictionResponse(stored)) : errorResponse('PROVIDER_UNAVAILABLE', requestId)
 }
 
 /**

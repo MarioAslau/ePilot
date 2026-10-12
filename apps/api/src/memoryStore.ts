@@ -1,4 +1,5 @@
-import { EXTENSION_MS, MAX_EXTENSIONS, newOfferRecord, type OfferRecord } from './offer.js'
+import { EXTENSION_MS, MAX_EXTENSIONS } from 'contracts'
+import { newOfferRecord, type OfferRecord } from './offer.js'
 import type { PlayerRecord, PlayerStore } from './playerStore.js'
 import type { IdempotencyRecord, PredictionRecord } from './prediction.js'
 import type { PredictionStore } from './predictionStore.js'
@@ -14,7 +15,13 @@ function offerIsOpen(offer: OfferRecord, now: string): boolean {
  * Synchronous check-then-write. Two calls cannot both pass the lock
  * because the function does not await between the checks and the writes.
  */
-export function memoryGameStore(): PlayerStore & PredictionStore & { failNextSettle(): void } {
+/** Test and local-play hooks that reach past the store's own conditions. */
+interface MemoryHooks {
+  failNextSettle(): void
+  forceActivePrediction(playerId: string, predictionId: string): void
+}
+
+export function memoryGameStore(): PlayerStore & PredictionStore & MemoryHooks {
   const players = new Map<string, StoredPlayer>()
   const predictions = new Map<string, PredictionRecord>()
   const idempotency = new Map<string, IdempotencyRecord>()
@@ -121,6 +128,11 @@ export function memoryGameStore(): PlayerStore & PredictionStore & { failNextSet
 
     failNextSettle() {
       failSettle = true
+    },
+
+    forceActivePrediction(playerId, predictionId) {
+      const player = players.get(playerId)
+      if (player) player.activePredictionId = predictionId
     },
 
     async settle(input) {

@@ -1,6 +1,6 @@
 import type { APIGatewayProxyHandlerV2 } from 'aws-lambda'
 import { MeResponseSchema, offerModeEnabled, type Features, type Prediction, type WaitReason } from 'contracts'
-import { authorizationHeader, json, unauthorized } from '../http.js'
+import { authorizationHeader, errorResponse, json } from '../http.js'
 import { offerIsVisible, offerResponse, readFeatures } from '../offer.js'
 import type { PlayerStore } from '../playerStore.js'
 import { predictionResponse, type PredictionRecord } from '../prediction.js'
@@ -29,7 +29,7 @@ export async function handleMe(
   },
 ) {
   const record = await authenticate(header, deps.players)
-  if (!record) return unauthorized(requestId)
+  if (!record) return errorResponse('UNAUTHORIZED', requestId)
 
   const { playerId } = record
   const clock = (deps.now ?? (() => new Date()))()

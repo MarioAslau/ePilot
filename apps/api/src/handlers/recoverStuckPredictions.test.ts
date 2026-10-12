@@ -11,7 +11,6 @@ const quote: TickerQuote = {
   price: '83062.64',
   tradeTime: '2026-10-11T14:59:58.000Z',
   fetchedAt: createdAt.toISOString(),
-  source: 'COINBASE_EXCHANGE',
 }
 
 async function oldRound() {

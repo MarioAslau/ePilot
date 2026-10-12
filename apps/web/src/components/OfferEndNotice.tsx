@@ -1,15 +1,16 @@
 import type { OfferMode } from 'contracts'
 import { REDEMPTION_NAME } from '../featureNames'
 import { roundLabel } from '../format'
-import { OfferNotice } from './OfferNotice'
+import { Ban, Check, Clock, Copy } from 'lucide-react'
+import { StatusNotice } from './StatusNotice'
 
 export type OfferEndPhase = 'expired' | 'declined' | 'used' | 'replaced'
 
 const PHASE_STYLE = {
-  expired: { tone: 'neutral', icon: 'clock' },
-  declined: { tone: 'neutral', icon: 'check' },
-  used: { tone: 'info', icon: 'ban' },
-  replaced: { tone: 'info', icon: 'copy' },
+  expired: { kind: 'neutral', icon: Clock },
+  declined: { kind: 'neutral', icon: Check },
+  used: { kind: 'info', icon: Ban },
+  replaced: { kind: 'info', icon: Copy },
 } as const
 
 /** Bold lead and the sentence after it, for each mode and way the offer ended. */
@@ -52,5 +53,5 @@ export function OfferEndNotice({
   onDismiss?: () => void
 }) {
   const [lead, rest] = COPY[mode][phase](roundLabel(parentPredictionId))
-  return <OfferNotice {...PHASE_STYLE[phase]} onDismiss={onDismiss} message={<><b>{lead}</b> {rest}</>} />
+  return <StatusNotice {...PHASE_STYLE[phase]} onDismiss={onDismiss} message={<><b>{lead}</b> {rest}</>} />
 }

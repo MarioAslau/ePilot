@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import { directionWord, formatDuration, formatMove, formatTime, formatUsd, roundLabel, signedPoints } from '../format'
 import { PLAY_TITLE_ID } from '../focusTargets'
 import { MODE_DISPLAY } from '../offerCopy'
+import { WAIT_SECONDS } from '../timing'
 
 interface Props {
   direction: Direction
@@ -76,7 +77,7 @@ function Dial({ state, secondsRemaining }: { state: WaitReason; secondsRemaining
   const comparing = state === 'CHECKING_PRICE'
   if (waiting) {
     const remaining = secondsRemaining ?? 0
-    const progress = Math.max(0, Math.min(1, 1 - remaining / 60))
+    const progress = Math.max(0, Math.min(1, 1 - remaining / WAIT_SECONDS))
     return (
       <div className="dial">
         <svg viewBox="0 0 92 92" aria-hidden="true">

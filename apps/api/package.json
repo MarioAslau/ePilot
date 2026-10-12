@@ -4,7 +4,7 @@
   "description": "Lambda handlers — deployed in T04",
   "scripts": {
     "build": "tsc --noEmit",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
     "test": "vitest run",
     "test:int": "vitest run src/integration",
     "package": "serverless package"

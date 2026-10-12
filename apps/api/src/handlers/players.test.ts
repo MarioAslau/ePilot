@@ -26,7 +26,7 @@ describe('handleCreatePlayer', () => {
   it('returns the raw token once and stores only the hash', async () => {
     const store = memoryStore()
     const response = await handleCreatePlayer('req-1', {
-      store,
+      players: store,
       now: () => now,
       nextBytes: (size) => Buffer.alloc(size, 0x11),
     })
@@ -55,7 +55,7 @@ describe('handleCreatePlayer', () => {
       },
     }
     const response = await handleCreatePlayer('req-2', {
-      store,
+      players: store,
       now: () => now,
       nextBytes: (size) => {
         const buf = Buffer.alloc(size, 0x22)

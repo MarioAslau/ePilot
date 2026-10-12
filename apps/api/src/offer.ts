@@ -1,11 +1,14 @@
 import { z } from 'zod'
 import {
   DirectionSchema,
+  EXTENSION_MS,
   OFFER_MODES,
+  OFFER_WINDOW_MS,
   OFFER_RULES,
   OfferModeSchema,
   OfferSchema,
   offerModeEnabled,
+  MAX_EXTENSIONS,
   type Direction,
   type Features,
   type Offer,
@@ -14,9 +17,7 @@ import {
 } from 'contracts'
 import type { PredictionRecord } from './prediction.js'
 
-export const OFFER_WINDOW_MS = 10_000
-export const EXTENSION_MS = 20_000
-export const MAX_EXTENSIONS = 10
+/** An ended offer stays in GET /me this long, so other tabs can say how it ended. */
 export const OFFER_VISIBLE_MS = 60_000
 
 /**
@@ -111,8 +112,8 @@ export function offerView(offer: OfferRecord, now: Date): Omit<OfferRecord, 'sta
   return offer
 }
 
+/** Shown in GET /me until a minute after its deadline, whatever its status. */
 export function offerIsVisible(offer: OfferRecord, now: Date): boolean {
-  if (offer.status === 'OPEN' && now.getTime() < new Date(offer.expiresAt).getTime()) return true
   return now.getTime() < new Date(offer.expiresAt).getTime() + OFFER_VISIBLE_MS
 }
 

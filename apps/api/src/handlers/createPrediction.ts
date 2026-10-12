@@ -1,14 +1,6 @@
 import type { APIGatewayProxyHandlerV2 } from 'aws-lambda'
 import { CreatePredictionRequestSchema, type Direction } from 'contracts'
-import {
-  activeRound,
-  authorizationHeader,
-  idempotencyConflict,
-  invalidInput,
-  json,
-  providerUnavailable,
-  unauthorized,
-} from '../http.js'
+import { authorizationHeader, errorResponse, json } from '../http.js'
 import { log } from '../log.js'
 import {
   buildPrediction,
@@ -28,6 +20,8 @@ import {
   type HandlerDeps,
 } from './common.js'
 
+const DIRECTION_CONFLICT = 'This idempotency key was used for a different direction'
+
 /** A replay of this key is the same plain create, not an offer accept. */
 function sameCreate(existing: IdempotencyRecord, direction: Direction) {
   return existing.kind !== 'OFFER_ACCEPT' && existing.direction === direction
@@ -41,31 +35,31 @@ export async function handleCreatePrediction(
 ) {
   const deps = withDefaults(input)
   const player = await authenticate(header, deps.players)
-  if (!player) return unauthorized(requestId)
+  if (!player) return errorResponse('UNAUTHORIZED', requestId)
   const { playerId } = player
   const rejected = (reason: string, predictionId?: string) =>
     log('prediction.rejected', { requestId, playerId, predictionId, reason })
 
   const body = parseBody(rawBody, CreatePredictionRequestSchema)
-  if (!body) return invalidInput(requestId)
+  if (!body) return errorResponse('INVALID_INPUT', requestId)
   const { direction, idempotencyKey } = body
 
   const existing = await deps.predictions.getIdempotency(playerId, idempotencyKey)
   if (existing) {
     if (!sameCreate(existing, direction)) {
       rejected('IDEMPOTENCY_CONFLICT')
-      return idempotencyConflict(requestId)
+      return errorResponse('IDEMPOTENCY_CONFLICT', requestId, DIRECTION_CONFLICT)
     }
     return replayPrediction(deps.predictions, existing, requestId)
   }
 
   if (player.activePredictionId) {
     rejected('ACTIVE_ROUND', player.activePredictionId)
-    return activeRound(requestId)
+    return errorResponse('ACTIVE_ROUND', requestId)
   }
 
   const locked = await lockEntryQuote(deps.quote, deps.now, rejected)
-  if (!locked) return providerUnavailable(requestId)
+  if (!locked) return errorResponse('PROVIDER_UNAVAILABLE', requestId)
   const { quote, clock } = locked
 
   const openOfferId = player.openOfferId
@@ -90,18 +84,18 @@ export async function handleCreatePrediction(
     const current = await deps.players.get(playerId)
     if (current?.activePredictionId) {
       rejected('ACTIVE_ROUND')
-      return activeRound(requestId)
+      return errorResponse('ACTIVE_ROUND', requestId)
     }
     outcome = await deps.predictions.create({ ...built, openOffer: { kind: 'clear' } })
   }
   if (outcome === 'duplicate_key') {
     const raced = await deps.predictions.getIdempotency(playerId, idempotencyKey)
-    if (!raced || !sameCreate(raced, direction)) return idempotencyConflict(requestId)
+    if (!raced || !sameCreate(raced, direction)) return errorResponse('IDEMPOTENCY_CONFLICT', requestId, DIRECTION_CONFLICT)
     return replayPrediction(deps.predictions, raced, requestId)
   }
   if (outcome === 'active_round') {
     rejected('ACTIVE_ROUND')
-    return activeRound(requestId)
+    return errorResponse('ACTIVE_ROUND', requestId)
   }
 
   const { predictionId } = built.prediction

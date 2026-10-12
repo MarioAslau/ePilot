@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { MAX_EXTENSIONS } from './timing.js'
 
 /**
  * Shared API and domain contracts.
@@ -103,7 +104,7 @@ export const OfferSchema = z.object({
   issuedAt: z.string().datetime(),
   /** ISO deadline. Not the numeric DynamoDB TTL attribute. */
   expiresAt: z.string().datetime(),
-  extensions: z.number().int().min(0).max(10),
+  extensions: z.number().int().min(0).max(MAX_EXTENSIONS),
   status: OfferStatusSchema,
   bonusPredictionId: z.string().min(1).optional(),
   replacedByPredictionId: z.string().min(1).optional(),
@@ -206,6 +207,7 @@ export const ErrorCodeSchema = z.enum([
   'OFFER_NOT_FOUND',
   'MAX_EXTENSIONS',
   'DIRECTION_REQUIRED',
+  'INTERNAL_ERROR',
 ])
 export type ErrorCode = z.infer<typeof ErrorCodeSchema>
 
@@ -221,5 +223,6 @@ export type ErrorResponse = z.infer<typeof ErrorResponseSchema>
 
 export { evaluate } from './evaluator.js'
 export type { EvaluatorInput, EvaluatorResult } from './evaluator.js'
+export { EXTENSION_MS, MAX_EXTENSIONS, MINIMUM_WAIT_MS, OFFER_WINDOW_MS } from './timing.js'
 export { OFFER_MODES, OFFER_RULES, offerModeEnabled, pairTotals, scoreDelta } from './offerRules.js'
 export type { Features, OfferRule } from './offerRules.js'

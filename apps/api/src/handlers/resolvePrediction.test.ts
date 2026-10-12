@@ -11,7 +11,6 @@ const entry: TickerQuote = {
   price: '83062.64',
   tradeTime: '2026-10-11T14:59:58.000Z',
   fetchedAt: createdAt.toISOString(),
-  source: 'COINBASE_EXCHANGE',
 }
 
 function moved(price: string): TickerQuote {
@@ -19,7 +18,6 @@ function moved(price: string): TickerQuote {
     price,
     tradeTime: '2026-10-11T15:01:02.000Z',
     fetchedAt: '2026-10-11T15:01:03.000Z',
-    source: 'COINBASE_EXCHANGE',
   }
 }
 

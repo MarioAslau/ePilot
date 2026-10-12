@@ -1,7 +1,7 @@
 import type { APIGatewayProxyHandlerV2 } from 'aws-lambda'
 import { IdempotencyKeySchema, OFFER_RULES, OfferActionRequestSchema, type Direction } from 'contracts'
 import { z } from 'zod'
-import { authorizationHeader, directionRequired, invalidInput, json, providerUnavailable } from '../http.js'
+import { authorizationHeader, errorResponse, json } from '../http.js'
 import { log } from '../log.js'
 import { offerConflict, type OfferRecord } from '../offer.js'
 import {
@@ -37,15 +37,15 @@ export async function handleAcceptOffer(
   const choosesDirection = !OFFER_RULES[offer.mode].directionFixed
 
   const request = readJsonBody(rawBody)
-  if (!request.ok) return invalidInput(requestId)
+  if (!request.ok) return errorResponse('INVALID_INPUT', requestId)
   const body = OfferActionRequestSchema.safeParse(request.value)
   if (!body.success) {
     // A valid key with a bad direction asks the player to choose, where choosing is allowed.
-    return choosesDirection && KeyOnlySchema.safeParse(request.value).success ? directionRequired(requestId) : invalidInput(requestId)
+    return choosesDirection && KeyOnlySchema.safeParse(request.value).success ? errorResponse('DIRECTION_REQUIRED', requestId) : errorResponse('INVALID_INPUT', requestId)
   }
   const { idempotencyKey } = body.data
   const direction = bonusDirection(offer, body.data.direction)
-  if (!direction) return directionRequired(requestId)
+  if (!direction) return errorResponse('DIRECTION_REQUIRED', requestId)
 
   const sameAccept = (record: IdempotencyRecord) =>
     record.kind === 'OFFER_ACCEPT' && record.offerId === offerId && record.direction === direction
@@ -62,7 +62,7 @@ export async function handleAcceptOffer(
   if (player.activePredictionId) return rejectOffer(requestId, 'ACTIVE_ROUND')
 
   const locked = await lockEntryQuote(deps.quote, () => clock, (reason) => log('offer.rejected', { requestId, playerId, offerId, reason }))
-  if (!locked) return providerUnavailable(requestId)
+  if (!locked) return errorResponse('PROVIDER_UNAVAILABLE', requestId)
   const { quote } = locked
 
   const built = buildPrediction({

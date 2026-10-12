@@ -1,6 +1,5 @@
 import type { Direction, Outcome, PriceString } from './index.js'
-
-const MINIMUM_WAIT_MS = 60_000
+import { MINIMUM_WAIT_MS } from './timing.js'
 
 export type EvaluatorInput = {
   direction: Direction

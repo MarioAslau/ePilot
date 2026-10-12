@@ -1,5 +1,6 @@
 import {
   DirectionSchema,
+  MINIMUM_WAIT_MS,
   ModeSchema,
   OutcomeSchema,
   PredictionSchema,
@@ -11,7 +12,6 @@ import {
 } from 'contracts'
 import { z } from 'zod'
 
-export const ROUND_MS = 60_000
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000
 
 const LastCheckSchema = z.object({ reason: z.enum(['EQUAL_PRICE', 'PROVIDER_HOLD']), at: z.string() })
@@ -76,7 +76,7 @@ export function buildPrediction(input: {
   offerId?: string
 }): { prediction: PredictionRecord; idempotency: IdempotencyRecord } {
   const createdAt = input.now.toISOString()
-  const dueAt = new Date(input.now.getTime() + ROUND_MS).toISOString()
+  const dueAt = new Date(input.now.getTime() + MINIMUM_WAIT_MS).toISOString()
   const predictionId = newPredictionId(input.now, input.nextBytes)
   return {
     prediction: {

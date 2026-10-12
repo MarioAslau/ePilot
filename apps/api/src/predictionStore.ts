@@ -6,8 +6,8 @@ import {
   UpdateCommand,
   type DynamoDBDocumentClient,
 } from '@aws-sdk/lib-dynamodb'
-import type { Direction, ScoreDelta } from 'contracts'
-import { EXTENSION_MS, MAX_EXTENSIONS, newOfferRecord, offerKey, OfferRecordSchema, type OfferGrant, type OfferRecord } from './offer.js'
+import { EXTENSION_MS, MAX_EXTENSIONS, type Direction, type ScoreDelta } from 'contracts'
+import { newOfferRecord, offerKey, OfferRecordSchema, type OfferGrant, type OfferRecord } from './offer.js'
 import { documentClient } from './dynamo.js'
 import { playerKeys } from './player.js'
 import {

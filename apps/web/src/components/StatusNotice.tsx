@@ -1,39 +1,37 @@
-import { AlertCircle, AlertTriangle, Info, X } from 'lucide-react'
+import { AlertCircle, AlertTriangle, Info, X, type LucideIcon } from 'lucide-react'
 import { type ReactNode } from 'react'
 
-type Kind = 'info' | 'warn' | 'error'
+type Kind = 'neutral' | 'info' | 'warn' | 'error'
 
 interface Props {
   kind: Kind
   message: ReactNode
   detail?: ReactNode
+  /** Overrides the kind's default icon. */
+  icon?: LucideIcon
   action?: { label: string; onClick: () => void }
   onDismiss?: () => void
 }
 
-const icons: Record<Kind, ReactNode> = {
-  info:  <Info  className="ic" size={18} aria-hidden="true" />,
-  warn:  <AlertTriangle className="ic" size={18} aria-hidden="true" />,
-  error: <AlertCircle  className="ic" size={18} aria-hidden="true" />,
-}
-
-const roles: Record<Kind, string> = {
-  info:  'status',
-  warn:  'alert',
-  error: 'alert',
+const ICONS: Record<Kind, LucideIcon> = {
+  neutral: Info,
+  info: Info,
+  warn: AlertTriangle,
+  error: AlertCircle,
 }
 
 /**
- * Inline status notice: loading, stale-data, error, or info states.
- * Uses semantic roles: `status` for info, `alert` for warn/error.
+ * Inline notice for loading, stale data, errors, and how an offer ended.
+ * `status` role for neutral and info, `alert` for warn and error.
  */
-export function StatusNotice({ kind, message, detail, action, onDismiss }: Props) {
+export function StatusNotice({ kind, message, detail, icon, action, onDismiss }: Props) {
+  const Icon = icon ?? ICONS[kind]
   return (
-    <div className={`notice ${kind}`} role={roles[kind]}>
-      {icons[kind]}
-      <div style={{ flex: 1, minWidth: 0 }}>
+    <div className={`notice ${kind}`} role={kind === 'warn' || kind === 'error' ? 'alert' : 'status'}>
+      <Icon className="ic" size={18} aria-hidden="true" />
+      <div className="notice-body">
         <p>{message}</p>
-        {detail && <p style={{ marginTop: 4 }}>{detail}</p>}
+        {detail && <p className="notice-detail">{detail}</p>}
         {action && (
           <div className="actions">
             <button type="button" className="btn" onClick={action.onClick}>
@@ -43,12 +41,7 @@ export function StatusNotice({ kind, message, detail, action, onDismiss }: Props
         )}
       </div>
       {onDismiss && (
-        <button
-          type="button"
-          className="iconbtn x"
-          onClick={onDismiss}
-          aria-label="Dismiss notice"
-        >
+        <button type="button" className="iconbtn x" onClick={onDismiss} aria-label="Dismiss notice">
           <X className="ic" size={14} aria-hidden="true" />
         </button>
       )}

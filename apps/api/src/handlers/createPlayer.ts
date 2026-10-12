@@ -1,6 +1,6 @@
 import type { APIGatewayProxyHandlerV2 } from 'aws-lambda'
 import { CreatePlayerResponseSchema } from 'contracts'
-import { json } from '../http.js'
+import { errorResponse, json } from '../http.js'
 import { createPlayer } from '../player.js'
 import type { PlayerStore } from '../playerStore.js'
 import { productionStores } from '../stores.js'
@@ -10,7 +10,7 @@ const MAX_ID_ATTEMPTS = 3
 export async function handleCreatePlayer(
   requestId: string,
   deps: {
-    store: PlayerStore
+    players: PlayerStore
     now?: () => Date
     nextBytes?: (size: number) => Buffer
   },
@@ -18,7 +18,7 @@ export async function handleCreatePlayer(
   const now = deps.now ?? (() => new Date())
   for (let attempt = 0; attempt < MAX_ID_ATTEMPTS; attempt += 1) {
     const created = createPlayer(now(), deps.nextBytes)
-    const outcome = await deps.store.putNew(created)
+    const outcome = await deps.players.putNew(created)
     if (outcome === 'created') {
       return json(
         200,
@@ -29,11 +29,8 @@ export async function handleCreatePlayer(
       )
     }
   }
-  return json(500, {
-    message: 'Could not create a player',
-    requestId,
-  })
+  return errorResponse('INTERNAL_ERROR', requestId, 'Could not create a player')
 }
 
 export const handler: APIGatewayProxyHandlerV2 = async (event) =>
-  handleCreatePlayer(event.requestContext.requestId, { store: productionStores().players })
+  handleCreatePlayer(event.requestContext.requestId, { players: productionStores().players })

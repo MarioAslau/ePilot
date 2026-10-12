@@ -17,12 +17,11 @@ const entry: TickerQuote = {
   price: '83062.64',
   tradeTime: '2026-10-11T14:59:58.000Z',
   fetchedAt: createdAt.toISOString(),
-  source: 'COINBASE_EXCHANGE',
 }
 
 function quoteAt(price: string, at: Date): TickerQuote {
   const trade = new Date(at.getTime() - 1_000)
-  return { price, tradeTime: trade.toISOString(), fetchedAt: at.toISOString(), source: 'COINBASE_EXCHANGE' }
+  return { price, tradeTime: trade.toISOString(), fetchedAt: at.toISOString() }
 }
 
 function header(created: { playerId: string; accessToken: string }) {

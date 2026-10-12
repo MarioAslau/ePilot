@@ -7,7 +7,7 @@ import {
   tradeAgeWithin,
   type TickerQuote,
 } from '../coinbase.js'
-import { json, providerUnavailable } from '../http.js'
+import { errorResponse, json } from '../http.js'
 import { log } from '../log.js'
 
 export async function handleMarket(
@@ -34,7 +34,7 @@ export async function handleMarket(
   } catch (error) {
     const reason = error instanceof ProviderUnavailableError ? error.reason : 'network'
     log('market.provider_error', { reason, requestId })
-    return providerUnavailable(requestId)
+    return errorResponse('PROVIDER_UNAVAILABLE', requestId)
   }
 }
 

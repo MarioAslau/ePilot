@@ -7,6 +7,7 @@ import { HowItWorks } from './components/HowItWorks'
 import { LedgerCard } from './components/LedgerCard'
 import { MarketCard } from './components/MarketCard'
 import { OfferSlot } from './components/OfferSlot'
+import { PlayerNotice, playerProblem } from './components/PlayerNotice'
 import { PredictionPanel } from './components/PredictionPanel'
 import { ResultReceipt } from './components/ResultReceipt'
 import { RoundTicket } from './components/RoundTicket'
@@ -99,8 +100,15 @@ function PlayerStatus() {
     },
     refreshPlayer,
   )
-  const rejected = player.error instanceof HttpError && player.error.status === 401
-  const stalePlayer = Boolean(player.isError && player.data && !rejected)
+  const problem = playerProblem({
+    configured: baseUrl.length > 0,
+    storageBlocked,
+    pending: player.isPending,
+    errored: player.isError,
+    rejected: player.error instanceof HttpError && player.error.status === 401,
+    hasPlayer: Boolean(me),
+  })
+  const stalePlayer = problem === 'stale'
   const market = useMarket(baseUrl)
   const view = roundView({
     me,
@@ -200,7 +208,6 @@ function PlayerStatus() {
                   </>
                 ) : me ? (
                   <PredictionPanel
-                    price={market.price}
                     title={view.settled?.outcome || offerInPlay ? 'Go again?' : undefined}
                     subtitle={view.settled?.outcome || offerInPlay ? null : undefined}
                     onPredict={(direction) => {
@@ -235,7 +242,7 @@ function PlayerStatus() {
                 ) : null}
               </MarketCard>
             )}
-            {prediction.notice && prediction.notice !== 'Recording entry' && !TICKET_PHASES.has(view.phase) && (
+            {prediction.notice && !TICKET_PHASES.has(view.phase) && (
               <StatusNotice
                 kind={prediction.phase === 'unknown' ? 'info' : 'error'}
                 message={prediction.notice}
@@ -253,50 +260,14 @@ function PlayerStatus() {
                 action={{ label: 'Retry', onClick: () => void market.refetch() }}
               />
             )}
-            {!baseUrl && (
-              <StatusNotice
-                kind="error"
-                message="API address is not configured."
-                detail="Set VITE_API_BASE_URL to the deployed API Gateway URL, then rebuild."
-              />
-            )}
-            {baseUrl && storageBlocked && (
-              <StatusNotice
-                kind="error"
-                message="This browser could not save your player."
-              />
-            )}
-            {baseUrl && !storageBlocked && player.isPending && !me && (
-              <StatusNotice kind="info" message="Restoring your player…" />
-            )}
-            {baseUrl && !storageBlocked && player.isError && rejected && (
-              <StatusNotice
-                kind="error"
-                message="This browser’s saved player was rejected."
-                detail="The saved token does not match the server. Starting again creates a new player at score 0."
-                action={{
-                  label: 'Start a new player',
-                  onClick: () => {
-                    clearSession()
-                    void player.refetch()
-                  },
+            {problem && (
+              <PlayerNotice
+                problem={problem}
+                onRetry={() => void player.refetch()}
+                onStartOver={() => {
+                  clearSession()
+                  void player.refetch()
                 }}
-              />
-            )}
-            {baseUrl && !storageBlocked && player.isError && !rejected && !me && (
-              <StatusNotice
-                kind="error"
-                message="Could not reach the server."
-                detail="Your saved player is still in this browser."
-                action={{ label: 'Retry', onClick: () => void player.refetch() }}
-              />
-            )}
-            {stalePlayer && (
-              <StatusNotice
-                kind="warn"
-                message="Could not refresh your player."
-                detail="Showing the last confirmed score."
-                action={{ label: 'Retry', onClick: () => void player.refetch() }}
               />
             )}
           </div>

@@ -1,10 +1,14 @@
-import type { Direction, Offer } from 'contracts'
+import { OFFER_RULES, type Direction, type ErrorCode, type Offer } from 'contracts'
 import { useEffect, useRef, useState } from 'react'
 import { postOffer } from './api'
+import { ACCEPT_FAILED } from './offerCopy'
 import { readSeenOffers, rememberSeenOffer } from './seenOffers'
 import type { Session } from './session'
 
-const ENDED = new Set([
+type Mutation = 'accept' | 'decline' | 'extend'
+
+/** Rejections that mean the offer is over. Refresh and show how it ended instead of an error. */
+const ENDED: ReadonlySet<ErrorCode> = new Set<ErrorCode>([
   'OFFER_EXPIRED',
   'OFFER_ACCEPTED',
   'OFFER_DECLINED',
@@ -21,7 +25,9 @@ export function useOffer(
   serverNowMs: number,
   onFinished: () => void,
 ) {
-  const [mutation, setMutation] = useState<'accept' | 'decline' | 'extend' | null>(null)
+  const [mutation, setMutation] = useState<Mutation | null>(null)
+  /** Guards against a second click before React re-renders with the first mutation. */
+  const inFlight = useRef(false)
   const [error, setError] = useState<string | null>(null)
   const [acceptKey, setAcceptKey] = useState<string | null>(null)
   const [acceptDirection, setAcceptDirection] = useState<Direction | null>(null)
@@ -41,17 +47,30 @@ export function useOffer(
     })
   }, [offer, serverNowMs])
 
+  /** Run one offer request at a time. */
+  async function run<T>(kind: Mutation, request: (current: Offer, player: Session) => Promise<T>): Promise<T | undefined> {
+    if (!session || !offer || inFlight.current) return undefined
+    inFlight.current = true
+    setMutation(kind)
+    try {
+      return await request(offer, session)
+    } finally {
+      inFlight.current = false
+      setMutation(null)
+    }
+  }
+
   async function accept(direction?: Direction) {
-    if (!session || !offer || mutation) return
-    const chosen = offer.mode === 'REDEMPTION' ? (acceptDirection ?? direction) : undefined
-    if (offer.mode === 'REDEMPTION' && chosen !== 'UP' && chosen !== 'DOWN') return
+    if (!session || !offer || inFlight.current) return
+    // A fixed-direction mode ignores the choice. Otherwise a retry keeps the first choice.
+    const chosen = OFFER_RULES[offer.mode].directionFixed ? undefined : (acceptDirection ?? direction)
+    if (!OFFER_RULES[offer.mode].directionFixed && !chosen) return
     const key = acceptKey ?? crypto.randomUUID()
     setAcceptKey(key)
     if (chosen) setAcceptDirection(chosen)
-    setMutation('accept')
     setError(null)
-    const result = await postOffer(baseUrl, session, offer.offerId, 'accept', key, chosen)
-    setMutation(null)
+    const result = await run('accept', (current, player) => postOffer(baseUrl, player, current.offerId, 'accept', key, chosen))
+    if (!result) return
     if (result.kind === 'ok') {
       setAcceptedHere(offer.offerId)
       onFinished()
@@ -61,27 +80,17 @@ export function useOffer(
       onFinished()
       return
     }
-    setError(
-      offer.mode === 'REDEMPTION'
-        ? "We couldn't get a fresh price for the entry. Your −1 is kept. You can try again while the offer lasts."
-        : 'Bonus round not started. Your +1 is kept. You can try again while the offer lasts.',
-    )
+    setError(ACCEPT_FAILED[offer.mode])
   }
 
   async function decline() {
-    if (!session || !offer || mutation) return
-    setMutation('decline')
-    const result = await postOffer(baseUrl, session, offer.offerId, 'decline')
-    setMutation(null)
-    if (result.kind === 'ok') onFinished()
+    const result = await run('decline', (current, player) => postOffer(baseUrl, player, current.offerId, 'decline'))
+    if (result?.kind === 'ok') onFinished()
   }
 
   async function extend() {
-    if (!session || !offer || mutation) return
-    setMutation('extend')
-    const result = await postOffer(baseUrl, session, offer.offerId, 'extend')
-    setMutation(null)
-    if (result.kind === 'ok') onFinished()
+    const result = await run('extend', (current, player) => postOffer(baseUrl, player, current.offerId, 'extend'))
+    if (result?.kind === 'ok') onFinished()
   }
 
   function dismiss(offerId: string) {

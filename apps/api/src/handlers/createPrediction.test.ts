@@ -11,7 +11,6 @@ const quote: TickerQuote = {
   price: '83062.64',
   tradeTime: '2026-10-11T14:59:58.000Z',
   fetchedAt: now.toISOString(),
-  source: 'COINBASE_EXCHANGE',
 }
 
 function session() {
@@ -297,7 +296,7 @@ describe('workflow start', () => {
       predictions: store,
       now: () => now,
       quote: async () => quote,
-      startWorkflow: async (input: { predictionId: string; dueAt: string }) => {
+      startWorkflow: async (input: { playerId: string; predictionId: string; dueAt: string }) => {
         started.push(input)
       },
     }

@@ -12,6 +12,7 @@ import { focusById, PLAY_TITLE_ID, RECEIPT_HEADING_ID } from './focusTargets'
 import type { OfferPhase } from './offer'
 import { announcement, TICKET_PHASES, type RoundPhase, type roundView } from './round'
 import { markSeenResult, shouldAnimate } from './seenResults'
+import { EXTENSION_SECONDS } from './timing'
 
 const FLASH_MS = 1_000
 
@@ -104,7 +105,7 @@ export function useAnnouncer({
     const expiry = offer?.expiresAt ?? null
     if (prevExpiry.current && expiry && expiry !== prevExpiry.current && offerPhase === 'open') {
       const seconds = Math.max(0, Math.ceil((new Date(expiry).getTime() - serverNowMs) / 1000))
-      setLive(`20 seconds added. Offer ends in ${seconds} seconds.`)
+      setLive(`${EXTENSION_SECONDS} seconds added. Offer ends in ${seconds} seconds.`)
     }
     prevExpiry.current = expiry
   }, [offer?.expiresAt, offerPhase, serverNowMs])

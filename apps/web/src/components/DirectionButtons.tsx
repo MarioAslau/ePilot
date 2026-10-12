@@ -1,67 +1,33 @@
+import type { Direction } from 'contracts'
 import { ChevronDown, ChevronUp } from 'lucide-react'
+import { WAIT_SECONDS } from '../timing'
 
-interface Props {
-  onPredict?: (direction: 'UP' | 'DOWN') => void
-  disabled?: boolean
-  isSubmitting?: boolean
-  /** When the player has an active round, dim the non-chosen button */
-  activeDirection?: 'UP' | 'DOWN'
-}
+const BUTTONS = [
+  { direction: 'UP', Icon: ChevronUp, word: 'Up', hint: 'Higher', className: 'up', act: 'predict-up' },
+  { direction: 'DOWN', Icon: ChevronDown, word: 'Down', hint: 'Lower', className: 'down', act: 'predict-down' },
+] as const
 
-/**
- * Up / Down call-to-action buttons.
- * Accessible: both are real <button> elements with aria-labels.
- * Visual states: normal, disabled (no price), submitting (spinner), dimmed (active round).
- */
-export function DirectionButtons({ onPredict, disabled, isSubmitting, activeDirection }: Props) {
-  function handleClick(direction: 'UP' | 'DOWN') {
-    if (!disabled && !isSubmitting && onPredict) {
-      onPredict(direction)
-    }
-  }
-
-  const upDimmed   = activeDirection === 'DOWN'
-  const downDimmed = activeDirection === 'UP'
-
+/** Up and Down calls. Disabled while there is no live price or a submission is in flight. */
+export function DirectionButtons({ onPredict, disabled = false }: { onPredict?: (direction: Direction) => void; disabled?: boolean }) {
   return (
     <div className="choices">
-      <button
-        type="button"
-        className={`choice up${upDimmed ? ' dim' : ''}${isSubmitting && activeDirection === 'UP' ? ' loading' : ''}`}
-        onClick={() => handleClick('UP')}
-        disabled={Boolean(isSubmitting) || Boolean(disabled && !activeDirection)}
-        data-act="predict-up"
-        aria-label="Predict Bitcoin will go Up"
-        aria-pressed={activeDirection === 'UP'}
-      >
-        <span className="cl">
-          {isSubmitting && activeDirection === 'UP'
-            ? <span className="spin dark" aria-hidden="true" />
-            : <ChevronUp className="ic" aria-hidden="true" />
-          }
-          Up
-        </span>
-        <small>Higher in 60+ seconds</small>
-      </button>
-
-      <button
-        type="button"
-        className={`choice down${downDimmed ? ' dim' : ''}${isSubmitting && activeDirection === 'DOWN' ? ' loading' : ''}`}
-        onClick={() => handleClick('DOWN')}
-        disabled={Boolean(isSubmitting) || Boolean(disabled && !activeDirection)}
-        data-act="predict-down"
-        aria-label="Predict Bitcoin will go Down"
-        aria-pressed={activeDirection === 'DOWN'}
-      >
-        <span className="cl">
-          {isSubmitting && activeDirection === 'DOWN'
-            ? <span className="spin dark" aria-hidden="true" />
-            : <ChevronDown className="ic" aria-hidden="true" />
-          }
-          Down
-        </span>
-        <small>Lower in 60+ seconds</small>
-      </button>
+      {BUTTONS.map(({ direction, Icon, word, hint, className, act }) => (
+        <button
+          key={direction}
+          type="button"
+          className={`choice ${className}`}
+          onClick={() => onPredict?.(direction)}
+          disabled={disabled}
+          data-act={act}
+          aria-label={`Predict Bitcoin will go ${word}`}
+        >
+          <span className="cl">
+            <Icon className="ic" aria-hidden="true" />
+            {word}
+          </span>
+          <small>{hint} in {WAIT_SECONDS}+ seconds</small>
+        </button>
+      ))}
     </div>
   )
 }

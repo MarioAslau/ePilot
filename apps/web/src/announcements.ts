@@ -2,6 +2,7 @@ import { OFFER_RULES, pairTotals, type Direction, type OfferMode, type OfferPayo
 import { REDEMPTION_NAME } from './featureNames'
 import { spokenPoints } from './format'
 import { MODE_DISPLAY } from './offerCopy'
+import { OFFER_SECONDS, WAIT_SECONDS } from './timing'
 
 /** Screen-reader text for the live region. Visible copy lives with its component. */
 
@@ -14,7 +15,7 @@ function payoutSentence(payout: OfferPayout): string {
   return `If right, ${spokenPoints(payout.win)}, pair total ${spokenPoints(pair.win)}. If wrong, ${spokenPoints(payout.loss)}, pair total ${spokenPoints(pair.loss)}.`
 }
 
-const OFFER_ENDS = 'The offer ends in 10 seconds; use Need more time to extend it.'
+const OFFER_ENDS = `The offer ends in ${OFFER_SECONDS} seconds; use Need more time to extend it.`
 
 export function winOfferAnnouncement(score: number, direction: Direction): string {
   const word = direction === 'DOWN' ? 'down' : 'up'
@@ -28,7 +29,7 @@ export function lossOfferAnnouncement(score: number, payout: OfferPayout): strin
 export function followOnStartedAnnouncement(mode: OfferMode, direction: Direction, entryPrice: string): string {
   const { payout } = OFFER_RULES[mode]
   const word = direction === 'DOWN' ? 'down' : 'up'
-  return `${MODE_DISPLAY[mode].roundName} round started: ${word}, entry price ${entryPrice}. ${capitalized(spokenPoints(payout.win))} if right, ${spokenPoints(payout.loss)} if wrong. The earliest result is in 60 seconds.`
+  return `${MODE_DISPLAY[mode].roundName} round started: ${word}, entry price ${entryPrice}. ${capitalized(spokenPoints(payout.win))} if right, ${spokenPoints(payout.loss)} if wrong. The earliest result is in ${WAIT_SECONDS} seconds.`
 }
 
 export function followOnResultAnnouncement(

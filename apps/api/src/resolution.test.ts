@@ -17,7 +17,6 @@ function quote(price: string, tradeTime: string): TickerQuote {
     price,
     tradeTime,
     fetchedAt: '2026-10-11T15:01:02.000Z',
-    source: 'COINBASE_EXCHANGE',
   }
 }
 
