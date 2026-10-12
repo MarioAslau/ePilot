@@ -1,6 +1,7 @@
 import type { ScoreDelta } from 'contracts'
 import { ChevronDown, ChevronUp, Minus, Plus } from 'lucide-react'
 import { REDEMPTION_NAME } from '../featureNames'
+import { formatUsd } from '../money'
 import { roundLabel } from '../offer'
 import { DoubleDownBadge } from './DoubleDownBadge'
 import { ModeBadge } from './ModeBadge'
@@ -18,12 +19,6 @@ interface Props {
   scoreDelta?: ScoreDelta
   parent?: { predictionId: string; scoreDelta: ScoreDelta }
   followOn?: 'DOUBLE_DOWN' | 'REDEMPTION'
-}
-
-function formatPrice(raw: string): string {
-  const n = Number(raw)
-  if (!Number.isFinite(n)) return raw
-  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function formatTime(d: Date): string {
@@ -61,7 +56,7 @@ export function ResultReceipt({
   const bonus = parent !== undefined && !redemption
   const pair = parent ? parent.scoreDelta + points : points
   const word = direction === 'DOWN' ? 'Down' : 'Up'
-  const sameDisplay = formatPrice(entryPrice) === formatPrice(resolutionPrice) && entryPrice !== resolutionPrice
+  const sameDisplay = formatUsd(entryPrice) === formatUsd(resolutionPrice) && entryPrice !== resolutionPrice
   const finishedAt = settledAt ?? resolutionTime
 
   return (
@@ -110,11 +105,11 @@ export function ResultReceipt({
       <dl className="kv">
         <div>
           <dt>{redemption ? `${REDEMPTION_NAME} entry` : bonus ? 'Bonus entry' : 'Entry price'}</dt>
-          <dd className="num">{formatPrice(entryPrice)}</dd>
+          <dd className="num">{formatUsd(entryPrice)}</dd>
         </div>
         <div>
           <dt>Resolution price</dt>
-          <dd className="num">{formatPrice(resolutionPrice)}</dd>
+          <dd className="num">{formatUsd(resolutionPrice)}</dd>
           {sameDisplay && <dd className="fine">Exact {entryPrice} vs {resolutionPrice}</dd>}
         </div>
         <div>

@@ -1,3 +1,4 @@
+import { useEffect, useRef, type ReactNode } from 'react'
 import { DirectionButtons } from './DirectionButtons'
 
 interface Props {
@@ -7,21 +8,57 @@ interface Props {
   disabled?: boolean
   reason?: string | null
   title?: string
+  /** Null hides the line. Omitted uses the idle subtitle. */
+  subtitle?: string | null
+  autoFocus?: boolean
+  children?: ReactNode
+}
+
+const IDLE_TITLE = 'Higher or lower in a minute?'
+const IDLE_SUB = 'Make your call. We\'ll check in at least 60 seconds later and score your prediction.'
+
+export function PlayTitle({
+  title,
+  subtitle,
+  autoFocus = false,
+}: {
+  title: string
+  subtitle?: string | null
+  autoFocus?: boolean
+}) {
+  const heading = useRef<HTMLHeadingElement>(null)
+  useEffect(() => {
+    if (autoFocus) heading.current?.focus()
+  }, [autoFocus])
+  return (
+    <>
+      <h1 id="play-title" className="play-title" tabIndex={-1} ref={heading} data-act="play-title">{title}</h1>
+      {subtitle ? <p className="play-sub">{subtitle}</p> : null}
+    </>
+  )
 }
 
 /**
- * Headline copy + direction buttons section inside MarketCard.
+ * Headline copy + direction buttons inside the stage card.
  * Disabled when price is unavailable or a submission is in flight.
  */
-export function PredictionPanel({ price, onPredict, isSubmitting, disabled, reason, title = 'Will BTC be higher or lower?' }: Props) {
+export function PredictionPanel({
+  price,
+  onPredict,
+  isSubmitting,
+  disabled,
+  reason,
+  title = IDLE_TITLE,
+  subtitle = IDLE_SUB,
+  autoFocus = false,
+  children,
+}: Props) {
   const locked = disabled ?? (price === null || isSubmitting)
 
   return (
     <div>
-      <h2 id="play-title" className="play-title" tabIndex={-1} data-act="play-title">{title}</h2>
-      <p className="play-sub">
-        Make your call. We&apos;ll check in at least 60 seconds later and score your prediction.
-      </p>
+      <PlayTitle title={title} subtitle={subtitle} autoFocus={autoFocus} />
+      {children}
 
       <DirectionButtons
         onPredict={onPredict}

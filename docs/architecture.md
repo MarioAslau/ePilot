@@ -582,7 +582,7 @@ separate from data-fetching.
 | PriceChart | SVG sparkline built from validated in-session observations |
 | PredictionPanel | Hosts DirectionButtons or active RoundTicket or ResultReceipt |
 | DirectionButtons | Up/Down buttons with locked and loading states |
-| RoundTicket | Entry price, latest price, step tracker, wait ring, state copy |
+| RoundTicket | Active round: "You called" heading, phase eyebrow, wait dial, entry / latest / vs-entry figures, step tracker, and a note that the round keeps running if the page is closed |
 | ResultReceipt | Outcome badge, score delta, entry/compared price, timestamps |
 | ScoreCard | Numeric score; after the first settled round also shows accuracy %, wins and losses counts, labelled as all settled rounds |
 | RoundHistory | Settled prediction list with loading, empty, error, and populated states |
@@ -606,17 +606,19 @@ entry price; the backend fetches a fresh quote at acceptance time.
 Show an entry-note if the server price differs from the displayed price.
 
 **Active / Waiting**
-Show the RoundTicket with:
-- Entry price and accepted timestamp.
-- Latest available price and live delta labelled "not final".
-- Minimum-wait countdown ring (yellow, fills over 60 s).
-- Step tracker: Placed → Waiting → Comparing → Result.
-- Label "Minimum wait — Not final. Moves during this minute don't count."
+Show one RoundTicket section, labelled by the "You called Up/Down" heading:
+- Phase eyebrow: Minimum wait, Comparing prices, Price unchanged, or On hold, plus the round id. A follow-on round names Double Down or Redemption in that eyebrow.
+- Dial: a countdown (`m:ss`) whose ring fills over 60 seconds while waiting; a spinning arc while comparing; an equal mark when the price is unchanged; a pause mark on provider hold. Reduced motion stops the arc.
+- Three figures: entry price and accepted time, latest price labelled "Not final", and the move versus entry (ahead, behind, or level).
+- Step tracker: Placed → Waiting → Comparing → Result. The current step has `aria-current="step"`.
+- Footer: "You can close this page. The round keeps running."
+- After the minimum wait, "Checked Ns ago" is the age of the last successful player poll, not a settlement time.
+- Waiting copy: "Not final. Earliest result" plus the deadline time.
 
 **After countdown — Checking / Equal / Outage**
 At timer zero show "Comparing prices". Do not invent a result.
 Show state-specific copy only when the backend reports that reason:
-- `checking`: "Minimum wait complete. We're checking the latest price."
+- `checking`: "We're checking the latest price." The spoken transition is still "Minimum wait complete. Checking the latest price."
 - `unchanged`: "The latest price equals your entry price. Still waiting."
 - `price_unavailable`: "Our price source is temporarily unavailable.
   Your round is on hold, and an outage never counts as a loss."

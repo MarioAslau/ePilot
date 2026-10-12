@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { offerPhase, pairFromHistory, type OfferLocal } from '../offer'
-import type { HistoryRound } from '../components/RoundHistory'
+import type { HistoryRound } from '../state/history'
 import type { Offer } from 'contracts'
 
 const offer: Offer = {
