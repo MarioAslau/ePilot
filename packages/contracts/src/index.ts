@@ -221,3 +221,5 @@ export type ErrorResponse = z.infer<typeof ErrorResponseSchema>
 
 export { evaluate } from './evaluator.js'
 export type { EvaluatorInput, EvaluatorResult } from './evaluator.js'
+export { OFFER_MODES, OFFER_RULES, offerModeEnabled, pairTotals, scoreDelta } from './offerRules.js'
+export type { Features, OfferRule } from './offerRules.js'

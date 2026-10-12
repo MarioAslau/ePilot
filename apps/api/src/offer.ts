@@ -1,28 +1,44 @@
-import { OfferSchema, type Direction, type Offer, type OfferMode } from 'contracts'
-import { payoutFor } from './scoring.js'
+import { z } from 'zod'
+import {
+  DirectionSchema,
+  OFFER_MODES,
+  OFFER_RULES,
+  OfferModeSchema,
+  OfferSchema,
+  offerModeEnabled,
+  type Direction,
+  type Features,
+  type Offer,
+  type OfferMode,
+  type Outcome,
+} from 'contracts'
+import type { PredictionRecord } from './prediction.js'
 
 export const OFFER_WINDOW_MS = 10_000
 export const EXTENSION_MS = 20_000
 export const MAX_EXTENSIONS = 10
 export const OFFER_VISIBLE_MS = 60_000
 
-export type StoredOfferStatus = 'OPEN' | 'ACCEPTED' | 'DECLINED' | 'REPLACED'
-
-export interface OfferRecord {
-  offerId: string
-  playerId: string
-  parentPredictionId: string
-  mode: OfferMode
-  direction?: Direction
-  chosenDirection?: Direction
-  issuedAt: string
-  expiresAt: string
-  extensions: number
-  status: StoredOfferStatus
-  createdAt: string
-  bonusPredictionId?: string
-  replacedByPredictionId?: string
-}
+/**
+ * A stored offer, decoded strictly at the store boundary. EXPIRED is derived, never stored.
+ * `mode` is absent on offers written before Redemption, which were all Double Down.
+ */
+export const OfferRecordSchema = z.object({
+  offerId: z.string(),
+  playerId: z.string(),
+  parentPredictionId: z.string(),
+  mode: OfferModeSchema.default('DOUBLE_DOWN'),
+  direction: DirectionSchema.optional(),
+  chosenDirection: DirectionSchema.optional(),
+  issuedAt: z.string(),
+  expiresAt: z.string(),
+  extensions: z.number().int(),
+  status: z.enum(['OPEN', 'ACCEPTED', 'DECLINED', 'REPLACED']),
+  createdAt: z.string(),
+  bonusPredictionId: z.string().optional(),
+  replacedByPredictionId: z.string().optional(),
+})
+export type OfferRecord = z.infer<typeof OfferRecordSchema>
 
 export function offerIdFor(parentPredictionId: string): string {
   return `o_${parentPredictionId}`
@@ -36,31 +52,56 @@ export function offerExpiresAt(issuedAt: string, extensions = 0): string {
   return new Date(new Date(issuedAt).getTime() + OFFER_WINDOW_MS + extensions * EXTENSION_MS).toISOString()
 }
 
-export function doubleDownEnabled(value = process.env.FEATURE_DOUBLE_DOWN): boolean {
-  return value === 'on'
+/**
+ * Feature flags from the environment. `on` enables a mode.
+ * Local play passes `localDefault: true` so an unset variable means on; an explicit value still wins.
+ */
+export function readFeatures(
+  env: Record<string, string | undefined> = process.env,
+  { localDefault = false }: { localDefault?: boolean } = {},
+): Features {
+  const flag = (value: string | undefined) => (value === undefined ? localDefault : value === 'on')
+  return { doubleDown: flag(env.FEATURE_DOUBLE_DOWN), redemption: flag(env.FEATURE_REDEMPTION) }
 }
 
-/** Local play defaults on. An explicit env value still wins. */
-export function localDoubleDownEnabled(): boolean {
-  if (process.env.FEATURE_DOUBLE_DOWN === undefined) return true
-  return process.env.FEATURE_DOUBLE_DOWN === 'on'
+/** The offer a settled standard round grants, if any. Bonus rounds never chain. */
+export interface OfferGrant {
+  offerId: string
+  mode: OfferMode
+  /** Set when the mode fixes the bonus direction to the parent's. */
+  direction?: Direction
+  parentPredictionId: string
 }
 
-export function redemptionEnabled(value = process.env.FEATURE_REDEMPTION): boolean {
-  return value === 'on'
+export function offerFor(
+  prediction: Pick<PredictionRecord, 'predictionId' | 'direction' | 'mode'>,
+  outcome: Outcome,
+  features: Features,
+): OfferGrant | undefined {
+  if (prediction.mode !== 'STANDARD') return undefined
+  const mode = OFFER_MODES.find((candidate) => OFFER_RULES[candidate].trigger === outcome && offerModeEnabled(candidate, features))
+  if (!mode) return undefined
+  return {
+    offerId: offerIdFor(prediction.predictionId),
+    mode,
+    ...(OFFER_RULES[mode].directionFixed ? { direction: prediction.direction } : {}),
+    parentPredictionId: prediction.predictionId,
+  }
 }
 
-/** Local play defaults on. An explicit env value still wins. */
-export function localRedemptionEnabled(): boolean {
-  if (process.env.FEATURE_REDEMPTION === undefined) return true
-  return process.env.FEATURE_REDEMPTION === 'on'
-}
-
-export function offerModeEnabled(
-  mode: OfferMode,
-  flags: { doubleDown: boolean; redemption: boolean },
-): boolean {
-  return mode === 'REDEMPTION' ? flags.redemption : flags.doubleDown
+export function newOfferRecord(playerId: string, grant: OfferGrant, issuedAt: string): OfferRecord {
+  return {
+    offerId: grant.offerId,
+    playerId,
+    parentPredictionId: grant.parentPredictionId,
+    mode: grant.mode,
+    ...(grant.direction ? { direction: grant.direction } : {}),
+    issuedAt,
+    expiresAt: offerExpiresAt(issuedAt),
+    extensions: 0,
+    status: 'OPEN',
+    createdAt: issuedAt,
+  }
 }
 
 export function offerView(offer: OfferRecord, now: Date): Omit<OfferRecord, 'status'> & { status: Offer['status'] } {
@@ -77,13 +118,12 @@ export function offerIsVisible(offer: OfferRecord, now: Date): boolean {
 
 export function offerResponse(offer: OfferRecord, now: Date): Offer {
   const view = offerView(offer, now)
-  const mode = view.mode === 'REDEMPTION' ? 'REDEMPTION' : 'DOUBLE_DOWN'
   return OfferSchema.parse({
     offerId: view.offerId,
     parentPredictionId: view.parentPredictionId,
-    mode,
+    mode: view.mode,
     direction: view.direction ?? null,
-    payout: payoutFor(mode),
+    payout: OFFER_RULES[view.mode].payout,
     issuedAt: view.issuedAt,
     expiresAt: view.expiresAt,
     extensions: view.extensions,
@@ -111,32 +151,4 @@ export function offerConflict(offer: OfferRecord | null, now: Date, action: 'acc
   if (view.status === 'REPLACED') return 'OFFER_REPLACED'
   if (action === 'extend' && offer.extensions >= MAX_EXTENSIONS) return 'MAX_EXTENSIONS'
   return null
-}
-
-function storedDirection(value: unknown): Direction | undefined {
-  if (value === 'UP' || value === 'DOWN') return value
-  return undefined
-}
-
-export function asOffer(item: Record<string, unknown>): OfferRecord {
-  const status = item.status
-  const stored: StoredOfferStatus =
-    status === 'ACCEPTED' || status === 'DECLINED' || status === 'REPLACED' ? status : 'OPEN'
-  const direction = storedDirection(item.direction)
-  const chosenDirection = storedDirection(item.chosenDirection)
-  return {
-    offerId: String(item.offerId),
-    playerId: String(item.playerId),
-    parentPredictionId: String(item.parentPredictionId),
-    mode: item.mode === 'REDEMPTION' ? 'REDEMPTION' : 'DOUBLE_DOWN',
-    ...(direction ? { direction } : {}),
-    ...(chosenDirection ? { chosenDirection } : {}),
-    issuedAt: String(item.issuedAt),
-    expiresAt: String(item.expiresAt),
-    extensions: Number(item.extensions),
-    status: stored,
-    createdAt: String(item.createdAt),
-    ...(typeof item.bonusPredictionId === 'string' ? { bonusPredictionId: item.bonusPredictionId } : {}),
-    ...(typeof item.replacedByPredictionId === 'string' ? { replacedByPredictionId: item.replacedByPredictionId } : {}),
-  }
 }

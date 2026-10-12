@@ -9,6 +9,7 @@ const prediction = {
   dueAt,
   direction: 'UP' as const,
   entryPrice: '65000.10',
+  mode: 'STANDARD' as const,
 }
 
 function quote(price: string, tradeTime: string): TickerQuote {

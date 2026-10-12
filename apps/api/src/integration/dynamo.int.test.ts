@@ -338,7 +338,7 @@ describe.skipIf(!process.env.DYNAMODB_ENDPOINT)('DynamoDB conditions', () => {
       offerId,
     })
     const [createdRound, accepted] = await Promise.all([
-      predictions.create({ ...standard, replaceOfferId: offerId, now: at }),
+      predictions.create({ ...standard, openOffer: { kind: 'replace', offerId, now: at } }),
       predictions.acceptOffer({ ...bonus, offerId, now: at }),
     ])
     const outcomes = [createdRound, accepted].sort()
@@ -441,7 +441,7 @@ describe.skipIf(!process.env.DYNAMODB_ENDPOINT)('DynamoDB conditions', () => {
       offerId,
     })
     const [createdRound, accepted] = await Promise.all([
-      predictions.create({ ...standard, replaceOfferId: offerId, now: at }),
+      predictions.create({ ...standard, openOffer: { kind: 'replace', offerId, now: at } }),
       predictions.acceptOffer({ ...bonus, offerId, now: at, chosenDirection: 'DOWN' }),
     ])
     expect([createdRound, accepted].filter((outcome) => outcome === 'created' || outcome === 'accepted')).toHaveLength(1)

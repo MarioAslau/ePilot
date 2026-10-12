@@ -1,8 +1,11 @@
 import { fetchTicker, ProviderUnavailableError, type TickerQuote } from '../coinbase.js'
-import { doubleDownEnabled, offerIdFor, redemptionEnabled } from '../offer.js'
-import { dynamoPlayerStore, type PlayerStore } from '../playerStore.js'
+import type { Features } from 'contracts'
+import { offerFor, readFeatures } from '../offer.js'
+import { log } from '../log.js'
+import type { PlayerStore } from '../playerStore.js'
+import type { PredictionStore } from '../predictionStore.js'
 import { decide } from '../resolution.js'
-import { dynamoPredictionStore, type PredictionStore } from '../predictionStore.js'
+import { productionStores } from '../stores.js'
 
 export type ResolveStatus =
   | 'SETTLED'
@@ -19,10 +22,6 @@ export interface ResolveInput {
   executionName?: string
 }
 
-function log(event: string, fields: Record<string, string | undefined>) {
-  console.log(JSON.stringify({ event, ...fields }))
-}
-
 export async function handleResolvePrediction(
   input: ResolveInput,
   deps: {
@@ -30,10 +29,9 @@ export async function handleResolvePrediction(
     players: PlayerStore
     now?: () => Date
     quote?: () => Promise<TickerQuote>
-    doubleDown?: boolean
-    redemption?: boolean
+    features?: Features
   },
-) {
+): Promise<ResolveInput & { status: ResolveStatus }> {
   const now = deps.now ?? (() => new Date())
   const base = {
     playerId: input.playerId,
@@ -80,25 +78,7 @@ export async function handleResolvePrediction(
 
   const decision = decide(prediction, clock, quote)
   if (decision.status === 'RESOLVED') {
-    const doubleDown = deps.doubleDown ?? doubleDownEnabled()
-    const redemption = deps.redemption ?? redemptionEnabled()
-    const createOffer =
-      prediction.mode !== 'STANDARD'
-        ? undefined
-        : decision.outcome === 'WIN' && doubleDown
-          ? {
-              offerId: offerIdFor(prediction.predictionId),
-              mode: 'DOUBLE_DOWN' as const,
-              direction: prediction.direction,
-              parentPredictionId: prediction.predictionId,
-            }
-          : decision.outcome === 'LOSS' && redemption
-            ? {
-                offerId: offerIdFor(prediction.predictionId),
-                mode: 'REDEMPTION' as const,
-                parentPredictionId: prediction.predictionId,
-              }
-            : undefined
+    const createOffer = offerFor(prediction, decision.outcome, deps.features ?? readFeatures())
     const resolvedAt = clock.toISOString()
     const outcome = await deps.predictions.settle({
       playerId: input.playerId,
@@ -141,7 +121,4 @@ export async function handleResolvePrediction(
 }
 
 export const handler = async (event: ResolveInput) =>
-  handleResolvePrediction(event, {
-    predictions: dynamoPredictionStore(),
-    players: dynamoPlayerStore(),
-  })
+  handleResolvePrediction(event, productionStores())

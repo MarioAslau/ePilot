@@ -1,33 +1,32 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
-import {
-  DynamoDBDocumentClient,
-  GetCommand,
-  PutCommand,
-} from '@aws-sdk/lib-dynamodb'
+import { GetCommand, PutCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb'
+import { z } from 'zod'
+import { documentClient } from './dynamo.js'
 import { playerKeys } from './player.js'
 
-export interface PlayerRecord {
-  playerId: string
-  accessTokenHash: string
-  score: number
-  wins: number
-  losses: number
-  createdAt: string
-  activePredictionId?: string
-  latestResolvedPredictionId?: string
-  openOfferId?: string
-  latestOfferId?: string
-}
+export const PlayerRecordSchema = z.object({
+  playerId: z.string(),
+  accessTokenHash: z.string(),
+  score: z.number().int(),
+  wins: z.number().int(),
+  losses: z.number().int(),
+  createdAt: z.string(),
+  activePredictionId: z.string().optional(),
+  latestResolvedPredictionId: z.string().optional(),
+  openOfferId: z.string().optional(),
+  latestOfferId: z.string().optional(),
+})
+export type PlayerRecord = z.infer<typeof PlayerRecordSchema>
 
 export interface PlayerStore {
   putNew(record: PlayerRecord): Promise<'created' | 'exists'>
   get(playerId: string): Promise<PlayerRecord | null>
 }
 
-export function dynamoPlayerStore(tableName = process.env.TABLE_NAME): PlayerStore {
+export function dynamoPlayerStore(
+  tableName = process.env.TABLE_NAME,
+  doc: DynamoDBDocumentClient = documentClient(),
+): PlayerStore {
   if (!tableName) throw new Error('TABLE_NAME is not set')
-  const endpoint = process.env.AWS_ENDPOINT_URL_DYNAMODB
-  const doc = DynamoDBDocumentClient.from(new DynamoDBClient(endpoint ? { endpoint } : {}))
 
   return {
     async putNew(record) {
@@ -67,24 +66,7 @@ export function dynamoPlayerStore(tableName = process.env.TABLE_NAME): PlayerSto
           Key: playerKeys(playerId),
         }),
       )
-      const item = result.Item
-      if (!item) return null
-      return {
-        playerId: String(item.playerId),
-        accessTokenHash: String(item.accessTokenHash),
-        score: Number(item.score),
-        wins: Number(item.wins),
-        losses: Number(item.losses),
-        createdAt: String(item.createdAt),
-        ...(item.activePredictionId
-          ? { activePredictionId: String(item.activePredictionId) }
-          : {}),
-        ...(item.latestResolvedPredictionId
-          ? { latestResolvedPredictionId: String(item.latestResolvedPredictionId) }
-          : {}),
-        ...(item.openOfferId ? { openOfferId: String(item.openOfferId) } : {}),
-        ...(item.latestOfferId ? { latestOfferId: String(item.latestOfferId) } : {}),
-      }
+      return result.Item ? PlayerRecordSchema.parse(result.Item) : null
     },
   }
 }

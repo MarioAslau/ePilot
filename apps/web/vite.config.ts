@@ -2,25 +2,7 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
-
-type DevFault = 'drop-response' | 'provider-down'
-
-interface LocalResult {
-  statusCode: number
-  body?: string
-}
-
-interface LocalApp {
-  consumeFault: () => DevFault | null
-  handle: (
-    method: string,
-    path: string,
-    authorization: string | undefined,
-    rawBody: string | undefined,
-    fault: DevFault | null,
-    query?: Record<string, string | undefined>,
-  ) => Promise<LocalResult | null>
-}
+import type { DevFault, LocalApp } from '../api/src/localDevTypes'
 
 function readBody(request: {
   on(event: 'data' | 'end' | 'error', listener: (value?: unknown) => void): void

@@ -1,47 +1,61 @@
-import type { Direction, Mode, ScoreDelta } from 'contracts'
+import {
+  DirectionSchema,
+  ModeSchema,
+  OutcomeSchema,
+  PredictionSchema,
+  PredictionStatusSchema,
+  ScoreDeltaSchema,
+  type Direction,
+  type Mode,
+  type Prediction,
+} from 'contracts'
+import { z } from 'zod'
 
 export const ROUND_MS = 60_000
-export const ENTRY_MAX_TRADE_AGE_MS = 10_000
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000
 
-export interface LastCheck {
-  reason: 'EQUAL_PRICE' | 'PROVIDER_HOLD'
-  at: string
-}
+const LastCheckSchema = z.object({ reason: z.enum(['EQUAL_PRICE', 'PROVIDER_HOLD']), at: z.string() })
+export type LastCheck = z.infer<typeof LastCheckSchema>
 
-export interface PredictionRecord {
-  predictionId: string
-  playerId: string
-  direction: Direction
-  mode: Mode
-  status: 'PENDING' | 'RESOLVED'
-  parentPredictionId?: string
-  createdAt: string
-  dueAt: string
-  entryPrice: string
-  entryTradeTime: string
-  entryFetchedAt: string
-  pendingKey?: 'PENDING'
-  pendingDueAt?: string
-  lastCheck?: LastCheck
-  outcome?: 'WIN' | 'LOSS'
-  scoreDelta?: ScoreDelta
-  resolutionPrice?: string
-  resolutionTradeTime?: string
-  resolutionFetchedAt?: string
-  resolvedAt?: string
-}
+/**
+ * A stored round, decoded strictly at the store boundary.
+ * `mode` is absent on rounds written before Double Down, which were all standard.
+ */
+export const PredictionRecordSchema = z.object({
+  predictionId: z.string(),
+  playerId: z.string(),
+  direction: DirectionSchema,
+  mode: ModeSchema.default('STANDARD'),
+  status: PredictionStatusSchema,
+  parentPredictionId: z.string().optional(),
+  createdAt: z.string(),
+  dueAt: z.string(),
+  entryPrice: z.string(),
+  entryTradeTime: z.string(),
+  entryFetchedAt: z.string(),
+  pendingKey: z.literal('PENDING').optional(),
+  pendingDueAt: z.string().optional(),
+  lastCheck: LastCheckSchema.optional(),
+  outcome: OutcomeSchema.optional(),
+  scoreDelta: ScoreDeltaSchema.optional(),
+  resolutionPrice: z.string().optional(),
+  resolutionTradeTime: z.string().optional(),
+  resolutionFetchedAt: z.string().optional(),
+  resolvedAt: z.string().optional(),
+})
+export type PredictionRecord = z.infer<typeof PredictionRecordSchema>
 
-export interface IdempotencyRecord {
-  playerId: string
-  idempotencyKey: string
-  direction: Direction
-  predictionId: string
-  createdAt: string
-  expiresAt: number
-  kind?: 'OFFER_ACCEPT'
-  offerId?: string
-}
+export const IdempotencyRecordSchema = z.object({
+  playerId: z.string(),
+  idempotencyKey: z.string(),
+  direction: DirectionSchema,
+  predictionId: z.string(),
+  createdAt: z.string(),
+  expiresAt: z.number(),
+  kind: z.literal('OFFER_ACCEPT').optional(),
+  offerId: z.string().optional(),
+})
+export type IdempotencyRecord = z.infer<typeof IdempotencyRecordSchema>
 
 export function newPredictionId(now: Date, nextBytes: (size: number) => Buffer): string {
   const millis = String(now.getTime()).padStart(13, '0')
@@ -92,10 +106,33 @@ export function buildPrediction(input: {
   }
 }
 
-export function tradeIsEntryFresh(tradeTime: string, now: Date): boolean {
-  return now.getTime() - new Date(tradeTime).getTime() <= ENTRY_MAX_TRADE_AGE_MS
-}
-
 export function workflowExecutionName(predictionId: string): string {
   return `prediction-${predictionId}`
+}
+
+/** The wire shape of a stored prediction. `parent` is set on a resolved bonus round. */
+export function predictionResponse(record: PredictionRecord, parent?: Prediction['parent']): Prediction {
+  return PredictionSchema.parse({
+    predictionId: record.predictionId,
+    playerId: record.playerId,
+    direction: record.direction,
+    mode: record.mode,
+    status: record.status,
+    createdAt: record.createdAt,
+    dueAt: record.dueAt,
+    entryPrice: record.entryPrice,
+    entryTradeTime: record.entryTradeTime,
+    ...(record.parentPredictionId ? { parentPredictionId: record.parentPredictionId } : {}),
+    ...(record.status === 'RESOLVED'
+      ? {
+          resolvedAt: record.resolvedAt,
+          resolutionPrice: record.resolutionPrice,
+          resolutionTradeTime: record.resolutionTradeTime,
+          resolutionFetchedAt: record.resolutionFetchedAt,
+          outcome: record.outcome,
+          scoreDelta: record.scoreDelta,
+          ...(parent ? { parent } : {}),
+        }
+      : {}),
+  })
 }

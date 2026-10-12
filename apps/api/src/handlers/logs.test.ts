@@ -36,7 +36,7 @@ describe('lifecycle logs', () => {
     })
     const mintedBody = JSON.parse(minted.body ?? '') as { accessToken: string }
     const header = `Bearer ${created.playerId}.${created.accessToken}`
-    await handleMe(header, 'me', { store, predictions: store, now: () => now })
+    await handleMe(header, 'me', { players: store, predictions: store, now: () => now })
     const response = await handleCreatePrediction(
       header,
       JSON.stringify({ direction: 'UP', idempotencyKey: '77777777-7777-4777-8777-777777777777' }),

@@ -1,35 +1,30 @@
 import { describe, expect, it } from 'vitest'
-import { classifyCancellation, dynamoPredictionStore } from './predictionStore.js'
+import { dynamoPredictionStore, failedTag } from './predictionStore.js'
 
-describe('classifyCancellation', () => {
-  it('treats a failed idempotency condition as a duplicate key', () => {
-    expect(
-      classifyCancellation([
-        { Code: 'None' },
-        { Code: 'None' },
-        { Code: 'ConditionalCheckFailed' },
-      ]),
-    ).toBe('duplicate_key')
+describe('failedTag', () => {
+  const items = [
+    { item: {} },
+    { item: {}, onFail: 'active_round' as const },
+    { item: {}, onFail: 'duplicate_key' as const },
+    { item: {}, onFail: 'offer_changed' as const },
+  ]
+  const priority = ['duplicate_key', 'active_round', 'offer_changed'] as const
+  const failed = { Code: 'ConditionalCheckFailed' }
+  const ok = { Code: 'None' }
+
+  it('reports the tag of the item whose condition failed', () => {
+    expect(failedTag(items, [ok, ok, failed, ok], priority)).toBe('duplicate_key')
+    expect(failedTag(items, [ok, failed, ok, ok], priority)).toBe('active_round')
+    expect(failedTag(items, [ok, ok, ok, failed], priority)).toBe('offer_changed')
   })
 
-  it('treats a failed player condition as an active round', () => {
-    expect(
-      classifyCancellation([
-        { Code: 'None' },
-        { Code: 'ConditionalCheckFailed' },
-        { Code: 'None' },
-      ]),
-    ).toBe('active_round')
+  it('keeps the highest-priority tag when several conditions fail', () => {
+    expect(failedTag(items, [failed, failed, failed, failed], priority)).toBe('duplicate_key')
   })
 
-  it('keeps the duplicate-key reason when both conditions fail', () => {
-    expect(
-      classifyCancellation([
-        { Code: 'ConditionalCheckFailed' },
-        { Code: 'ConditionalCheckFailed' },
-        { Code: 'ConditionalCheckFailed' },
-      ]),
-    ).toBe('duplicate_key')
+  it('reports nothing when only an untagged item failed', () => {
+    expect(failedTag(items, [failed, ok, ok, ok], priority)).toBeUndefined()
+    expect(failedTag(items, undefined, priority)).toBeUndefined()
   })
 })
 

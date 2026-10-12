@@ -1,17 +1,13 @@
 import type { APIGatewayProxyHandlerV2 } from 'aws-lambda'
 import { PredictionHistoryQuerySchema, PredictionHistoryResponseSchema } from 'contracts'
 import { authorizationHeader, invalidInput, json, unauthorized } from '../http.js'
-import { readPlayerAuthorization, tokenMatches } from '../player.js'
-import { dynamoPlayerStore, type PlayerStore } from '../playerStore.js'
-import { predictionResponse } from './createPrediction.js'
-import { dynamoPredictionStore, type PredictionStore } from '../predictionStore.js'
+import { log } from '../log.js'
+import { predictionResponse } from '../prediction.js'
+import { productionStores } from '../stores.js'
+import { authenticate, type HandlerDeps } from './common.js'
 
 const HISTORY_SK = /^PREDICTION#p_\d{13}_[0-9a-f]{8}$/
 const DEFAULT_LIMIT = 20
-
-function log(event: string, fields: Record<string, string | undefined>) {
-  console.log(JSON.stringify({ event, ...fields }))
-}
 
 export function encodeHistoryCursor(sk: string): string {
   return Buffer.from(sk, 'utf8').toString('base64url')
@@ -30,17 +26,11 @@ export async function handleGetPredictionHistory(
   header: string | undefined,
   query: Record<string, string | undefined> | null | undefined,
   requestId: string,
-  deps: {
-    players: PlayerStore
-    predictions: PredictionStore
-  },
+  deps: Pick<HandlerDeps, 'players' | 'predictions'>,
 ) {
-  const auth = readPlayerAuthorization(header)
-  if (!auth) return unauthorized(requestId)
-  const player = await deps.players.get(auth.playerId)
-  if (!player || !tokenMatches(player.accessTokenHash, auth.accessToken)) {
-    return unauthorized(requestId)
-  }
+  const player = await authenticate(header, deps.players)
+  if (!player) return unauthorized(requestId)
+  const { playerId } = player
 
   const parsed = PredictionHistoryQuerySchema.safeParse({
     ...(query?.limit === undefined ? {} : { limit: query.limit }),
@@ -56,10 +46,10 @@ export async function handleGetPredictionHistory(
   }
 
   const limit = parsed.data.limit ?? DEFAULT_LIMIT
-  const page = await deps.predictions.listResolved(auth.playerId, { limit, startSk })
+  const page = await deps.predictions.listResolved(playerId, { limit, startSk })
   log('history.listed', {
     requestId,
-    playerId: auth.playerId,
+    playerId: playerId,
     count: String(page.items.length),
     hasMore: page.nextSk ? 'true' : 'false',
   })
@@ -77,8 +67,5 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) =>
     authorizationHeader(event.headers),
     event.queryStringParameters,
     event.requestContext.requestId,
-    {
-      players: dynamoPlayerStore(),
-      predictions: dynamoPredictionStore(),
-    },
+    productionStores(),
   )

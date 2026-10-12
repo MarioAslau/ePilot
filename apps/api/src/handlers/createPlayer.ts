@@ -2,7 +2,8 @@ import type { APIGatewayProxyHandlerV2 } from 'aws-lambda'
 import { CreatePlayerResponseSchema } from 'contracts'
 import { json } from '../http.js'
 import { createPlayer } from '../player.js'
-import { dynamoPlayerStore, type PlayerStore } from '../playerStore.js'
+import type { PlayerStore } from '../playerStore.js'
+import { productionStores } from '../stores.js'
 
 const MAX_ID_ATTEMPTS = 3
 
@@ -35,6 +36,4 @@ export async function handleCreatePlayer(
 }
 
 export const handler: APIGatewayProxyHandlerV2 = async (event) =>
-  handleCreatePlayer(event.requestContext.requestId, {
-    store: dynamoPlayerStore(),
-  })
+  handleCreatePlayer(event.requestContext.requestId, { store: productionStores().players })

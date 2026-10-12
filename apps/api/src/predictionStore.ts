@@ -1,15 +1,22 @@
-import { DynamoDBClient, TransactionCanceledException } from '@aws-sdk/client-dynamodb'
+import { TransactionCanceledException } from '@aws-sdk/client-dynamodb'
 import {
-  DynamoDBDocumentClient,
   GetCommand,
   QueryCommand,
   TransactWriteCommand,
   UpdateCommand,
+  type DynamoDBDocumentClient,
 } from '@aws-sdk/lib-dynamodb'
 import type { Direction, ScoreDelta } from 'contracts'
-import { asOffer, offerExpiresAt, offerKey, type OfferRecord } from './offer.js'
+import { EXTENSION_MS, MAX_EXTENSIONS, newOfferRecord, offerKey, OfferRecordSchema, type OfferGrant, type OfferRecord } from './offer.js'
+import { documentClient } from './dynamo.js'
 import { playerKeys } from './player.js'
-import type { IdempotencyRecord, LastCheck, PredictionRecord } from './prediction.js'
+import {
+  IdempotencyRecordSchema,
+  PredictionRecordSchema,
+  type IdempotencyRecord,
+  type LastCheck,
+  type PredictionRecord,
+} from './prediction.js'
 
 export interface PredictionStore {
   getPrediction(playerId: string, predictionId: string): Promise<PredictionRecord | null>
@@ -17,10 +24,8 @@ export interface PredictionStore {
   create(input: {
     prediction: PredictionRecord
     idempotency: IdempotencyRecord
-    replaceOfferId?: string
-    clearOpenOffer?: boolean
-    now?: string
-  }): Promise<'created' | 'active_round' | 'duplicate_key' | 'offer_changed'>
+    openOffer?: OpenOfferChange
+  }): Promise<'created' | CreateConflict>
   getOffer(playerId: string, offerId: string): Promise<OfferRecord | null>
   acceptOffer(input: {
     prediction: PredictionRecord
@@ -55,34 +60,47 @@ export interface SettlementInput {
   resolutionTradeTime: string
   resolutionFetchedAt: string
   resolvedAt: string
-  createOffer?: {
-    offerId: string
-    mode: 'DOUBLE_DOWN' | 'REDEMPTION'
-    direction?: PredictionRecord['direction']
-    parentPredictionId: string
-  }
+  createOffer?: OfferGrant
 }
+
+/**
+ * What starting a round does to the player's open offer.
+ * `replace` requires the offer to still be open and marks it REPLACED.
+ * `clear` only drops the player's pointer, for an offer that already changed.
+ */
+export type OpenOfferChange = { kind: 'replace'; offerId: string; now: string } | { kind: 'clear' }
+
+export type CreateConflict = 'duplicate_key' | 'active_round' | 'offer_changed'
+
+type CancellationReasons = Array<{ Code?: string } | undefined> | undefined
+
+/** A transaction item, tagged with the result to report when its condition fails. */
+interface TaggedItem<Tag extends string> {
+  item: Record<string, unknown>
+  onFail?: Tag
+}
+
+/**
+ * The highest-priority tag among the items whose condition failed.
+ * DynamoDB reports cancellation reasons in item order, so tags travel with their items.
+ */
+export function failedTag<Tag extends string>(
+  items: ReadonlyArray<TaggedItem<Tag>>,
+  reasons: CancellationReasons,
+  priority: readonly Tag[],
+): Tag | undefined {
+  const failed = new Set(
+    items.flatMap(({ onFail }, index) => (onFail && reasons?.[index]?.Code === 'ConditionalCheckFailed' ? [onFail] : [])),
+  )
+  return priority.find((tag) => failed.has(tag))
+}
+
+const CREATE_PRIORITY: readonly CreateConflict[] = ['duplicate_key', 'active_round', 'offer_changed']
 
 export interface OverduePrediction {
   playerId: string
   predictionId: string
   dueAt: string
-}
-
-export function classifyCancellation(
-  reasons: Array<{ Code?: string } | undefined> | undefined,
-): 'duplicate_key' | 'active_round' | 'offer_changed' | 'other' {
-  if (reasons?.[2]?.Code === 'ConditionalCheckFailed') return 'duplicate_key'
-  if (reasons?.[1]?.Code === 'ConditionalCheckFailed') return 'active_round'
-  if (reasons?.[3]?.Code === 'ConditionalCheckFailed') return 'offer_changed'
-  return 'other'
-}
-
-export function classifyAcceptCancellation(
-  reasons: Array<{ Code?: string } | undefined> | undefined,
-): 'duplicate_key' | 'conflict' {
-  if (reasons?.[3]?.Code === 'ConditionalCheckFailed') return 'duplicate_key'
-  return 'conflict'
 }
 
 function predictionKey(playerId: string, predictionId: string) {
@@ -93,77 +111,16 @@ function idempotencyKey(playerId: string, key: string) {
   return { pk: `PLAYER#${playerId}`, sk: `IDEMPOTENCY#${key}` }
 }
 
-function asPrediction(item: Record<string, unknown>): PredictionRecord {
-  const check = item.lastCheck
-  const lastCheck =
-    check && typeof check === 'object' && 'reason' in check && 'at' in check
-      ? {
-          reason: (check as LastCheck).reason === 'PROVIDER_HOLD' ? 'PROVIDER_HOLD' as const : 'EQUAL_PRICE' as const,
-          at: String((check as LastCheck).at),
-        }
-      : undefined
-  const resolved = item.status === 'RESOLVED'
-  return {
-    predictionId: String(item.predictionId),
-    playerId: String(item.playerId),
-    direction: item.direction === 'DOWN' ? 'DOWN' : 'UP',
-    mode: item.mode === 'REDEMPTION' ? 'REDEMPTION' : item.mode === 'DOUBLE_DOWN' ? 'DOUBLE_DOWN' : 'STANDARD',
-    ...(typeof item.parentPredictionId === 'string' ? { parentPredictionId: item.parentPredictionId } : {}),
-    status: resolved ? 'RESOLVED' : 'PENDING',
-    createdAt: String(item.createdAt),
-    dueAt: String(item.dueAt),
-    entryPrice: String(item.entryPrice),
-    entryTradeTime: String(item.entryTradeTime),
-    entryFetchedAt: String(item.entryFetchedAt),
-    ...(item.pendingKey === 'PENDING' && item.pendingDueAt
-      ? { pendingKey: 'PENDING' as const, pendingDueAt: String(item.pendingDueAt) }
-      : {}),
-    ...(lastCheck ? { lastCheck } : {}),
-    ...(resolved && (item.outcome === 'WIN' || item.outcome === 'LOSS')
-      ? {
-          outcome: item.outcome,
-          scoreDelta: scoreDeltaOf(item.scoreDelta),
-          resolutionPrice: String(item.resolutionPrice),
-          resolutionTradeTime: String(item.resolutionTradeTime),
-          resolutionFetchedAt: String(item.resolutionFetchedAt),
-          resolvedAt: String(item.resolvedAt),
-        }
-      : {}),
-  }
-}
-
-function scoreDeltaOf(value: unknown): ScoreDelta {
-  if (value === -1 || value === -2 || value === 2 || value === 4) return value
-  return 1
-}
-
-function cancelled(error: unknown): boolean {
+function cancelled(error: unknown): error is TransactionCanceledException {
   return (
     error instanceof TransactionCanceledException ||
     (error instanceof Error && error.name === 'TransactionCanceledException')
   )
 }
 
-function asIdempotency(item: Record<string, unknown>): IdempotencyRecord {
-  return {
-    playerId: String(item.playerId),
-    idempotencyKey: String(item.idempotencyKey),
-    direction: item.direction === 'DOWN' ? 'DOWN' : 'UP',
-    predictionId: String(item.predictionId),
-    createdAt: String(item.createdAt),
-    expiresAt: Number(item.expiresAt),
-    ...(item.kind === 'OFFER_ACCEPT' ? { kind: 'OFFER_ACCEPT' as const } : {}),
-    ...(typeof item.offerId === 'string' ? { offerId: item.offerId } : {}),
-  }
-}
-
 export function dynamoPredictionStore(
   tableName = process.env.TABLE_NAME,
-  doc = DynamoDBDocumentClient.from(
-    new DynamoDBClient(
-      process.env.AWS_ENDPOINT_URL_DYNAMODB ? { endpoint: process.env.AWS_ENDPOINT_URL_DYNAMODB } : {},
-    ),
-  ),
+  doc: DynamoDBDocumentClient = documentClient(),
 ): PredictionStore {
   if (!tableName) throw new Error('TABLE_NAME is not set')
 
@@ -176,7 +133,7 @@ export function dynamoPredictionStore(
           ConsistentRead: true,
         }),
       )
-      return result.Item ? asPrediction(result.Item) : null
+      return result.Item ? PredictionRecordSchema.parse(result.Item) : null
     },
 
     async getIdempotency(playerId, key) {
@@ -187,74 +144,70 @@ export function dynamoPredictionStore(
           ConsistentRead: true,
         }),
       )
-      return result.Item ? asIdempotency(result.Item) : null
+      return result.Item ? IdempotencyRecordSchema.parse(result.Item) : null
     },
 
-    async create({ prediction, idempotency, replaceOfferId, clearOpenOffer, now }) {
-      const playerValues: Record<string, string> = { ':id': prediction.predictionId }
-      let playerUpdate = 'SET activePredictionId = :id'
-      let playerCondition = 'attribute_exists(pk) AND attribute_not_exists(activePredictionId)'
-      if (replaceOfferId) {
-        playerUpdate = 'SET activePredictionId = :id REMOVE openOfferId'
-        playerCondition += ' AND openOfferId = :offer'
-        playerValues[':offer'] = replaceOfferId
-      } else if (clearOpenOffer) {
-        playerUpdate = 'SET activePredictionId = :id REMOVE openOfferId'
-      }
-      const items: Array<Record<string, unknown>> = [
+    async create({ prediction, idempotency, openOffer }) {
+      const replace = openOffer?.kind === 'replace' ? openOffer : undefined
+      const items: Array<TaggedItem<CreateConflict>> = [
         {
-          Put: {
-            TableName: tableName,
-            Item: { ...predictionKey(prediction.playerId, prediction.predictionId), ...prediction },
-            ConditionExpression: 'attribute_not_exists(pk)',
-          },
-        },
-        {
-          Update: {
-            TableName: tableName,
-            Key: playerKeys(prediction.playerId),
-            UpdateExpression: playerUpdate,
-            ConditionExpression: playerCondition,
-            ExpressionAttributeValues: playerValues,
-          },
-        },
-        {
-          Put: {
-            TableName: tableName,
-            Item: {
-              ...idempotencyKey(prediction.playerId, idempotency.idempotencyKey),
-              ...idempotency,
+          item: {
+            Put: {
+              TableName: tableName,
+              Item: { ...predictionKey(prediction.playerId, prediction.predictionId), ...prediction },
+              ConditionExpression: 'attribute_not_exists(pk)',
             },
-            ConditionExpression: 'attribute_not_exists(pk)',
+          },
+        },
+        {
+          onFail: 'active_round',
+          item: {
+            Update: {
+              TableName: tableName,
+              Key: playerKeys(prediction.playerId),
+              UpdateExpression: openOffer ? 'SET activePredictionId = :id REMOVE openOfferId' : 'SET activePredictionId = :id',
+              ConditionExpression: `attribute_exists(pk) AND attribute_not_exists(activePredictionId)${replace ? ' AND openOfferId = :offer' : ''}`,
+              ExpressionAttributeValues: { ':id': prediction.predictionId, ...(replace ? { ':offer': replace.offerId } : {}) },
+            },
+          },
+        },
+        {
+          onFail: 'duplicate_key',
+          item: {
+            Put: {
+              TableName: tableName,
+              Item: { ...idempotencyKey(prediction.playerId, idempotency.idempotencyKey), ...idempotency },
+              ConditionExpression: 'attribute_not_exists(pk)',
+            },
           },
         },
       ]
-      if (replaceOfferId && now) {
+      if (replace) {
         items.push({
-          Update: {
-            TableName: tableName,
-            Key: offerKey(prediction.playerId, replaceOfferId),
-            UpdateExpression: 'SET #status = :replaced, replacedByPredictionId = :id',
-            ConditionExpression: '#status = :open AND expiresAt > :now',
-            ExpressionAttributeNames: { '#status': 'status' },
-            ExpressionAttributeValues: {
-              ':replaced': 'REPLACED',
-              ':id': prediction.predictionId,
-              ':open': 'OPEN',
-              ':now': now,
+          onFail: 'offer_changed',
+          item: {
+            Update: {
+              TableName: tableName,
+              Key: offerKey(prediction.playerId, replace.offerId),
+              UpdateExpression: 'SET #status = :replaced, replacedByPredictionId = :id',
+              ConditionExpression: '#status = :open AND expiresAt > :now',
+              ExpressionAttributeNames: { '#status': 'status' },
+              ExpressionAttributeValues: {
+                ':replaced': 'REPLACED',
+                ':id': prediction.predictionId,
+                ':open': 'OPEN',
+                ':now': replace.now,
+              },
             },
           },
         })
       }
       try {
-        await doc.send(new TransactWriteCommand({ TransactItems: items }))
+        await doc.send(new TransactWriteCommand({ TransactItems: items.map(({ item }) => item) }))
         return 'created'
       } catch (error) {
-        if (cancelled(error)) {
-          const reasons = (error as TransactionCanceledException).CancellationReasons
-          const outcome = classifyCancellation(reasons)
-          if (outcome !== 'other') return outcome
-        }
+        const outcome = cancelled(error) ? failedTag(items, error.CancellationReasons, CREATE_PRIORITY) : undefined
+        if (outcome) return outcome
         throw error
       }
     },
@@ -267,69 +220,66 @@ export function dynamoPredictionStore(
           ConsistentRead: true,
         }),
       )
-      return result.Item ? asOffer(result.Item) : null
+      return result.Item ? OfferRecordSchema.parse(result.Item) : null
     },
 
     async acceptOffer({ prediction, idempotency, offerId, now, chosenDirection }) {
-      const offerValues: Record<string, string> = {
-        ':accepted': 'ACCEPTED',
-        ':id': prediction.predictionId,
-        ':open': 'OPEN',
-        ':now': now,
-      }
-      let offerUpdate = 'SET #status = :accepted, bonusPredictionId = :id'
-      if (chosenDirection) {
-        offerUpdate += ', chosenDirection = :chosen'
-        offerValues[':chosen'] = chosenDirection
-      }
+      const items: Array<TaggedItem<'duplicate_key'>> = [
+        {
+          item: {
+            Update: {
+              TableName: tableName,
+              Key: offerKey(prediction.playerId, offerId),
+              UpdateExpression: `SET #status = :accepted, bonusPredictionId = :id${chosenDirection ? ', chosenDirection = :chosen' : ''}`,
+              ConditionExpression: '#status = :open AND expiresAt > :now',
+              ExpressionAttributeNames: { '#status': 'status' },
+              ExpressionAttributeValues: {
+                ':accepted': 'ACCEPTED',
+                ':id': prediction.predictionId,
+                ':open': 'OPEN',
+                ':now': now,
+                ...(chosenDirection ? { ':chosen': chosenDirection } : {}),
+              },
+            },
+          },
+        },
+        {
+          item: {
+            Update: {
+              TableName: tableName,
+              Key: playerKeys(prediction.playerId),
+              UpdateExpression: 'SET activePredictionId = :id REMOVE openOfferId',
+              ConditionExpression: 'openOfferId = :offer AND attribute_not_exists(activePredictionId)',
+              ExpressionAttributeValues: { ':id': prediction.predictionId, ':offer': offerId },
+            },
+          },
+        },
+        {
+          item: {
+            Put: {
+              TableName: tableName,
+              Item: { ...predictionKey(prediction.playerId, prediction.predictionId), ...prediction },
+              ConditionExpression: 'attribute_not_exists(pk)',
+            },
+          },
+        },
+        {
+          onFail: 'duplicate_key',
+          item: {
+            Put: {
+              TableName: tableName,
+              Item: { ...idempotencyKey(prediction.playerId, idempotency.idempotencyKey), ...idempotency },
+              ConditionExpression: 'attribute_not_exists(pk)',
+            },
+          },
+        },
+      ]
       try {
-        await doc.send(
-          new TransactWriteCommand({
-            TransactItems: [
-              {
-                Update: {
-                  TableName: tableName,
-                  Key: offerKey(prediction.playerId, offerId),
-                  UpdateExpression: offerUpdate,
-                  ConditionExpression: '#status = :open AND expiresAt > :now',
-                  ExpressionAttributeNames: { '#status': 'status' },
-                  ExpressionAttributeValues: offerValues,
-                },
-              },
-              {
-                Update: {
-                  TableName: tableName,
-                  Key: playerKeys(prediction.playerId),
-                  UpdateExpression: 'SET activePredictionId = :id REMOVE openOfferId',
-                  ConditionExpression: 'openOfferId = :offer AND attribute_not_exists(activePredictionId)',
-                  ExpressionAttributeValues: { ':id': prediction.predictionId, ':offer': offerId },
-                },
-              },
-              {
-                Put: {
-                  TableName: tableName,
-                  Item: { ...predictionKey(prediction.playerId, prediction.predictionId), ...prediction },
-                  ConditionExpression: 'attribute_not_exists(pk)',
-                },
-              },
-              {
-                Put: {
-                  TableName: tableName,
-                  Item: {
-                    ...idempotencyKey(prediction.playerId, idempotency.idempotencyKey),
-                    ...idempotency,
-                  },
-                  ConditionExpression: 'attribute_not_exists(pk)',
-                },
-              },
-            ],
-          }),
-        )
+        await doc.send(new TransactWriteCommand({ TransactItems: items.map(({ item }) => item) }))
         return 'accepted'
       } catch (error) {
         if (!cancelled(error)) throw error
-        const reasons = (error as TransactionCanceledException).CancellationReasons
-        return classifyAcceptCancellation(reasons)
+        return failedTag<'duplicate_key'>(items, error.CancellationReasons, ['duplicate_key']) ?? 'conflict'
       }
     },
 
@@ -368,7 +318,7 @@ export function dynamoPredictionStore(
     },
 
     async extendOffer(playerId, offerId, seenExpiresAt, now) {
-      const next = new Date(new Date(seenExpiresAt).getTime() + 20_000).toISOString()
+      const next = new Date(new Date(seenExpiresAt).getTime() + EXTENSION_MS).toISOString()
       try {
         await doc.send(
           new UpdateCommand({
@@ -382,7 +332,7 @@ export function dynamoPredictionStore(
               ':one': 1,
               ':open': 'OPEN',
               ':now': now,
-              ':max': 10,
+              ':max': MAX_EXTENSIONS,
               ':seen': seenExpiresAt,
             },
           }),
@@ -441,16 +391,7 @@ export function dynamoPredictionStore(
             TableName: tableName,
             Item: {
               ...offerKey(input.playerId, input.createOffer.offerId),
-              offerId: input.createOffer.offerId,
-              playerId: input.playerId,
-              parentPredictionId: input.createOffer.parentPredictionId,
-              mode: input.createOffer.mode,
-              ...(input.createOffer.direction ? { direction: input.createOffer.direction } : {}),
-              issuedAt: input.resolvedAt,
-              expiresAt: offerExpiresAt(input.resolvedAt),
-              extensions: 0,
-              status: 'OPEN',
-              createdAt: input.resolvedAt,
+              ...newOfferRecord(input.playerId, input.createOffer, input.resolvedAt),
             },
             ConditionExpression: 'attribute_not_exists(pk)',
           },
@@ -528,7 +469,7 @@ export function dynamoPredictionStore(
           }),
         )
         for (const item of result.Items ?? []) {
-          const record = asPrediction(item)
+          const record = PredictionRecordSchema.parse(item)
           if (record.status === 'RESOLVED') items.push(record)
         }
         const lastKey = result.LastEvaluatedKey?.sk
