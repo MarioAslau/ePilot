@@ -1,68 +1,63 @@
-import { useEffect, useState, type RefObject } from 'react'
+import { useLayoutEffect, useState, type RefObject } from 'react'
 import { findLayoutSlot } from '../layout'
 
 const ROW_FLOOR = 152
 
-/** Open-list cap: the first two stage sections, never the special-round offer. */
+/** Room for the open list so the ledger ends with the stage, ignoring the offer. */
 export function roundsCap(parts: {
-  market: number
-  play: number
+  stageBottom: number
+  listTop: number
   offer: number
-  score: number
-  head: number
-  pad: number
+  below: number
 }): number {
-  const two = parts.market + parts.play - parts.offer
-  return Math.max(ROW_FLOOR, Math.round(two - parts.score - parts.head - parts.pad))
-}
-
-function height(element: Element): number {
-  return element.getBoundingClientRect().height
+  const room = parts.stageBottom - parts.listTop - parts.offer - parts.below
+  return Math.max(ROW_FLOOR, Math.round(room))
 }
 
 function outerHeight(element: Element): number {
   const style = getComputedStyle(element)
-  return height(element) + parseFloat(style.marginTop || '0') + parseFloat(style.marginBottom || '0')
+  const box = element.getBoundingClientRect()
+  return box.height + parseFloat(style.marginTop || '0') + parseFloat(style.marginBottom || '0')
 }
 
-function verticalPadding(element: Element): number {
-  const style = getComputedStyle(element)
-  return parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
+/** Padding and the load-more control that sit under the scrolling list. */
+function trail(rounds: HTMLElement): number {
+  const pad = parseFloat(getComputedStyle(rounds).paddingBottom) || 0
+  const more = rounds.querySelector('.hist-more')
+  return pad + (more ? outerHeight(more) : 0)
 }
 
 /**
- * The desktop height cap for the round list, so the ledger ends where the stage card does.
- * CSS cannot subtract the offer's height, so this measures the stage and the ledger's own parts.
+ * Desktop cap for the open round list, so the ledger ends where the stage card does.
+ * The offer lives inside the stage, and CSS cannot subtract it.
  */
 export function useRoundsCap(
   enabled: boolean,
-  own: { score: RefObject<HTMLElement>; rounds: RefObject<HTMLElement>; head: RefObject<HTMLElement> },
+  own: { score: RefObject<HTMLElement | null>; rounds: RefObject<HTMLElement | null> },
 ): number | null {
   const [cap, setCap] = useState<number | null>(null)
-  const { score, rounds, head } = own
-  useEffect(() => {
+  const { score, rounds } = own
+  useLayoutEffect(() => {
     if (!enabled || typeof ResizeObserver !== 'function') return
     const measure = () => {
-      const market = findLayoutSlot('stage-market')
-      const play = findLayoutSlot('stage-play')
-      if (!market || !play || !score.current) return
-      const offer = findLayoutSlot('offer', play)
+      const stage = findLayoutSlot('stage')
+      const list = rounds.current?.querySelector('.hist-scroll')
+      if (!stage || !list || !rounds.current) return
+      const offer = findLayoutSlot('offer')
       const next = roundsCap({
-        market: height(market),
-        play: height(play),
+        stageBottom: stage.getBoundingClientRect().bottom,
+        listTop: list.getBoundingClientRect().top,
         offer: offer ? outerHeight(offer) : 0,
-        score: height(score.current),
-        head: head.current ? height(head.current) : 0,
-        pad: rounds.current ? verticalPadding(rounds.current) : 0,
+        below: trail(rounds.current),
       })
       setCap((current) => (current === next ? current : next))
     }
     const observer = new ResizeObserver(measure)
-    for (const element of [findLayoutSlot('stage'), score.current]) {
+    for (const element of [findLayoutSlot('stage'), score.current, rounds.current]) {
       if (element) observer.observe(element)
     }
     measure()
     return () => observer.disconnect()
-  }, [enabled, score, rounds, head])
+  }, [enabled, score, rounds])
   return cap
 }

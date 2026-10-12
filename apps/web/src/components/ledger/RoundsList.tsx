@@ -18,6 +18,20 @@ export interface PendingRound {
 
 const PREVIEW = 5
 
+/** First rows that fit in `limit` round lines. A pair is two rounds and is not split. */
+function previewEntries(entries: HistoryEntry[], limit: number): HistoryEntry[] {
+  const shown: HistoryEntry[] = []
+  let rows = 0
+  for (const entry of entries) {
+    const size = entry.kind === 'pair' ? 2 : 1
+    if (shown.length > 0 && rows + size > limit) break
+    shown.push(entry)
+    rows += size
+    if (rows >= limit) break
+  }
+  return shown
+}
+
 const PHASE_WORD: Record<PendingRound['phase'], string> = { waiting: 'Waiting', comparing: 'Comparing', hold: 'On hold' }
 
 function roundTitle(round: { direction: Direction; mode: Mode; entryTradeTime: string }): string {
@@ -154,15 +168,22 @@ export function RoundsList({
 }) {
   const [open, setOpen] = useState(true)
   const [expanded, setExpanded] = useState(false)
+  const [windowHeight, setWindowHeight] = useState<number | null>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const focusNextLoaded = useFocusFirstLoaded(predictions)
 
   const entries = pairFromHistory(predictions)
   const after = runningScores(score, predictions.map((row) => row.scoreDelta))
   const scores = new Map(predictions.map((row, index) => [row.predictionId, after[index] ?? score]))
-  const shown = desk || expanded ? entries : entries.slice(0, PREVIEW)
-  const canToggle = desk ? hasMore : entries.length > PREVIEW || hasMore
+  const preview = previewEntries(entries, PREVIEW - (pending ? 1 : 0))
+  const shown = desk || expanded ? entries : preview
+  const canToggle = desk ? hasMore : preview.length < entries.length || hasMore
   const showError = status === 'error' || pageError
-  const listStyle: CSSProperties | undefined = desk && cap != null ? { maxHeight: cap } : undefined
+  const listStyle: CSSProperties | undefined = desk && cap != null
+    ? { maxHeight: cap, overflowY: 'auto' }
+    : !desk && expanded && windowHeight
+      ? { maxHeight: windowHeight, overflowY: 'auto' }
+      : undefined
 
   function loadMore() {
     focusNextLoaded()
@@ -178,6 +199,8 @@ export function RoundsList({
       setExpanded(false)
       return
     }
+    const height = scrollRef.current?.getBoundingClientRect().height ?? 0
+    if (height > 0) setWindowHeight(Math.round(height))
     setExpanded(true)
     if (hasMore) loadMore()
   }
@@ -188,7 +211,7 @@ export function RoundsList({
       ? 'Show all rounds'
       : expanded
         ? 'Show fewer'
-        : `Show all ${entries.length} rounds`
+        : `Show all ${predictions.length} rounds`
 
   return (
     <section className="ledger-rounds" aria-labelledby="rounds-title" ref={roundsRef}>
@@ -213,19 +236,23 @@ export function RoundsList({
             <p className="empty">No rounds yet. Each settled round appears here with its prices and how it changed your score.</p>
           )}
           {showError && <StatusNotice kind="warn" message="Could not load your rounds." action={{ label: 'Retry', onClick: onRetry }} />}
-          {pending && (
-            <ol className="hist hist-pending">
-              <PendingRow pending={pending} />
-            </ol>
-          )}
-          {shown.length > 0 && (
-            <ol className={!desk && expanded ? 'hist is-open' : 'hist'} style={listStyle}>
-              {shown.map((entry) =>
-                entry.kind === 'pair'
-                  ? <PairRow key={entry.bonus.predictionId} entry={entry} scores={scores} />
-                  : <RoundRow key={entry.round.predictionId} round={entry.round} running={scores.get(entry.round.predictionId) ?? score} />,
+          {(pending || shown.length > 0) && (
+            <div className={!desk && expanded ? 'hist-scroll is-open' : 'hist-scroll'} style={listStyle} ref={scrollRef}>
+              {pending && (
+                <ol className="hist hist-pending">
+                  <PendingRow pending={pending} />
+                </ol>
               )}
-            </ol>
+              {shown.length > 0 && (
+                <ol className={!desk && expanded ? 'hist is-open' : 'hist'}>
+                  {shown.map((entry) =>
+                    entry.kind === 'pair'
+                      ? <PairRow key={entry.bonus.predictionId} entry={entry} scores={scores} />
+                      : <RoundRow key={entry.round.predictionId} round={entry.round} running={scores.get(entry.round.predictionId) ?? score} />,
+                  )}
+                </ol>
+              )}
+            </div>
           )}
           {status !== 'loading' && canToggle && (
             <p className="hist-more">

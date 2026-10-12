@@ -590,7 +590,7 @@ separate from data-fetching.
 | DirectionButtons | Up/Down buttons with locked and loading states |
 | RoundTicket | Active round: "You called" heading, phase eyebrow, wait dial, entry / latest / vs-entry figures, step tracker, and a note that the round keeps running if the page is closed |
 | ResultReceipt | Outcome badge, score delta, entry/compared price, timestamps |
-| LedgerCard | Score, accuracy, and the settled-round list. `ScoreBoard` and `RoundsList` are the two parts. The list height is measured from elements marked `data-layout-slot`, not from styling class names. |
+| LedgerCard | Score, accuracy, and the settled-round list. `ScoreBoard` and `RoundsList` are the two parts. On a wide screen the open list scrolls so the ledger ends with the stage card. On a narrow screen the list shows five rounds, and Show all scrolls the rest inside that same height. The height is measured from elements marked `data-layout-slot`, not from styling class names. |
 | HowItWorks | Expandable accordion; basic rules from T02, plus where settled rounds are listed |
 | StatusNotice | Info / warn / error inline notices with icon, copy and action |
 

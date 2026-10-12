@@ -29,7 +29,7 @@ export function LedgerCard({ score, wins, losses, flash = null, stale = false, p
   const roundsRef = useRef<HTMLElement>(null)
   const headRef = useRef<HTMLButtonElement>(null)
   const desk = useDesk()
-  const cap = useRoundsCap(desk, { score: scoreRef, rounds: roundsRef, head: headRef })
+  const cap = useRoundsCap(desk, { score: scoreRef, rounds: roundsRef })
 
   return (
     <section className="card ledger" aria-labelledby="ledger-title">

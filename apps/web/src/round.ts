@@ -67,12 +67,13 @@ export function roundView(input: {
   settled: Prediction | null
   remaining: number
 } {
-  const active =
-    input.me?.activePrediction ??
-    (input.placed && input.placed.predictionId !== input.me?.latestResolvedPrediction?.predictionId
-      ? input.placed
-      : null)
   const resolved = input.me?.latestResolvedPrediction
+  // `placed` only bridges the gap until /me reports it. A follow-on round settles after it, so
+  // anything the server resolved at or after `placed` was created means it is no longer active.
+  const placedIsNewer =
+    input.placed !== null &&
+    (!resolved || Date.parse(input.placed.createdAt) > Date.parse(resolved.createdAt))
+  const active = input.me?.activePrediction ?? (placedIsNewer ? input.placed : null)
   const settled = !active && resolved?.outcome ? resolved : null
   const remaining = active ? secondsRemaining(active.dueAt, input.offsetMs, input.nowMs) : 0
 
