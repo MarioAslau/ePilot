@@ -239,7 +239,8 @@ score delta of exactly `+1` or `-1`. `scoreDelta(mode, outcome)` maps
 Both bonus modes read from one table, `OFFER_RULES` in
 `packages/contracts/src/offerRules.ts`: the trigger outcome, the payout,
 and whether the direction is fixed. The API, the UI, and the fixtures
-all take their numbers from it.
+all take their numbers from it. A follow-on ticket keeps its "Follows
+round" line from that table after `GET /me` stops sending the offer.
 
 `GET /me` returns `activePrediction`, `latestResolvedPrediction`
 (identified by `predictionId`), `serverTime`, and `waitReason`.
@@ -416,7 +417,9 @@ There is no environment flag that switches the store. The handler functions take
 
 `yarn dev:local` sets `VITE_API_BASE_URL=/api`. The Vite plugin in `apps/web/vite.config.ts` runs only while Vite is serving. It loads `apps/api/src/localDev.ts`. `createLocalApp()` calls `memoryGameStore()` once and keeps that object for the process. It passes the same object into `handleCreatePlayer`, `handleMe`, and `handleCreatePrediction`. `yarn dev` leaves the API address empty, so the browser talks to the deployed API instead of this plugin.
 
-Each Lambda export builds its own DynamoDB stores. The `handler` in `apps/api/src/handlers/createPrediction.ts` calls `dynamoPlayerStore()` and `dynamoPredictionStore()`. Those functions read `TABLE_NAME` and open a DynamoDB client. `createPlayer`, `me`, and `resolvePrediction` do the same. Tests inject `memoryGameStore()` the same way the Vite app does.
+Production handlers share `apps/api/src/handlers/common.ts`: authentication, JSON parsing, the entry quote, idempotent replay, and starting the workflow. `apps/api/src/stores.ts` opens one DynamoDB client and one pair of stores per warm container. Tests still inject `memoryGameStore()`.
+
+A row is decoded with a Zod record schema at the store boundary. A row that fails validation is an error. It is not coerced into a guess such as `UP` or `+1`. Rounds written before T12 have no `mode` and still read as `STANDARD`. Offers written before T13 have no `mode` and still read as `DOUBLE_DOWN`. Transaction items carry an `onFail` tag, so a cancelled write is classified by that tag rather than by its position in the transaction.
 
 Local settlement is `scheduleResolution`: a `setTimeout` in the Vite process that waits until `dueAt`, then calls `handleResolvePrediction`. AWS settlement is `startPredictionWorkflow`, which starts the Step Functions execution. Both paths call the same resolver, with the same 5-second equal-price wait and the same 15-second provider wait. The production wait stays 60 seconds. The local path does not call AWS.
 
@@ -559,15 +562,14 @@ Radius hierarchy: 999 px pills, 10 px controls and nested panels,
 
 Desktop (960 px+): two-column grid inside a 1120 px centred content area.
 Left column (7fr): MarketCard and PredictionPanel stacked. Right column
-(5fr): ScoreCard, RoundHistory and HowItWorks stacked.
+(5fr): LedgerCard and HowItWorks stacked.
 
 Mobile (below 960 px): single column. Stacking order:
 1. Header (logo + anonymous ID + score chip)
 2. MarketCard
 3. PredictionPanel
-4. ScoreCard
-5. RoundHistory
-6. HowItWorks
+4. LedgerCard
+5. HowItWorks
 
 Keep the current score visible on mobile at all times without depending
 on the desktop sidebar. The header score chip appears only below 960 px.
@@ -588,8 +590,7 @@ separate from data-fetching.
 | DirectionButtons | Up/Down buttons with locked and loading states |
 | RoundTicket | Active round: "You called" heading, phase eyebrow, wait dial, entry / latest / vs-entry figures, step tracker, and a note that the round keeps running if the page is closed |
 | ResultReceipt | Outcome badge, score delta, entry/compared price, timestamps |
-| ScoreCard | Numeric score; after the first settled round also shows accuracy %, wins and losses counts, labelled as all settled rounds |
-| RoundHistory | Settled prediction list with loading, empty, error, and populated states |
+| LedgerCard | Score, accuracy, and the settled-round list. `ScoreBoard` and `RoundsList` are the two parts. The list height is measured from elements marked `data-layout-slot`, not from styling class names. |
 | HowItWorks | Expandable accordion; basic rules from T02, plus where settled rounds are listed |
 | StatusNotice | Info / warn / error inline notices with icon, copy and action |
 

@@ -294,3 +294,5 @@ AI coding assistants (Claude and Cursor) were used for planning, implementation 
 Two project skills supported that process:
 - **Grill Me** (`.cursor/skills/grill-me`): a structured, one-question-at-a-time architecture review, used before writing application code.
 - **Ponytail** (`.cursor/skills/ponytail`, source in `vendor/ponytail`): pushes for the simplest working solution during coding and review. Its Cursor hooks in `.cursor/hooks.json` contain machine-specific paths; re-run its install script from `vendor/ponytail/` on another machine.
+
+A third skill was used in Claude only, after T13. The thermo-nuclear code quality review (the nuke) is installed at `~/.claude/skills/thermo-nuclear-code-quality-review`. It is invoked by name. It is not in this repository. That review produced the `OFFER_RULES` table and the handler and `App` split. Gameplay is unchanged.
