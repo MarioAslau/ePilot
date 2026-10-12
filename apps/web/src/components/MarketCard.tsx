@@ -1,6 +1,6 @@
+import type { ReactNode } from 'react'
 import { type PriceSample } from '../market'
-import { PriceChart } from './PriceChart'
-import { PredictionPanel } from './PredictionPanel'
+import { PriceChart, type ChartRound } from './PriceChart'
 import { PriceStatus } from './PriceStatus'
 
 type Status = 'loading' | 'live' | 'stale' | 'unavailable'
@@ -11,16 +11,12 @@ interface Props {
   ageSeconds?: number
   samples?: PriceSample[]
   now?: number
-  showPrediction?: boolean
-  onPredict?: (direction: 'UP' | 'DOWN') => void
-  isSubmitting?: boolean
-  predictionDisabled?: boolean
-  predictionReason?: string | null
-  predictionTitle?: string
+  round?: ChartRound
+  children?: ReactNode
 }
 
 /**
- * Left-column card: current BTC/USD price and, in fixtures, the prediction panel.
+ * The stage: market on top, play underneath. One card, one place.
  */
 export function MarketCard({
   price,
@@ -28,32 +24,16 @@ export function MarketCard({
   ageSeconds,
   samples,
   now,
-  showPrediction = true,
-  onPredict,
-  isSubmitting,
-  predictionDisabled,
-  predictionReason,
-  predictionTitle,
+  round,
+  children,
 }: Props) {
   return (
     <article className="card stage" aria-label="BTC/USD market and prediction">
-      <div>
+      <div className="stage-market">
         <PriceStatus price={price} status={status} ageSeconds={ageSeconds} />
-        {samples && <PriceChart samples={samples} now={now ?? Date.now()} />}
+        <PriceChart samples={samples ?? []} now={now ?? Date.now()} round={round} />
       </div>
-
-      {showPrediction && (
-        <div className="stage-play">
-          <PredictionPanel
-            price={price}
-            onPredict={onPredict}
-            isSubmitting={isSubmitting ?? false}
-            disabled={predictionDisabled}
-            reason={predictionReason}
-            title={predictionTitle}
-          />
-        </div>
-      )}
+      {children ? <div className="stage-play">{children}</div> : null}
     </article>
   )
 }

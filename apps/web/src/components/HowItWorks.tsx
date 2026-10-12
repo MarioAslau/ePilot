@@ -1,19 +1,61 @@
-import { ChevronDown } from 'lucide-react'
+import { CircleHelp, X } from 'lucide-react'
+import { useEffect, useRef } from 'react'
 import { REDEMPTION_NAME } from '../featureNames'
 
-/**
- * Collapsible explainer using a native <details> element.
- * No JS state — the browser handles open/close for free.
- */
-export function HowItWorks({ doubleDown = false, redemption = false }: { doubleDown?: boolean; redemption?: boolean }) {
-  return (
-    <section className="card">
-      <details className="how">
-        <summary>
-          How it works
-          <ChevronDown className="ic" size={18} aria-hidden="true" />
-        </summary>
+interface Props {
+  doubleDown?: boolean
+  redemption?: boolean
+}
 
+function setPageScroll(locked: boolean) {
+  document.documentElement.classList.toggle('modal-open', locked)
+}
+
+export function HowItWorks({ doubleDown = false, redemption = false }: Props) {
+  const dialog = useRef<HTMLDialogElement>(null)
+
+  useEffect(() => {
+    const el = dialog.current
+    if (!el) return
+    const unlock = () => setPageScroll(false)
+    el.addEventListener('close', unlock)
+    return () => {
+      el.removeEventListener('close', unlock)
+      setPageScroll(false)
+    }
+  }, [])
+
+  function open() {
+    const el = dialog.current
+    if (!el) return
+    try {
+      el.showModal()
+    } catch {
+      el.setAttribute('open', '')
+    }
+    setPageScroll(true)
+  }
+
+  function close() {
+    const el = dialog.current
+    if (!el) return
+    if (el.open && typeof el.close === 'function') el.close()
+    el.removeAttribute('open')
+    setPageScroll(false)
+  }
+
+  return (
+    <>
+      <button type="button" className="help-fab" aria-label="How it works" onClick={open}>
+        <CircleHelp className="ic" size={22} aria-hidden="true" />
+      </button>
+      <dialog ref={dialog} className="how-dialog" aria-labelledby="how-title">
+        <div className="how-head">
+          <h2 className="h2" id="how-title">How it works</h2>
+          <button type="button" className="how-close" aria-label="Close" onClick={close}>
+            <X className="ic" size={16} aria-hidden="true" />
+          </button>
+        </div>
         <ol className="howsteps">
           <li>
             <div>
@@ -65,17 +107,16 @@ export function HowItWorks({ doubleDown = false, redemption = false }: { doubleD
             </li>
           )}
         </ol>
-
         <div className="rulebox">
           <strong>Rules</strong>
-          <ul style={{ marginTop: 6, paddingLeft: 14, listStyle: 'disc', color: 'var(--muted)', fontSize: 'var(--t-small)' }}>
+          <ul>
             <li>One active prediction at a time.</li>
             <li>Score starts at 0. No money involved.</li>
             <li>Your score is saved on our server. This browser remembers your anonymous player.</li>
             <li>Prices are for game purposes only — not financial advice.</li>
           </ul>
         </div>
-      </details>
-    </section>
+      </dialog>
+    </>
   )
 }

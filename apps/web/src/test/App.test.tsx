@@ -170,10 +170,10 @@ describe('App player restore', () => {
 
     render(<App />)
 
-    expect(await screen.findByLabelText('Bitcoin price: 65,432.10 US dollars')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Bitcoin price: $65,432.10 US dollars')).toBeInTheDocument()
     expect(screen.getByText('Live')).toBeInTheDocument()
-    expect(screen.getByText('Coinbase Exchange · BTC-USD')).toBeInTheDocument()
-    expect(screen.getByText(/Updated 0 seconds ago · Coinbase/)).toBeInTheDocument()
+    expect(screen.queryByText('Coinbase Exchange · BTC-USD')).not.toBeInTheDocument()
+    expect(screen.getByText(/Updated 0s ago/)).toBeInTheDocument()
     expect(screen.getByText('Collecting recent prices')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /up/i })).toBeInTheDocument()
   })
@@ -207,7 +207,7 @@ describe('App player restore', () => {
 
     expect(screen.getByText('Delayed')).toBeInTheDocument()
     expect(screen.getByText('Price updates are delayed. Showing the last known price.')).toBeInTheDocument()
-    expect(screen.getByLabelText('Bitcoin price: 65,432.10 US dollars')).toBeInTheDocument()
+    expect(screen.getByLabelText('Bitcoin price: $65,432.10 US dollars')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: 'Retry' }).length).toBeGreaterThan(0)
     expect(screen.getByText('Waiting for a live price')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /up/i })).toBeDisabled()
@@ -271,11 +271,11 @@ describe('App predictions', () => {
     posted = true
     resolvePost(jsonResponse(201, recorded))
 
-    expect(await screen.findByText('70,000.50')).toBeInTheDocument()
+    expect(await screen.findByText('$70,000.50')).toBeInTheDocument()
     expect(screen.getByText('The server recorded its own entry price.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /up/i })).not.toBeInTheDocument()
     expect(JSON.parse(bodies[0] ?? '{}').idempotencyKey).toBe(idempotencyKey)
-    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Your prediction' }))
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: /You called (Up|Down)/ }))
   })
 
   it('retries an unknown result with the same idempotency key', async () => {
@@ -317,7 +317,7 @@ describe('App predictions', () => {
     })
 
     expect(keys).toEqual([idempotencyKey, idempotencyKey])
-    expect(screen.getByRole('heading', { name: 'Your prediction' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /You called (Up|Down)/ })).toBeInTheDocument()
   })
 
   it('shows the existing round when the server reports one is active', async () => {
@@ -342,7 +342,7 @@ describe('App predictions', () => {
 
     render(<App />)
     fireEvent.click(await screen.findByRole('button', { name: /up/i }))
-    expect(await screen.findByRole('heading', { name: 'Your prediction' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /You called (Up|Down)/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /up/i })).not.toBeInTheDocument()
   })
 
@@ -502,8 +502,8 @@ describe('App predictions', () => {
     expect(await screen.findByText(/temporarily unavailable/)).toBeInTheDocument()
     expect(screen.getAllByText(/never counts as a loss/).length).toBeGreaterThan(0)
     expect(screen.queryByText('Not this time')).not.toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Your prediction' }).parentElement).toHaveClass('hold')
-    expect(screen.getByRole('heading', { name: 'Your prediction' }).parentElement).not.toHaveClass('down')
+    expect(document.querySelector('.ticket')).toHaveClass('hold')
+    expect(document.querySelector('.ticket')).not.toHaveClass('down')
     expect(screen.getAllByLabelText('Score: 0').length).toBeGreaterThan(0)
   })
 
@@ -529,7 +529,7 @@ describe('App predictions', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
     })
-    const heading = screen.getByRole('heading', { name: 'Your prediction' })
+    const heading = screen.getByRole('heading', { name: /You called (Up|Down)/ })
     expect(document.activeElement).not.toBe(heading)
     const live = document.querySelector('[aria-live="polite"]')
     expect(live?.textContent).toBe('')
@@ -612,9 +612,9 @@ describe('App predictions', () => {
 
     const { unmount } = render(<App />)
     expect(await screen.findByText('0%')).toBeInTheDocument()
-    expect(screen.getByText('all settled rounds')).toBeInTheDocument()
     expect(screen.getAllByLabelText('Score: -2').length).toBeGreaterThan(0)
-    expect(screen.getByText((_, node) => node?.textContent === 'Not this time, −1')).toBeInTheDocument()
+    expect(screen.getByText('Score -2')).toBeInTheDocument()
+    expect(screen.getByText((_, node) => node?.classList.contains('hp') === true && (node.textContent ?? '').includes('Not this time, −1'))).toBeInTheDocument()
     unmount()
 
     vi.stubGlobal('fetch', stubFetch(async (url: string) => {
@@ -623,7 +623,7 @@ describe('App predictions', () => {
       throw new Error(String(url))
     }))
     render(<App />)
-    expect(await screen.findByText('Make your first prediction to start scoring.')).toBeInTheDocument()
+    expect(await screen.findByText(/Everyone starts at 0/)).toBeInTheDocument()
     expect(screen.queryByText('Accuracy')).not.toBeInTheDocument()
   })
 
@@ -692,7 +692,7 @@ describe('App predictions', () => {
     }))
 
     render(<App />)
-    const heading = await screen.findByRole('heading', { name: 'Your prediction' })
+    const heading = await screen.findByRole('heading', { name: /You called (Up|Down)/ })
     expect(document.activeElement).not.toBe(heading)
   })
 })

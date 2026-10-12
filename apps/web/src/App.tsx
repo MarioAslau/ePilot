@@ -11,8 +11,7 @@ import { DoubleDownOffer } from './components/DoubleDownOffer'
 import { OfferEndNotice } from './components/OfferEndNotice'
 import { PredictionPanel } from './components/PredictionPanel'
 import { RedemptionOffer } from './components/RedemptionOffer'
-import { RoundHistory } from './components/RoundHistory'
-import { ScoreCard } from './components/ScoreCard'
+import { LedgerCard } from './components/LedgerCard'
 import { StatusNotice } from './components/StatusNotice'
 import {
   bonusResultAnnouncement,
@@ -76,6 +75,12 @@ function PlayerStatus() {
   const [live, setLive] = useState('')
   const [flash, setFlash] = useState<'win' | 'loss' | null>(null)
   const prevPhase = useRef<RoundPhase | null>(null)
+
+  useEffect(() => {
+    if (!flash) return
+    const timer = window.setTimeout(() => setFlash(null), 1000)
+    return () => window.clearTimeout(timer)
+  }, [flash])
 
   const player = useQuery({
     queryKey: ['player', baseUrl],
@@ -144,7 +149,6 @@ function PlayerStatus() {
     offsetMs: snapshot?.offsetMs ?? 0,
     nowMs,
   })
-  const showPrediction = Boolean(me) && !view.active
   const relocateButtons = phaseOffer === 'open' || phaseOffer === 'submitting' || phaseOffer === 'expired' || phaseOffer === 'declined'
   const marketLive = market.status === 'live'
   const buttonsDisabled = !marketLive || stalePlayer || prediction.phase !== 'idle' || controls.mutation !== null
@@ -158,11 +162,6 @@ function PlayerStatus() {
 
   const activeId = view.active?.predictionId
   const offerTiming = phaseOffer === 'open' || phaseOffer === 'submitting'
-  const offerTitle = !offerTiming
-    ? undefined
-    : visibleOffer?.mode === 'REDEMPTION'
-      ? 'Go again?'
-      : 'Nice call. Bonus round?'
   useEffect(() => {
     if (!activeId && !offerTiming) return
     const id = window.setInterval(() => setNowMs(Date.now()), offerTiming && !activeId ? 100 : 1_000)
@@ -179,7 +178,9 @@ function PlayerStatus() {
       const predictionId = view.settled.predictionId
       const outcome = view.settled.outcome
       if (!shouldAnimate(me.playerId, predictionId)) return
-      setFlash(outcome === 'WIN' ? 'win' : 'loss')
+      if (!(me.wins + me.losses === 0 && me.score === 0)) {
+        setFlash(outcome === 'WIN' ? 'win' : 'loss')
+      }
       if (view.settled.mode === 'REDEMPTION') {
         const delta = view.settled.scoreDelta ?? (outcome === 'WIN' ? 4 : -2)
         const parentDelta = view.settled.parent?.scoreDelta ?? -1
@@ -260,124 +261,123 @@ function PlayerStatus() {
                 ageSeconds={market.ageSeconds}
                 samples={market.samples}
                 now={market.now}
-                showPrediction={showPrediction && !relocateButtons}
-                onPredict={(direction) => {
-                  if (visibleOffer && (phaseOffer === 'open' || phaseOffer === 'submitting')) {
-                    controls.markReplacedHere(visibleOffer.offerId)
-                  }
-                  prediction.submit(direction, market.price)
-                }}
-                isSubmitting={prediction.phase === 'recording'}
-                predictionDisabled={buttonsDisabled}
-                predictionReason={buttonReason}
-                predictionTitle={offerTitle}
-              />
-            )}
-            {view.settled?.outcome && view.settled.resolutionPrice && view.settled.resolutionTradeTime && view.settled.resolvedAt && (
-              <ResultReceipt
-                outcome={view.settled.outcome}
-                direction={view.settled.direction}
-                entryPrice={view.settled.entryPrice}
-                resolutionPrice={view.settled.resolutionPrice}
-                entryTime={new Date(view.settled.entryTradeTime)}
-                resolutionTime={new Date(view.settled.resolutionTradeTime)}
-                fetchedAt={view.settled.resolutionFetchedAt ? new Date(view.settled.resolutionFetchedAt) : undefined}
-                settledAt={new Date(view.settled.resolvedAt)}
-                predictionId={view.settled.predictionId}
-                scoreDelta={view.settled.scoreDelta}
-                parent={view.settled.parent}
-                followOn={view.settled.mode === 'REDEMPTION' || view.settled.mode === 'DOUBLE_DOWN' ? view.settled.mode : undefined}
-              />
-            )}
-            {view.settled?.mode === 'REDEMPTION' && live.startsWith('Welcome back.') && (
-              <p className="fine">Welcome back. Your Redemption round settled while this page was closed.</p>
-            )}
-            {visibleOffer && (phaseOffer === 'open' || phaseOffer === 'submitting') && visibleOffer.mode === 'REDEMPTION' && (
-              <RedemptionOffer
-                offer={visibleOffer}
-                serverNowMs={serverNowMs}
-                submitting={phaseOffer === 'submitting'}
-                pendingDirection={controls.acceptDirection}
-                error={controls.error}
-                busy={buttonsDisabled}
-                restored={controls.restoredOfferId === visibleOffer.offerId}
-                onAccept={(direction) => void controls.accept(direction)}
-                onDecline={() => {
-                  focusTitle.current = true
-                  void controls.decline()
-                }}
-                onExtend={() => void controls.extend()}
-              />
-            )}
-            {visibleOffer && (phaseOffer === 'open' || phaseOffer === 'submitting') && visibleOffer.mode !== 'REDEMPTION' && (
-              <DoubleDownOffer
-                offer={visibleOffer}
-                serverNowMs={serverNowMs}
-                submitting={phaseOffer === 'submitting'}
-                error={controls.error}
-                busy={buttonsDisabled}
-                onAccept={() => void controls.accept()}
-                onDecline={() => {
-                  focusTitle.current = true
-                  void controls.decline()
-                }}
-                onExtend={() => void controls.extend()}
-              />
-            )}
-            {visibleOffer && (phaseOffer === 'expired' || phaseOffer === 'declined') && (
-              <OfferEndNotice
-                mode={visibleOffer.mode}
-                phase={phaseOffer}
-                parentPredictionId={visibleOffer.parentPredictionId}
-                onDismiss={() => controls.dismiss(visibleOffer.offerId)}
-              />
-            )}
-            {relocateButtons && (
-              <PredictionPanel
-                price={market.price}
-                title={offerTitle}
-                onPredict={(direction) => {
-                  if (visibleOffer) controls.markReplacedHere(visibleOffer.offerId)
-                  prediction.submit(direction, market.price)
-                }}
-                isSubmitting={prediction.phase === 'recording'}
-                disabled={buttonsDisabled}
-                reason={buttonReason}
-              />
-            )}
-            {visibleOffer && (phaseOffer === 'used' || phaseOffer === 'replaced') && (
-              <OfferEndNotice
-                mode={visibleOffer.mode}
-                phase={phaseOffer}
-                parentPredictionId={visibleOffer.parentPredictionId}
-                onDismiss={() => controls.dismiss(visibleOffer.offerId)}
-              />
-            )}
-            {view.active && (
-              <RoundTicket
-                key={view.active.predictionId}
-                direction={view.active.direction}
-                entryPrice={view.active.entryPrice}
-                entryTime={new Date(view.active.entryTradeTime)}
-                deadline={new Date(view.active.dueAt)}
-                predictionId={view.active.predictionId}
-                state={ticketState}
-                secondsRemaining={view.remaining}
-                latestPrice={market.price ?? undefined}
-                bonus={view.active.mode === 'DOUBLE_DOWN'}
-                followOn={view.active.mode === 'REDEMPTION' || view.active.mode === 'DOUBLE_DOWN' ? view.active.mode : undefined}
-                payout={visibleOffer?.payout}
-                parentPredictionId={view.active.parentPredictionId}
-                autoFocus={
-                  prediction.placed?.predictionId === view.active.predictionId
-                  || visibleOffer?.bonusPredictionId === view.active.predictionId
-                }
-                note={
-                  prediction.serverPriced
-                    ? 'The server recorded its own entry price.'
-                    : undefined
-                }
-              />
+                round={view.active ? {
+                  acceptedAt: new Date(view.active.entryTradeTime).getTime(),
+                  earliestResolveAt: new Date(view.active.dueAt).getTime(),
+                  entryPrice: view.active.entryPrice,
+                } : undefined}
+              >
+                {view.active ? (
+                  <>
+                    {visibleOffer && (phaseOffer === 'used' || phaseOffer === 'replaced') && (
+                      <OfferEndNotice
+                        mode={visibleOffer.mode}
+                        phase={phaseOffer}
+                        parentPredictionId={visibleOffer.parentPredictionId}
+                        onDismiss={() => controls.dismiss(visibleOffer.offerId)}
+                      />
+                    )}
+                    <RoundTicket
+                      key={view.active.predictionId}
+                      direction={view.active.direction}
+                      entryPrice={view.active.entryPrice}
+                      entryTime={new Date(view.active.entryTradeTime)}
+                      deadline={new Date(view.active.dueAt)}
+                      predictionId={view.active.predictionId}
+                      state={ticketState}
+                      secondsRemaining={view.remaining}
+                      latestPrice={market.price ?? undefined}
+                      bonus={view.active.mode === 'DOUBLE_DOWN'}
+                      followOn={view.active.mode === 'REDEMPTION' || view.active.mode === 'DOUBLE_DOWN' ? view.active.mode : undefined}
+                      payout={visibleOffer?.payout}
+                      parentPredictionId={view.active.parentPredictionId}
+                      autoFocus={
+                        prediction.placed?.predictionId === view.active.predictionId
+                        || visibleOffer?.bonusPredictionId === view.active.predictionId
+                      }
+                      checkedAgoSeconds={Math.max(0, Math.round((nowMs - player.dataUpdatedAt) / 1000))}
+                      note={
+                        prediction.serverPriced
+                          ? 'The server recorded its own entry price.'
+                          : undefined
+                      }
+                    />
+                  </>
+                ) : me ? (
+                  <PredictionPanel
+                    price={market.price}
+                    title={view.settled?.outcome || relocateButtons ? 'Go again?' : undefined}
+                    subtitle={view.settled?.outcome || relocateButtons ? null : undefined}
+                    onPredict={(direction) => {
+                      if (visibleOffer && relocateButtons) controls.markReplacedHere(visibleOffer.offerId)
+                      prediction.submit(direction, market.price)
+                    }}
+                    isSubmitting={prediction.phase === 'recording'}
+                    disabled={buttonsDisabled}
+                    reason={buttonReason}
+                  >
+                    {view.settled?.outcome && view.settled.resolutionPrice && view.settled.resolutionTradeTime && view.settled.resolvedAt && (
+                      <ResultReceipt
+                        outcome={view.settled.outcome}
+                        direction={view.settled.direction}
+                        entryPrice={view.settled.entryPrice}
+                        resolutionPrice={view.settled.resolutionPrice}
+                        entryTime={new Date(view.settled.entryTradeTime)}
+                        resolutionTime={new Date(view.settled.resolutionTradeTime)}
+                        fetchedAt={view.settled.resolutionFetchedAt ? new Date(view.settled.resolutionFetchedAt) : undefined}
+                        settledAt={new Date(view.settled.resolvedAt)}
+                        predictionId={view.settled.predictionId}
+                        scoreDelta={view.settled.scoreDelta}
+                        parent={view.settled.parent}
+                        followOn={view.settled.mode === 'REDEMPTION' || view.settled.mode === 'DOUBLE_DOWN' ? view.settled.mode : undefined}
+                      />
+                    )}
+                    {view.settled?.mode === 'REDEMPTION' && live.startsWith('Welcome back.') && (
+                      <p className="fine">Welcome back. Your Redemption round settled while this page was closed.</p>
+                    )}
+                    {visibleOffer && (phaseOffer === 'open' || phaseOffer === 'submitting') && visibleOffer.mode === 'REDEMPTION' && (
+                      <RedemptionOffer
+                        offer={visibleOffer}
+                        serverNowMs={serverNowMs}
+                        submitting={phaseOffer === 'submitting'}
+                        pendingDirection={controls.acceptDirection}
+                        error={controls.error}
+                        busy={buttonsDisabled}
+                        restored={controls.restoredOfferId === visibleOffer.offerId}
+                        onAccept={(direction) => void controls.accept(direction)}
+                        onDecline={() => {
+                          focusTitle.current = true
+                          void controls.decline()
+                        }}
+                        onExtend={() => void controls.extend()}
+                      />
+                    )}
+                    {visibleOffer && (phaseOffer === 'open' || phaseOffer === 'submitting') && visibleOffer.mode !== 'REDEMPTION' && (
+                      <DoubleDownOffer
+                        offer={visibleOffer}
+                        serverNowMs={serverNowMs}
+                        submitting={phaseOffer === 'submitting'}
+                        error={controls.error}
+                        busy={buttonsDisabled}
+                        onAccept={() => void controls.accept()}
+                        onDecline={() => {
+                          focusTitle.current = true
+                          void controls.decline()
+                        }}
+                        onExtend={() => void controls.extend()}
+                      />
+                    )}
+                    {visibleOffer && (phaseOffer === 'expired' || phaseOffer === 'declined' || phaseOffer === 'used' || phaseOffer === 'replaced') && (
+                      <OfferEndNotice
+                        mode={visibleOffer.mode}
+                        phase={phaseOffer}
+                        parentPredictionId={visibleOffer.parentPredictionId}
+                        onDismiss={() => controls.dismiss(visibleOffer.offerId)}
+                      />
+                    )}
+                  </PredictionPanel>
+                ) : null}
+              </MarketCard>
             )}
             {prediction.notice && prediction.notice !== 'Recording entry' && view.phase !== 'active' && view.phase !== 'checking' && view.phase !== 'equal' && view.phase !== 'hold' && (
               <StatusNotice
@@ -445,17 +445,13 @@ function PlayerStatus() {
             )}
           </div>
           <div className="col">
-            {me && (
-              <ScoreCard
-                score={me.score}
-                wins={me.wins}
-                losses={me.losses}
+            {(me || (baseUrl && !storageBlocked)) && (
+              <LedgerCard
+                score={me?.score ?? 0}
+                wins={me?.wins ?? 0}
+                losses={me?.losses ?? 0}
                 flash={flash}
                 stale={stalePlayer}
-              />
-            )}
-            {baseUrl && !storageBlocked && (
-              <RoundHistory
                 status={history.status}
                 predictions={history.predictions}
                 hasMore={history.hasMore}
@@ -463,12 +459,20 @@ function PlayerStatus() {
                 pageError={history.pageError}
                 onLoadMore={history.loadMore}
                 onRetry={history.retry}
+                pending={view.active && me ? {
+                  direction: view.active.direction,
+                  entryPrice: view.active.entryPrice,
+                  entryTradeTime: view.active.entryTradeTime,
+                  mode: view.active.mode,
+                  phase: view.phase === 'hold' ? 'hold' : view.phase === 'checking' || view.phase === 'equal' ? 'comparing' : 'waiting',
+                  score: me.score,
+                } : null}
               />
             )}
-            <HowItWorks doubleDown={Boolean(me?.features.doubleDown)} redemption={Boolean(me?.features.redemption)} />
           </div>
         </div>
       </main>
+      <HowItWorks doubleDown={Boolean(me?.features.doubleDown)} redemption={Boolean(me?.features.redemption)} />
     </>
   )
 }

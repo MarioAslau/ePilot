@@ -1,3 +1,5 @@
+import { formatUsd } from '../money'
+
 type Status = 'loading' | 'live' | 'stale' | 'unavailable'
 
 interface Props {
@@ -13,18 +15,10 @@ function PillLabel({ status }: { status: Status }) {
   return <span className="pill unavail"><span className="dot" />Unavailable</span>
 }
 
-function formatPrice(raw: string | null): string {
-  if (!raw) return '—'
-  const n = Number(raw)
-  if (!Number.isFinite(n)) return raw
-  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
 function ageLabel(status: Status, ageSeconds: number | undefined): string | null {
   if (ageSeconds === undefined || status === 'loading' || status === 'unavailable') return null
-  const age = `Updated ${ageSeconds} seconds ago · Coinbase`
-  if (status === 'stale') return `Last known price, updated ${ageSeconds} seconds ago · Coinbase`
-  return age
+  if (status === 'stale') return `Last known price, updated ${ageSeconds}s ago`
+  return `Updated ${ageSeconds}s ago`
 }
 
 /**
@@ -32,7 +26,7 @@ function ageLabel(status: Status, ageSeconds: number | undefined): string | null
  * A stale price is dimmed. Age uses the browser receive time.
  */
 export function PriceStatus({ price, status, ageSeconds }: Props) {
-  const formatted = formatPrice(price)
+  const formatted = formatUsd(price)
   const age = ageLabel(status, ageSeconds)
 
   return (
@@ -55,10 +49,11 @@ export function PriceStatus({ price, status, ageSeconds }: Props) {
         )}
       </div>
 
-      <div className="mk-meta">
-        <span>Coinbase Exchange · BTC-USD</span>
-        {age && <span className="num">{age}</span>}
-      </div>
+      {age && (
+        <div className="mk-meta">
+          <span className="num">{age}</span>
+        </div>
+      )}
     </div>
   )
 }

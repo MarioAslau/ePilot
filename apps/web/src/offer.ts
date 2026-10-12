@@ -1,5 +1,5 @@
 import type { MeResponse, Offer, OfferPayout } from 'contracts'
-import type { HistoryRound } from './components/RoundHistory'
+import type { HistoryRound } from './state/history'
 import { REDEMPTION_NAME } from './featureNames'
 
 export type OfferPhase = 'open' | 'submitting' | 'expired' | 'declined' | 'used' | 'replaced'

@@ -26,7 +26,7 @@ export function AppHeader({ score, playerId, stale = false }: Props) {
             {playerId}
           </span>
         )}
-        {/* Score chip — visible on mobile, hidden at 960 px (shown in ScoreCard on desktop) */}
+        {/* Score chip — stays visible, including below the desk breakpoint */}
         <div className="chip chip-score" aria-label={score === null ? 'Score: loading' : stale ? `Last confirmed score: ${score}` : `Score: ${score}`}>
           <span className="chip-long">{stale ? 'Last confirmed' : 'Score'}</span>
           <strong className="num">{score === null ? '…' : score}</strong>

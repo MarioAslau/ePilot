@@ -126,13 +126,13 @@ test('plays one round and can place another', async ({ page }) => {
   releaseCreate()
   await placing
 
-  await expect(page.getByText('70,000.50')).toBeVisible()
-  const heading = page.getByRole('heading', { name: 'Your prediction' })
+  await expect(page.getByText('$70,000.50', { exact: true })).toBeVisible()
+  const heading = page.getByRole('heading', { name: /You called (Up|Down)/ })
   await expect(heading).toBeFocused()
 
   const postsAfterCreate = playerPosts
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Your prediction' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /You called (Up|Down)/ })).toBeVisible()
   expect(playerPosts).toBe(postsAfterCreate)
 
   // Pause inside the page. A separate pauseAt(Date.now()) can already be in the
@@ -157,14 +157,13 @@ test('plays one round and can place another', async ({ page }) => {
   // The page clock is paused, so that timer does not run until the clock moves.
   await page.clock.runFor(1_000)
   const rounds = page.getByRole('region', { name: 'Your rounds' })
-  await expect(rounds).toContainText('70,000.50 to 70,100.00')
+  await expect(rounds).toContainText('$70,000.50 to $70,100.00')
   await expect(rounds).toContainText('+1')
-  await expect(page.locator('.flash-win')).toBeVisible()
   await expect(page.getByText('Correct. Score 1.')).toHaveCount(1)
 
   await expect(up).toBeEnabled()
   await up.click()
-  await expect(page.getByRole('heading', { name: 'Your prediction' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /You called (Up|Down)/ })).toBeVisible()
   await expect(down).toHaveCount(0)
 })
 
@@ -291,7 +290,8 @@ test('accepts a double down and shows the pair, expiry, and a replaced offer', a
   await expect(page.getByRole('region', { name: 'Your score' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Double down' }).click()
-  await expect(page.getByRole('heading', { name: 'Your bonus round is in' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /You called Up/ })).toBeVisible()
+  await expect(page.locator('.rd-eyebrow').getByText('Double Down', { exact: true })).toBeVisible()
 
   phase = 'bonus-won'
   await page.clock.runFor(2_000)

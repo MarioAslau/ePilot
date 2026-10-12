@@ -2,7 +2,7 @@ import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 import { fetchHistory } from './predictions'
 import { readSession } from './session'
-import { historyRound, type HistoryRound } from './components/RoundHistory'
+import { historyRound, type HistoryRound } from './state/history'
 
 export function useHistory(baseUrl: string, playerId: string | null, latestResolvedId: string | null) {
   const queryClient = useQueryClient()

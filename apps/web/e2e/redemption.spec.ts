@@ -165,7 +165,8 @@ test('plays a redemption round down and shows the pair', async ({ page }) => {
   await expect(page.getByText('−1 kept')).toBeVisible()
   await expect(page.getByText('Pair total', { exact: false }).first()).toBeVisible()
   await page.getByRole('button', { name: 'Play Down' }).click()
-  await expect(page.getByRole('heading', { name: 'Your Redemption round is in' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /You called Down/ })).toBeVisible()
+  await expect(page.locator('.rd-eyebrow').getByText('Redemption', { exact: true })).toBeVisible()
   phase.current = 'won'
   await page.clock.runFor(2_000)
   await expect(page.locator('#receipt-heading')).toHaveText('Redemption round correct')
@@ -193,7 +194,7 @@ test('starts a normal round from the main Up button without a notice', async ({ 
   const phase = { current: 'loss' as Phase }
   await boot(page, phase)
   await page.getByRole('button', { name: 'Predict Bitcoin will go Up' }).click()
-  await expect(page.getByRole('heading', { name: 'Your prediction' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /You called Up/ })).toBeVisible()
   await expect(page.getByText('Offer no longer available')).toHaveCount(0)
 })
 
@@ -204,7 +205,8 @@ test('shows the other-tab notice above the ticket', async ({ page }) => {
   phase.current = 'used'
   await page.clock.runFor(2_000)
   await expect(page.getByText('already started in another tab')).toBeVisible()
-  await expect(page.getByRole('heading', { name: 'Your Redemption round is in' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /You called Down/ })).toBeVisible()
+  await expect(page.locator('.rd-eyebrow').getByText('Redemption', { exact: true })).toBeVisible()
 })
 
 test('restores an open offer and an expired offer this tab has seen', async ({ page }) => {

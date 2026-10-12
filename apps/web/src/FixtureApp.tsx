@@ -11,7 +11,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { AppHeader } from './components/AppHeader'
-import { DirectionButtons } from './components/DirectionButtons'
 import { DoubleDownOffer } from './components/DoubleDownOffer'
 import { OfferEndNotice } from './components/OfferEndNotice'
 import { RedemptionOffer } from './components/RedemptionOffer'
@@ -20,8 +19,7 @@ import { PredictionPanel } from './components/PredictionPanel'
 import { MarketCard } from './components/MarketCard'
 import { ResultReceipt } from './components/ResultReceipt'
 import { RoundTicket } from './components/RoundTicket'
-import { RoundHistory } from './components/RoundHistory'
-import { ScoreCard } from './components/ScoreCard'
+import { LedgerCard } from './components/LedgerCard'
 import { StatusNotice } from './components/StatusNotice'
 import { type FixtureName, FIXTURE_NAMES, fixtures } from './fixtures'
 
@@ -97,97 +95,96 @@ export function FixtureApp() {
               <MarketCard
                 price={state.price}
                 status={state.priceStatus}
-                isSubmitting={state.isSubmitting}
-                showPrediction={!relocate && !state.activeRound}
-                predictionTitle={offerPreview === 'open' || offerPreview === 'extended' ? 'Nice call. Bonus round?' : undefined}
-              />
-
-              {/* Active round ticket */}
-              {state.activeRound && (
-                <RoundTicket
-                  direction={state.activeRound.direction}
-                  entryPrice={state.activeRound.entryPrice}
-                  entryTime={state.activeRound.entryTime}
-                  deadline={state.activeRound.deadline}
-                  predictionId={state.activeRound.predictionId}
-                  state={state.activeRound.state}
-                  secondsRemaining={state.activeRound.secondsRemaining}
-                  latestPrice={state.price ?? undefined}
-                  bonus={state.bonus}
-                  followOn={state.followOn}
-                  payout={state.followOn === 'REDEMPTION' ? sampleOffer.payout : undefined}
-                  parentPredictionId={state.bonus || state.followOn ? 'p_0000000002000_ccccdddd' : undefined}
-                />
-              )}
-
-              {/* Standalone direction buttons for submitting state */}
-              {state.isSubmitting && !state.activeRound && (
-                <DirectionButtons disabled isSubmitting />
-              )}
-
-              {/* Settlement receipt */}
-              {state.result && (
-                <ResultReceipt
-                  outcome={state.result.outcome}
-                  direction={state.result.direction}
-                  entryPrice={state.result.entryPrice}
-                  resolutionPrice={state.result.resolutionPrice}
-                  entryTime={state.result.entryTime}
-                  resolutionTime={state.result.resolutionTime}
-                  predictionId={state.result.predictionId}
-                  scoreDelta={settledRedemption
-                    ? (state.result.outcome === 'WIN' ? 4 : -2)
-                    : state.bonus ? (state.result.outcome === 'WIN' ? 2 : -2) : undefined}
-                  parent={settledRedemption
-                    ? { predictionId: 'p_0000000002000_ccccdddd', scoreDelta: -1 }
-                    : state.bonus ? { predictionId: 'p_0000000002000_ccccdddd', scoreDelta: 1 } : undefined}
-                  followOn={settledRedemption ? 'REDEMPTION' : state.bonus ? 'DOUBLE_DOWN' : undefined}
-                />
-              )}
-              {(offerPreview === 'open' || offerPreview === 'extended' || offerPreview === 'submitting') && (
-                <div className={current.endsWith('reduced-motion') ? 'dd-force-pips' : undefined} style={current === 'rd-offer-narrow' ? { maxWidth: 375 } : undefined}>
-                  {redemption ? (
-                    <RedemptionOffer
-                      offer={sampleOffer}
-                      name={state.redemptionName}
-                      restored={state.restored}
-                      serverNowMs={Date.parse('2026-10-06T14:01:05.000Z')}
-                      submitting={offerPreview === 'submitting'}
-                      pendingDirection={offerPreview === 'submitting' ? 'DOWN' : null}
-                      error={null}
-                      busy={offerPreview === 'submitting'}
-                      onAccept={() => undefined}
-                      onDecline={() => undefined}
-                      onExtend={() => undefined}
+                round={state.activeRound ? {
+                  acceptedAt: state.activeRound.entryTime.getTime(),
+                  earliestResolveAt: state.activeRound.deadline.getTime(),
+                  entryPrice: state.activeRound.entryPrice,
+                } : undefined}
+              >
+                {state.activeRound ? (
+                  <>
+                    {(offerPreview === 'used' || offerPreview === 'replaced') && (
+                      <OfferEndNotice mode={sampleOffer.mode} phase={offerPreview} parentPredictionId={sampleOffer.parentPredictionId} name={state.redemptionName} />
+                    )}
+                    <RoundTicket
+                      direction={state.activeRound.direction}
+                      entryPrice={state.activeRound.entryPrice}
+                      entryTime={state.activeRound.entryTime}
+                      deadline={state.activeRound.deadline}
+                      predictionId={state.activeRound.predictionId}
+                      state={state.activeRound.state}
+                      secondsRemaining={state.activeRound.secondsRemaining}
+                      latestPrice={state.price ?? undefined}
+                      bonus={state.bonus}
+                      followOn={state.followOn}
+                      payout={state.followOn === 'REDEMPTION' ? sampleOffer.payout : undefined}
+                      parentPredictionId={state.bonus || state.followOn ? 'p_0000000002000_ccccdddd' : undefined}
+                      checkedAgoSeconds={2}
                     />
-                  ) : (
-                    <DoubleDownOffer
-                      offer={sampleOffer}
-                      serverNowMs={Date.parse('2026-10-06T14:01:05.000Z')}
-                      submitting={offerPreview === 'submitting'}
-                      error={null}
-                      busy={offerPreview === 'submitting'}
-                      onAccept={() => undefined}
-                      onDecline={() => undefined}
-                      onExtend={() => undefined}
-                    />
-                  )}
-                </div>
-              )}
-              {(offerPreview === 'expired' || offerPreview === 'declined' || offerPreview === 'used' || offerPreview === 'replaced') && (
-                <OfferEndNotice mode={sampleOffer.mode} phase={offerPreview} parentPredictionId={sampleOffer.parentPredictionId} name={state.redemptionName} />
-              )}
-              {relocate && (
-                <PredictionPanel
-                  price={state.price}
-                  title={offerPreview === 'open' || offerPreview === 'extended' || offerPreview === 'submitting'
-                    ? (redemption ? 'Go again?' : 'Nice call. Bonus round?')
-                    : undefined}
-                  disabled={offerPreview === 'submitting'}
-                  isSubmitting={offerPreview === 'submitting'}
-                  onPredict={() => undefined}
-                />
-              )}
+                  </>
+                ) : (
+                  <PredictionPanel
+                    price={state.price}
+                    title={state.result || relocate ? 'Go again?' : undefined}
+                    subtitle={state.result || relocate ? null : undefined}
+                    disabled={offerPreview === 'submitting' || state.isSubmitting}
+                    isSubmitting={state.isSubmitting || offerPreview === 'submitting'}
+                    onPredict={() => undefined}
+                  >
+                    {state.result && (
+                      <ResultReceipt
+                        outcome={state.result.outcome}
+                        direction={state.result.direction}
+                        entryPrice={state.result.entryPrice}
+                        resolutionPrice={state.result.resolutionPrice}
+                        entryTime={state.result.entryTime}
+                        resolutionTime={state.result.resolutionTime}
+                        predictionId={state.result.predictionId}
+                        scoreDelta={settledRedemption
+                          ? (state.result.outcome === 'WIN' ? 4 : -2)
+                          : state.bonus ? (state.result.outcome === 'WIN' ? 2 : -2) : undefined}
+                        parent={settledRedemption
+                          ? { predictionId: 'p_0000000002000_ccccdddd', scoreDelta: -1 }
+                          : state.bonus ? { predictionId: 'p_0000000002000_ccccdddd', scoreDelta: 1 } : undefined}
+                        followOn={settledRedemption ? 'REDEMPTION' : state.bonus ? 'DOUBLE_DOWN' : undefined}
+                      />
+                    )}
+                    {(offerPreview === 'open' || offerPreview === 'extended' || offerPreview === 'submitting') && (
+                      <div className={current.endsWith('reduced-motion') ? 'dd-force-pips' : undefined} style={current === 'rd-offer-narrow' ? { maxWidth: 375 } : undefined}>
+                        {redemption ? (
+                          <RedemptionOffer
+                            offer={sampleOffer}
+                            name={state.redemptionName}
+                            restored={state.restored}
+                            serverNowMs={Date.parse('2026-10-06T14:01:05.000Z')}
+                            submitting={offerPreview === 'submitting'}
+                            pendingDirection={offerPreview === 'submitting' ? 'DOWN' : null}
+                            error={null}
+                            busy={offerPreview === 'submitting'}
+                            onAccept={() => undefined}
+                            onDecline={() => undefined}
+                            onExtend={() => undefined}
+                          />
+                        ) : (
+                          <DoubleDownOffer
+                            offer={sampleOffer}
+                            serverNowMs={Date.parse('2026-10-06T14:01:05.000Z')}
+                            submitting={offerPreview === 'submitting'}
+                            error={null}
+                            busy={offerPreview === 'submitting'}
+                            onAccept={() => undefined}
+                            onDecline={() => undefined}
+                            onExtend={() => undefined}
+                          />
+                        )}
+                      </div>
+                    )}
+                    {(offerPreview === 'expired' || offerPreview === 'declined' || offerPreview === 'used' || offerPreview === 'replaced') && (
+                      <OfferEndNotice mode={sampleOffer.mode} phase={offerPreview} parentPredictionId={sampleOffer.parentPredictionId} name={state.redemptionName} />
+                    )}
+                  </PredictionPanel>
+                )}
+              </MarketCard>
 
               {/* Error notice */}
               {state.errorMessage && (
@@ -197,13 +194,11 @@ export function FixtureApp() {
 
             {/* Right column */}
             <div className="col">
-              <ScoreCard
+              <LedgerCard
                 score={state.score}
                 wins={state.wins}
                 losses={state.losses}
                 flash={state.flash}
-              />
-              <RoundHistory
                 status="ready"
                 predictions={state.history ?? []}
                 hasMore={false}
@@ -211,11 +206,23 @@ export function FixtureApp() {
                 pageError={false}
                 onLoadMore={() => undefined}
                 onRetry={() => undefined}
+                pending={state.activeRound ? {
+                  direction: state.activeRound.direction,
+                  entryPrice: state.activeRound.entryPrice,
+                  entryTradeTime: state.activeRound.entryTime.toISOString(),
+                  mode: state.followOn ?? (state.bonus ? 'DOUBLE_DOWN' : 'STANDARD'),
+                  phase: state.activeRound.state === 'PROVIDER_HOLD'
+                    ? 'hold'
+                    : state.activeRound.state === 'CHECKING_PRICE' || state.activeRound.state === 'EQUAL_PRICE'
+                      ? 'comparing'
+                      : 'waiting',
+                  score: state.score,
+                } : null}
               />
-              <HowItWorks doubleDown={state.doubleDownHelp} redemption={state.redemptionHelp} />
             </div>
           </div>
         </main>
+        <HowItWorks doubleDown={state.doubleDownHelp} redemption={state.redemptionHelp} />
       </div>
     </QueryClientProvider>
   )

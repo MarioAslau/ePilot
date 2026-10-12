@@ -1374,6 +1374,7 @@ If time runs short:
 
 - Status: In progress. README drafted. Deploy with both modes on, screenshots, and the hosted "Final manual test" are still open.
 - What changed:
+  - The active round is one section. The heading is "You called Up" or "You called Down", with a phase eyebrow, a dial, three figures (entry, latest, vs entry), the step line, and "You can close this page." Focus stays on `#play-title`. "Checked Ns ago" is the age of the last successful `/me` poll and only shows after the minimum wait. History rows use a bare arrow, and a pair list is a block so its price line stays on one line.
   - `README.md`: rewritten for reviewers. It now has:
     - links and the brief requirements table
     - how to play and the screenshot slots
@@ -1382,8 +1383,8 @@ If time runs short:
     - a configuration table, repository structure, limitations and AI assistance
 
     The per-ticket T05–T13 manual checks were removed from the README. The full checklist stays in **Final manual test** above.
-- Checks run and results: documentation only; no code changed. Commands and names in the README were checked against `package.json`, `serverless.yml`, `amplify.yml`, `.github/workflows/ci.yml`, `localDev.ts` and the fixture list. The secrets scan of tracked files found no AWS keys or Serverless access keys.
-- Manual verification: pending. Mario will:
+- Checks run and results: README commands were checked against `package.json`, `serverless.yml`, `amplify.yml`, `.github/workflows/ci.yml`, `localDev.ts` and the fixture list. The secrets scan of tracked files found no AWS keys or Serverless access keys. After the active-round redesign: `yarn workspace web test` 79 passed, `yarn workspace web typecheck` exit 0, `yarn lint` exit 0, `yarn workspace web e2e` 8 passed. Fixtures `active`, `checking`, `provider-hold`, `rd-active` and `dd-history` were checked in the browser at 375px and 1024–1080px. Reduced motion sets the comparing arc animation to none.
+- Manual verification: the fixture pass above is done. The hosted check is still pending. Mario will:
   - deploy with `--param doubleDown=on --param redemption=on`
   - run the hosted steps 15–24 above
   - save `ready.png`, `active.png`, `result.png`, `history.png` and `mobile.png` in `docs/screenshots/`

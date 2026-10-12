@@ -1,5 +1,5 @@
 import type { Direction, Outcome, PriceString, WaitReason } from 'contracts'
-import type { HistoryRound } from '../components/RoundHistory'
+import type { HistoryRound } from '../state/history'
 
 /**
  * Fixture data for all 9 UI states.
