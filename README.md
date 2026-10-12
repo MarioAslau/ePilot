@@ -7,7 +7,7 @@ A small web game built for the epilot coding assignment. You guess whether the B
 - **API health check:** https://6n3p7430tg.execute-api.eu-north-1.amazonaws.com/health
 - **More detail:** [architecture and decisions](docs/architecture.md) · [ticket plan and diary](docs/implementation-plan.md)
 
-> **Hosted build pending redeploy with both optional modes on** (`--param doubleDown=on --param redemption=on`). Delete this line once deployed and checked.
+**Quick start:** open the hosted link, or run `yarn install && yarn dev:local` locally. No AWS account is needed.
 
 ## How to play
 
@@ -63,7 +63,7 @@ EventBridge schedule (every 5 min) ──► recovery Lambda restarts any round 
 ```
 
 - **Fairness:** the server owns every price and timestamp; the browser's price is display only.
-- **Reliability:** one active round per player is a DynamoDB condition, guesses carry an idempotency key so retries return the same round, and settlement is conditional so it can't count twice. CloudWatch alarms cover failed workflows and Lambda errors.
+- **Reliability:** one active round per player is a DynamoDB condition, guesses carry an idempotency key so retries return the same round, and settlement is conditional so it cannot count twice. CloudWatch alarms cover failed workflows and Lambda errors.
 - **Identity:** no accounts. `POST /players` returns a random 256-bit token once; the server stores only its SHA-256 hash.
 - **Stack:** React, TypeScript, Vite, Tailwind CSS, TanStack Query, Zod · AWS Lambda, API Gateway, DynamoDB, Step Functions, EventBridge, CloudWatch, SNS · Serverless Framework v4 · AWS Amplify Hosting · Vitest, React Testing Library, Playwright · GitHub Actions.
 
@@ -78,7 +78,7 @@ Offers last 10 seconds; **Need more time?** adds 20 seconds, up to 10 times. Fol
 
 ## Run locally
 
-**Prerequisites:** Node.js 20+, Yarn Classic 1.22 (`corepack enable`), Git. **No AWS account is needed.**
+**Prerequisites:** macOS, Linux or WSL on Windows; Node.js 20+; Yarn Classic 1.22 (`npm install -g yarn`); Git.
 
 ```bash
 git clone https://github.com/MarioAslau/ePilot.git
@@ -87,11 +87,11 @@ yarn install
 yarn dev:local
 ```
 
-Open http://localhost:5173. `yarn dev:local` runs the real API handlers in memory inside the Vite dev server, with real Coinbase prices and real 60-second rounds. Both optional modes are on (set `FEATURE_DOUBLE_DOWN=off` or `FEATURE_REDEMPTION=off` to hide one). Data is lost when the command stops; press **Start a new player** if the browser says its player was rejected.
+The app opens at http://localhost:5173. The port is fixed because the API's CORS rule and the fault-switch URL depend on it; if it is in use, the command stops and can be re-run once the port is free. `yarn dev:local` runs the real API handlers in memory inside the Vite dev server, with real Coinbase prices and real 60-second rounds. Both optional modes are on (set `FEATURE_DOUBLE_DOWN=off` or `FEATURE_REDEMPTION=off` to hide one). Data is lost when the command stops; if the browser then reports that its player was rejected, **Start a new player** resolves it.
 
-To run the frontend against a deployed API instead, copy `.env.example` to `.env`, set `VITE_API_BASE_URL`, and run `yarn dev`.
+To run the frontend against a deployed API instead, copy `.env.example` to `.env` in the repository root, set `VITE_API_BASE_URL`, and run `yarn dev`.
 
-**Testing states locally.** `?fixture=<name>` (e.g. `?fixture=win`, `loss`, `history`, `dd-offer`, `rd-offer`) renders one screen with fixed data; the banner lists every name. To force a failure on the next round, arm a dev-only fault:
+**Testing states locally.** `?fixture=<name>` renders one screen with fixed data, for example `?fixture=win`, `loss`, `history`, `dd-offer` or `rd-offer`; the banner lists every name. To force a failure on the next round, arm a dev-only fault:
 
 ```bash
 curl -X POST http://localhost:5173/api/__dev/next-prediction \
@@ -125,7 +125,7 @@ CI (`.github/workflows/ci.yml`) runs `check`, the DynamoDB race tests and the Pl
 
 ## Deploy your own copy
 
-**Prerequisites:** an AWS account with the AWS CLI configured for a non-root IAM user, a Serverless Framework v4 login (`yarn serverless login` in `apps/api`, or `SERVERLESS_ACCESS_KEY`), and a fork of this repository.
+**Prerequisites:** the local setup above; an AWS account with the AWS CLI configured for a non-root IAM user that can create CloudFormation stacks, Lambda, API Gateway, DynamoDB, Step Functions, EventBridge, CloudWatch, SNS and IAM roles; a free Serverless Framework v4 account (`yarn serverless login` in `apps/api`, or `SERVERLESS_ACCESS_KEY`); and a fork of this repository.
 
 ### 1. Backend
 
@@ -151,10 +151,10 @@ No secrets live in the repository.
 
 ### 2. Frontend (AWS Amplify Hosting)
 
-1. In the Amplify console, create an app from your fork. Keep the app root at the repository root; `amplify.yml` builds the workspace and publishes `apps/web/dist` (if asked, `AMPLIFY_MONOREPO_APP_ROOT=.`).
+1. In the Amplify console, create an app from your fork. Keep the app root at the repository root; `amplify.yml` builds the workspace and publishes `apps/web/dist`. If Amplify requests a monorepo root, set `AMPLIFY_MONOREPO_APP_ROOT=.`.
 2. Set the environment variable `VITE_API_BASE_URL` to the API URL from step 1.
 3. Add the single-page-app rewrite (Hosting → Rewrites and redirects): source `</^[^.]+$|\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json|webp)$)([^.]+$)/>`, target `/index.html`, type `200 (Rewrite)`.
-4. Build. If the Amplify domain wasn't known in step 1, redeploy the backend with `--param amplifyOrigin=https://<your-amplify-domain>`, or the browser shows **Backend unreachable**.
+4. Build. If the Amplify domain was not known in step 1, redeploy the backend with `--param amplifyOrigin=https://<your-amplify-domain>`, or the browser shows **Backend unreachable**.
 
 ### 3. Check and remove
 
@@ -162,7 +162,7 @@ No secrets live in the repository.
 curl https://<api-id>.execute-api.<region>.amazonaws.com/health   # {"status":"ok"}
 ```
 
-Play a round, close the tab, reopen after a minute and confirm the result is there. To remove the stack, run `yarn serverless remove --stage dev --region eu-north-1` in `apps/api`. The DynamoDB table is kept on purpose; delete it in the console if you don't need it. Everything is pay-per-use, so light use stays near zero cost.
+Play a round, close the tab, reopen after a minute and confirm the result is there. To remove the stack, run `yarn serverless remove --stage dev --region eu-north-1` in `apps/api`. The DynamoDB table is kept on purpose; delete it in the DynamoDB console when it is no longer needed. Everything is pay-per-use, so light use stays near zero cost.
 
 ## Repository structure
 
@@ -183,8 +183,9 @@ docs/                architecture.md, implementation-plan.md, design/
 - **The compared trade can be a few seconds after the deadline:** the first valid differing trade, not the exact trade at second 60.
 - **Recovery is not instant.** A round whose workflow failed to start is restarted within about 7 minutes; no score is lost or doubled.
 - **Public `/market` and `/health`**, and no in-app cancel for a running round.
-- **Redemption favours accepting** (about +1 expected at even odds; decision D8). One stage and region; Lambdas use `nodejs20.x`, which AWS stops accepting for new functions on 2027-02-01.
+- **Redemption favours accepting:** about +1 point expected at even odds (decision D8).
+- **One stage and region.** Lambdas use `nodejs20.x`, which AWS stops accepting for new functions on 2027-02-01.
 
 ## How this was built
 
-The work was split into tickets T00–T14 in [docs/implementation-plan.md](docs/implementation-plan.md), each planned, implemented, tested and manually verified before the next. AI assistants (Claude and Cursor) helped with planning, implementation and review; every change was reviewed by the author, and architecture decisions are recorded in the decision log. Two project skills shaped the process: **Grill Me** (`.cursor/skills/grill-me`) for a one-question-at-a-time architecture review, and **Ponytail** (`.cursor/skills/ponytail`) to push for the simplest working solution. After T13, a Claude-only skill, the thermo-nuclear code quality review (the "nuke", installed at `~/.claude/skills/thermo-nuclear-code-quality-review` and not in this repository), produced the `OFFER_RULES` table and the handler and `App` split. Gameplay is unchanged.
+The work was split into tickets T00–T14 in [docs/implementation-plan.md](docs/implementation-plan.md), each planned, implemented, tested and manually verified before the next. AI assistants (Claude and Cursor) helped with planning, implementation and review; every change was reviewed by the author, and architecture decisions are recorded in the decision log. Two project skills shaped the process: **Grill Me** (`.cursor/skills/grill-me`) for a one-question-at-a-time architecture review, and **Ponytail** (`.cursor/skills/ponytail`) to push for the simplest working solution. After T13, a third skill used in Claude only, the thermo-nuclear code quality review (not part of this repository), led to the `OFFER_RULES` table and the split of the API handlers and `App`, with gameplay unchanged.

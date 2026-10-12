@@ -86,8 +86,12 @@ function localApi(): Plugin {
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), localApi()],
+  // `.env` lives at the repository root, next to `.env.example`.
+  envDir: fileURLToPath(new URL('../..', import.meta.url)),
   server: {
+    // Fixed so the API's CORS rule and the fault-switch URL always match.
     port: 5173,
+    strictPort: true,
     open: true,
   },
 })
