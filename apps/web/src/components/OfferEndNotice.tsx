@@ -1,99 +1,57 @@
 import type { OfferMode } from 'contracts'
 import { REDEMPTION_NAME } from '../featureNames'
-import { roundLabel } from '../offer'
-import { OfferNotice } from './OfferNotice'
+import { roundLabel } from '../format'
+import { Ban, Check, Clock, Copy } from 'lucide-react'
+import { StatusNotice } from './StatusNotice'
+
+export type OfferEndPhase = 'expired' | 'declined' | 'used' | 'replaced'
+
+const PHASE_STYLE = {
+  expired: { kind: 'neutral', icon: Clock },
+  declined: { kind: 'neutral', icon: Check },
+  used: { kind: 'info', icon: Ban },
+  replaced: { kind: 'info', icon: Copy },
+} as const
+
+/** Bold lead and the sentence after it, for each mode and way the offer ended. */
+const COPY: Record<OfferMode, Record<OfferEndPhase, (round: string) => [lead: string, rest: string]>> = {
+  DOUBLE_DOWN: {
+    expired: () => ['Offer ended. Your +1 is kept.', "Pick Up or Down whenever you're ready for a normal round."],
+    declined: () => ['No bonus round. Your +1 is kept.', "Pick Up or Down whenever you're ready."],
+    used: (round) => [
+      'Offer no longer available.',
+      `You already doubled down on round ${round} in another tab. Your +1 is kept, and that bonus round is the one you see here.`,
+    ],
+    replaced: (round) => [
+      'Offer no longer available.',
+      `A new round was started in another tab, which ended the Double Down offer for round ${round}. Your +1 is kept.`,
+    ],
+  },
+  REDEMPTION: {
+    expired: () => ['Offer ended. Your −1 stands.', "Pick Up or Down whenever you're ready for a normal round."],
+    declined: () => [`No ${REDEMPTION_NAME} round. Your −1 stands.`, "Pick Up or Down whenever you're ready."],
+    used: (round) => [
+      'Offer no longer available.',
+      `A ${REDEMPTION_NAME} round for round ${round} was already started in another tab. Your −1 is kept, and that round is the one shown here.`,
+    ],
+    replaced: (round) => [
+      'Offer no longer available.',
+      `A normal round was started in another tab, which ended the ${REDEMPTION_NAME} offer for round ${round}. Your −1 is kept.`,
+    ],
+  },
+}
 
 export function OfferEndNotice({
   mode,
   phase,
   parentPredictionId,
-  name = REDEMPTION_NAME,
   onDismiss,
 }: {
   mode: OfferMode
-  phase: 'expired' | 'declined' | 'used' | 'replaced'
+  phase: OfferEndPhase
   parentPredictionId: string
-  name?: string
   onDismiss?: () => void
 }) {
-  const label = roundLabel(parentPredictionId)
-  if (mode === 'REDEMPTION') {
-    if (phase === 'expired') {
-      return (
-        <OfferNotice
-          tone="neutral"
-          icon="clock"
-          onDismiss={onDismiss}
-          message={<><b>Offer ended. Your −1 stands.</b> Pick Up or Down whenever you're ready for a normal round.</>}
-        />
-      )
-    }
-    if (phase === 'declined') {
-      return (
-        <OfferNotice
-          tone="neutral"
-          icon="check"
-          onDismiss={onDismiss}
-          message={<><b>No {name} round. Your −1 stands.</b> Pick Up or Down whenever you're ready.</>}
-        />
-      )
-    }
-    if (phase === 'used') {
-      return (
-        <OfferNotice
-          tone="info"
-          icon="ban"
-          onDismiss={onDismiss}
-          message={<><b>Offer no longer available.</b> A {name} round for round {label} was already started in another tab. Your −1 is kept, and that round is the one shown here.</>}
-        />
-      )
-    }
-    return (
-      <OfferNotice
-        tone="info"
-        icon="copy"
-        onDismiss={onDismiss}
-        message={<><b>Offer no longer available.</b> A normal round was started in another tab, which ended the {name} offer for round {label}. Your −1 is kept.</>}
-      />
-    )
-  }
-
-  if (phase === 'expired') {
-    return (
-      <OfferNotice
-        tone="neutral"
-        icon="clock"
-        onDismiss={onDismiss}
-        message={<><b>Offer ended. Your +1 is kept.</b> Pick Up or Down whenever you're ready for a normal round.</>}
-      />
-    )
-  }
-  if (phase === 'declined') {
-    return (
-      <OfferNotice
-        tone="neutral"
-        icon="check"
-        onDismiss={onDismiss}
-        message={<><b>No bonus round. Your +1 is kept.</b> Pick Up or Down whenever you're ready.</>}
-      />
-    )
-  }
-  if (phase === 'used') {
-    return (
-      <OfferNotice
-        tone="info"
-        icon="ban"
-        onDismiss={onDismiss}
-        message={<><b>Offer no longer available.</b> You already doubled down on round {label} in another tab. Your +1 is kept, and that bonus round is the one you see here.</>}
-      />
-    )
-  }
-  return (
-    <OfferNotice
-      tone="info"
-      icon="copy"
-      onDismiss={onDismiss}
-      message={<><b>Offer no longer available.</b> A new round was started in another tab, which ended the Double Down offer for round {label}. Your +1 is kept.</>}
-    />
-  )
+  const [lead, rest] = COPY[mode][phase](roundLabel(parentPredictionId))
+  return <StatusNotice {...PHASE_STYLE[phase]} onDismiss={onDismiss} message={<><b>{lead}</b> {rest}</>} />
 }

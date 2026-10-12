@@ -1,10 +1,10 @@
+import type { ErrorCode } from 'contracts'
+
 export function authorizationHeader(
   headers: Record<string, string | undefined> | undefined,
 ): string | undefined {
   if (!headers) return undefined
-  const found = Object.entries(headers).find(
-    ([name]) => name.toLowerCase() === 'authorization',
-  )
+  const found = Object.entries(headers).find(([name]) => name.toLowerCase() === 'authorization')
   return found?.[1]
 }
 
@@ -16,73 +16,23 @@ export function json(statusCode: number, body: unknown) {
   }
 }
 
-export function unauthorized(requestId: string) {
-  return json(401, {
-    code: 'UNAUTHORIZED',
-    message: 'Invalid player credentials',
-    requestId,
-  })
+/** Status and default message for every error code. The body always matches `ErrorResponseSchema`. */
+const ERRORS: Record<ErrorCode, { status: number; message: string }> = {
+  INVALID_INPUT: { status: 400, message: 'Invalid request' },
+  DIRECTION_REQUIRED: { status: 400, message: 'Choose up or down to start this round' },
+  UNAUTHORIZED: { status: 401, message: 'Invalid player credentials' },
+  OFFER_NOT_FOUND: { status: 404, message: 'Offer not found' },
+  ACTIVE_ROUND: { status: 409, message: 'You already have an active prediction' },
+  IDEMPOTENCY_CONFLICT: { status: 409, message: 'This idempotency key was already used' },
+  OFFER_EXPIRED: { status: 409, message: 'This offer has ended' },
+  OFFER_ACCEPTED: { status: 409, message: 'This offer was already accepted' },
+  OFFER_DECLINED: { status: 409, message: 'This offer was declined' },
+  OFFER_REPLACED: { status: 409, message: 'This offer was replaced' },
+  MAX_EXTENSIONS: { status: 409, message: 'This offer cannot be extended again' },
+  INTERNAL_ERROR: { status: 500, message: 'Something went wrong on our side' },
+  PROVIDER_UNAVAILABLE: { status: 503, message: 'Price source is unavailable' },
 }
 
-export function providerUnavailable(requestId: string) {
-  return json(503, {
-    code: 'PROVIDER_UNAVAILABLE',
-    message: 'Price source is unavailable',
-    requestId,
-  })
-}
-
-export function invalidInput(requestId: string) {
-  return json(400, {
-    code: 'INVALID_INPUT',
-    message: 'Invalid prediction request',
-    requestId,
-  })
-}
-
-export function directionRequired(requestId: string) {
-  return json(400, {
-    code: 'DIRECTION_REQUIRED',
-    message: 'Choose up or down to start this round',
-    requestId,
-  })
-}
-
-export function activeRound(requestId: string) {
-  return json(409, {
-    code: 'ACTIVE_ROUND',
-    message: 'You already have an active prediction',
-    requestId,
-  })
-}
-
-export function idempotencyConflict(requestId: string, scope: 'direction' | 'offer' = 'direction') {
-  return json(409, {
-    code: 'IDEMPOTENCY_CONFLICT',
-    message:
-      scope === 'offer'
-        ? 'This idempotency key was already used'
-        : 'This idempotency key was used for a different direction',
-    requestId,
-  })
-}
-
-const OFFER_MESSAGE = {
-  OFFER_NOT_FOUND: 'Offer not found',
-  OFFER_EXPIRED: 'This offer has ended',
-  OFFER_ACCEPTED: 'This offer was already accepted',
-  OFFER_DECLINED: 'This offer was declined',
-  OFFER_REPLACED: 'This offer was replaced',
-  MAX_EXTENSIONS: 'This offer cannot be extended again',
-} as const
-
-export function offerError(
-  requestId: string,
-  code: keyof typeof OFFER_MESSAGE,
-) {
-  return json(code === 'OFFER_NOT_FOUND' ? 404 : 409, {
-    code,
-    message: OFFER_MESSAGE[code],
-    requestId,
-  })
+export function errorResponse(code: ErrorCode, requestId: string, message = ERRORS[code].message) {
+  return json(ERRORS[code].status, { code, message, requestId })
 }

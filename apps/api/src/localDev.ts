@@ -1,5 +1,7 @@
-import { fetchTicker, ProviderUnavailableError } from './coinbase.js'
+import type { Direction } from 'contracts'
+import { fetchTicker, ProviderUnavailableError, type TickerQuote } from './coinbase.js'
 import { handleAcceptOffer } from './handlers/acceptOffer.js'
+import type { HandlerDeps } from './handlers/common.js'
 import { handleCreatePlayer } from './handlers/createPlayer.js'
 import { handleCreatePrediction } from './handlers/createPrediction.js'
 import { handleDeclineOffer } from './handlers/declineOffer.js'
@@ -8,33 +10,61 @@ import { handleGetPredictionHistory } from './handlers/getPredictionHistory.js'
 import { handleMarket } from './handlers/market.js'
 import { handleMe } from './handlers/me.js'
 import { handleResolvePrediction } from './handlers/resolvePrediction.js'
+import { errorResponse } from './http.js'
 import { memoryGameStore } from './memoryStore.js'
-import { localDoubleDownEnabled, localRedemptionEnabled } from './offer.js'
+import type { DevFault, LocalApp } from './localDevTypes.js'
+import { readFeatures } from './offer.js'
+import type { WorkflowInput } from './workflowClient.js'
 
-function favourablePrice(entry: string, direction: 'UP' | 'DOWN'): string {
+export type { DevFault, LocalApp, LocalResult } from './localDevTypes.js'
+
+/** A scripted resolution price. When several are armed, they apply in this order, one per resolution. */
+const SCRIPTED_PRICES = ['equal', 'win', 'loss'] as const
+type ScriptedPrice = (typeof SCRIPTED_PRICES)[number]
+
+/** Retry delays after a resolution attempt, matching the Step Functions waits. */
+const RETRY_MS = { EQUAL_PRICE: 5_000, PROVIDER_HOLD: 15_000, TOO_EARLY: 1_000 } as const
+
+function shiftedPrice(entry: string, direction: Direction): string {
   const [whole = '0', frac] = entry.split('.')
   const next = direction === 'UP' ? BigInt(whole) + 1n : BigInt(whole) - 1n
   const safe = next < 0n ? 0n : next
   return frac === undefined ? String(safe) : `${safe}.${frac}`
 }
 
-export type DevFault = 'drop-response' | 'provider-down'
+const opposite = (direction: Direction): Direction => (direction === 'UP' ? 'DOWN' : 'UP')
+
+const providerDown = async (): Promise<TickerQuote> => {
+  throw new ProviderUnavailableError('network')
+}
 
 /**
  * In-memory game used only by the Vite dev server.
  * The fault switch is not registered on API Gateway.
  */
-export function createLocalApp() {
+export function createLocalApp(): LocalApp {
   const store = memoryGameStore()
+  const features = readFeatures(process.env, { localDefault: true })
   let nextFault: DevFault | null = null
-  let equalNext = false
-  let winNext = false
-  let lossNext = false
+  const scripted = new Set<ScriptedPrice>()
   let resolutionHolds = 0
-  const doubleDown = localDoubleDownEnabled()
-  const redemption = localRedemptionEnabled()
 
-  function scheduleResolution(input: { playerId: string; predictionId: string; dueAt: string }) {
+  const DEV_MODES: Record<string, () => void> = {
+    'drop-response': () => (nextFault = 'drop-response'),
+    'provider-down': () => (nextFault = 'provider-down'),
+    'equal-price': () => scripted.add('equal'),
+    'next-resolution-win': () => scripted.add('win'),
+    'next-resolution-loss': () => scripted.add('loss'),
+    'resolution-provider-down': () => (resolutionHolds = 2),
+  }
+
+  function takeScripted(): ScriptedPrice | undefined {
+    const next = SCRIPTED_PRICES.find((price) => scripted.has(price))
+    if (next) scripted.delete(next)
+    return next
+  }
+
+  function scheduleResolution(input: WorkflowInput) {
     const run = async () => {
       const current = await store.getPrediction(input.playerId, input.predictionId)
       if (!current || current.status === 'RESOLVED') return
@@ -43,57 +73,46 @@ export function createLocalApp() {
         {
           predictions: store,
           players: store,
-          doubleDown,
-          redemption,
+          features,
           quote: async () => {
             if (resolutionHolds > 0) {
               resolutionHolds -= 1
               throw new ProviderUnavailableError('network')
             }
             const ticker = await fetchTicker()
-            if (equalNext) {
-              equalNext = false
-              return { ...ticker, price: current.entryPrice }
-            }
-            if (winNext) {
-              winNext = false
-              return { ...ticker, price: favourablePrice(current.entryPrice, current.direction) }
-            }
-            if (lossNext) {
-              lossNext = false
-              const opposite = current.direction === 'UP' ? 'DOWN' : 'UP'
-              return { ...ticker, price: favourablePrice(current.entryPrice, opposite) }
-            }
+            const script = takeScripted()
+            if (script === 'equal') return { ...ticker, price: current.entryPrice }
+            if (script === 'win') return { ...ticker, price: shiftedPrice(current.entryPrice, current.direction) }
+            if (script === 'loss') return { ...ticker, price: shiftedPrice(current.entryPrice, opposite(current.direction)) }
             return ticker
           },
         },
       )
       if (result.status === 'SETTLED' || result.status === 'ALREADY_SETTLED' || result.status === 'ORPHANED') return
-      const delay = result.status === 'EQUAL_PRICE' ? 5_000 : result.status === 'PROVIDER_HOLD' ? 15_000 : 1_000
-      setTimeout(() => void run(), delay)
+      setTimeout(() => void run(), RETRY_MS[result.status])
     }
     setTimeout(() => void run(), Math.max(0, new Date(input.dueAt).getTime() - Date.now()))
   }
 
-  return {
-    arm(mode: DevFault) {
-      nextFault = mode
-    },
+  /** Deps for the handlers that start a round. A provider fault fails the entry quote. */
+  function roundDeps(fault: DevFault | null): HandlerDeps {
+    return {
+      players: store,
+      predictions: store,
+      features,
+      quote: fault === 'provider-down' ? providerDown : () => fetchTicker(),
+      startWorkflow: async (input) => scheduleResolution(input),
+    }
+  }
 
-    consumeFault(): DevFault | null {
+  return {
+    consumeFault() {
       const fault = nextFault
       nextFault = null
       return fault
     },
 
-    async handle(
-      method: string,
-      path: string,
-      authorization: string | undefined,
-      rawBody: string | undefined,
-      fault: DevFault | null = null,
-      query?: Record<string, string | undefined>,
-    ) {
+    async handle(method, path, authorization, rawBody, fault = null, query) {
       if (method === 'POST' && path === '/api/__dev/next-prediction') {
         let mode: string | undefined
         try {
@@ -101,84 +120,32 @@ export function createLocalApp() {
         } catch {
           mode = undefined
         }
-        if (mode === 'drop-response' || mode === 'provider-down') {
-          nextFault = mode
+        const arm = mode ? DEV_MODES[mode] : undefined
+        if (arm) {
+          arm()
           return { statusCode: 204, body: '' }
         }
-        if (mode === 'equal-price') {
-          equalNext = true
-          return { statusCode: 204, body: '' }
-        }
-        if (mode === 'resolution-provider-down') {
-          resolutionHolds = 2
-          return { statusCode: 204, body: '' }
-        }
-        if (mode === 'next-resolution-win') {
-          winNext = true
-          return { statusCode: 204, body: '' }
-        }
-        if (mode === 'next-resolution-loss') {
-          lossNext = true
-          return { statusCode: 204, body: '' }
-        }
-        return {
-          statusCode: 400,
-          body: JSON.stringify({
-            code: 'INVALID_INPUT',
-            message: 'Invalid prediction request',
-            requestId: 'local',
-          }),
-        }
+        return errorResponse('INVALID_INPUT', 'local', 'Unknown dev mode')
       }
 
-      if (method === 'POST' && path === '/api/players') {
-        return handleCreatePlayer('local', { store })
-      }
+      if (method === 'POST' && path === '/api/players') return handleCreatePlayer('local', { players: store })
       if (method === 'GET' && path === '/api/me') {
-        return handleMe(authorization, 'local', { store, predictions: store, doubleDown, redemption })
+        return handleMe(authorization, 'local', { players: store, predictions: store, features })
       }
-      if (method === 'GET' && path === '/api/market') {
-        return handleMarket('local')
-      }
+      if (method === 'GET' && path === '/api/market') return handleMarket('local')
       if (method === 'GET' && path === '/api/predictions') {
-        return handleGetPredictionHistory(authorization, query, 'local', {
-          players: store,
-          predictions: store,
-        })
+        return handleGetPredictionHistory(authorization, query, 'local', { players: store, predictions: store })
+      }
+      if (method === 'POST' && path === '/api/predictions') {
+        return handleCreatePrediction(authorization, rawBody, 'local', roundDeps(fault))
       }
       const offerPath = /^\/api\/offers\/([^/]+)\/(accept|decline|extend)$/.exec(path)
       if (method === 'POST' && offerPath?.[1] && offerPath[2]) {
         const offerId = decodeURIComponent(offerPath[1])
-        const offerDeps = { players: store, predictions: store, doubleDown, redemption }
-        if (offerPath[2] === 'decline') return handleDeclineOffer(authorization, offerId, 'local', offerDeps)
-        if (offerPath[2] === 'extend') return handleExtendOffer(authorization, offerId, 'local', offerDeps)
-        return handleAcceptOffer(authorization, offerId, rawBody, 'local', {
-          ...offerDeps,
-          quote:
-            fault === 'provider-down'
-              ? async () => {
-                  throw new ProviderUnavailableError('network')
-                }
-              : () => fetchTicker(),
-          startWorkflow: async (input) => {
-            scheduleResolution(input)
-          },
-        })
-      }
-      if (method === 'POST' && path === '/api/predictions') {
-        return handleCreatePrediction(authorization, rawBody, 'local', {
-          players: store,
-          predictions: store,
-          quote:
-            fault === 'provider-down'
-              ? async () => {
-                  throw new ProviderUnavailableError('network')
-                }
-              : () => fetchTicker(),
-          startWorkflow: async (input) => {
-            scheduleResolution(input)
-          },
-        })
+        const deps = roundDeps(fault)
+        if (offerPath[2] === 'decline') return handleDeclineOffer(authorization, offerId, 'local', deps)
+        if (offerPath[2] === 'extend') return handleExtendOffer(authorization, offerId, 'local', deps)
+        return handleAcceptOffer(authorization, offerId, rawBody, 'local', deps)
       }
       return null
     },

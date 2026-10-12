@@ -1,15 +1,27 @@
-import { EXTENSION_MS, offerExpiresAt, type OfferRecord } from './offer.js'
+import { EXTENSION_MS, MAX_EXTENSIONS } from 'contracts'
+import { newOfferRecord, type OfferRecord } from './offer.js'
 import type { PlayerRecord, PlayerStore } from './playerStore.js'
 import type { IdempotencyRecord, PredictionRecord } from './prediction.js'
 import type { PredictionStore } from './predictionStore.js'
 
 type StoredPlayer = PlayerRecord & { activePredictionId?: string }
 
+/** Mirrors the DynamoDB condition `#status = :open AND expiresAt > :now`. */
+function offerIsOpen(offer: OfferRecord, now: string): boolean {
+  return offer.status === 'OPEN' && new Date(offer.expiresAt).getTime() > new Date(now).getTime()
+}
+
 /**
  * Synchronous check-then-write. Two calls cannot both pass the lock
  * because the function does not await between the checks and the writes.
  */
-export function memoryGameStore(): PlayerStore & PredictionStore & { failNextSettle(): void } {
+/** Test and local-play hooks that reach past the store's own conditions. */
+interface MemoryHooks {
+  failNextSettle(): void
+  forceActivePrediction(playerId: string, predictionId: string): void
+}
+
+export function memoryGameStore(): PlayerStore & PredictionStore & MemoryHooks {
   const players = new Map<string, StoredPlayer>()
   const predictions = new Map<string, PredictionRecord>()
   const idempotency = new Map<string, IdempotencyRecord>()
@@ -42,27 +54,23 @@ export function memoryGameStore(): PlayerStore & PredictionStore & { failNextSet
       return idempotency.get(`${playerId}#${key}`) ?? null
     },
 
-    async create({ prediction, idempotency: record, replaceOfferId, clearOpenOffer, now }) {
+    async create({ prediction, idempotency: record, openOffer }) {
       const player = players.get(prediction.playerId)
       const idempotencyId = `${prediction.playerId}#${record.idempotencyKey}`
       if (idempotency.has(idempotencyId)) return 'duplicate_key'
       if (!player || player.activePredictionId) return 'active_round'
-      const offer = replaceOfferId ? offers.get(`${prediction.playerId}#${replaceOfferId}`) : undefined
-      if (replaceOfferId) {
-        const clock = now ? new Date(now).getTime() : 0
-        if (!offer || offer.status !== 'OPEN' || new Date(offer.expiresAt).getTime() <= clock) return 'offer_changed'
-        if (player.openOfferId !== replaceOfferId) return 'offer_changed'
+      const replaced = openOffer?.kind === 'replace' ? offers.get(`${prediction.playerId}#${openOffer.offerId}`) : undefined
+      if (openOffer?.kind === 'replace') {
+        if (!replaced || !offerIsOpen(replaced, openOffer.now) || player.openOfferId !== openOffer.offerId) return 'offer_changed'
       }
       predictions.set(`${prediction.playerId}#${prediction.predictionId}`, prediction)
       idempotency.set(idempotencyId, record)
       player.activePredictionId = prediction.predictionId
-      if (offer && replaceOfferId) {
-        offer.status = 'REPLACED'
-        offer.replacedByPredictionId = prediction.predictionId
-        delete player.openOfferId
-      } else if (clearOpenOffer) {
-        delete player.openOfferId
+      if (replaced) {
+        replaced.status = 'REPLACED'
+        replaced.replacedByPredictionId = prediction.predictionId
       }
+      if (openOffer) delete player.openOfferId
       return 'created'
     },
 
@@ -78,8 +86,7 @@ export function memoryGameStore(): PlayerStore & PredictionStore & { failNextSet
       if (
         !player ||
         !offer ||
-        offer.status !== 'OPEN' ||
-        new Date(offer.expiresAt).getTime() <= new Date(now).getTime() ||
+        !offerIsOpen(offer, now) ||
         player.openOfferId !== offerId ||
         player.activePredictionId
       ) {
@@ -108,10 +115,9 @@ export function memoryGameStore(): PlayerStore & PredictionStore & { failNextSet
       const offer = offers.get(`${playerId}#${offerId}`)
       if (
         !offer ||
-        offer.status !== 'OPEN' ||
+        !offerIsOpen(offer, now) ||
         offer.expiresAt !== seenExpiresAt ||
-        new Date(offer.expiresAt).getTime() <= new Date(now).getTime() ||
-        offer.extensions >= 10
+        offer.extensions >= MAX_EXTENSIONS
       ) {
         return 'conflict'
       }
@@ -122,6 +128,11 @@ export function memoryGameStore(): PlayerStore & PredictionStore & { failNextSet
 
     failNextSettle() {
       failSettle = true
+    },
+
+    forceActivePrediction(playerId, predictionId) {
+      const player = players.get(playerId)
+      if (player) player.activePredictionId = predictionId
     },
 
     async settle(input) {
@@ -154,18 +165,7 @@ export function memoryGameStore(): PlayerStore & PredictionStore & { failNextSet
       player.latestResolvedPredictionId = input.predictionId
       if (input.createOffer) {
         const offerId = input.createOffer.offerId
-        offers.set(`${input.playerId}#${offerId}`, {
-          offerId,
-          playerId: input.playerId,
-          parentPredictionId: input.createOffer.parentPredictionId,
-          mode: input.createOffer.mode,
-          ...(input.createOffer.direction ? { direction: input.createOffer.direction } : {}),
-          issuedAt: input.resolvedAt,
-          expiresAt: offerExpiresAt(input.resolvedAt),
-          extensions: 0,
-          status: 'OPEN',
-          createdAt: input.resolvedAt,
-        })
+        offers.set(`${input.playerId}#${offerId}`, newOfferRecord(input.playerId, input.createOffer, input.resolvedAt))
         player.openOfferId = offerId
         player.latestOfferId = offerId
       }

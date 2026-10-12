@@ -44,6 +44,8 @@ plugins:
   - serverless-esbuild
 
 custom:
+  # Only the functions that start or inspect executions get this variable.
+  stateMachineArn: arn:aws:states:${aws:region}:${aws:accountId}:stateMachine:hunch-${sls:stage}-resolution
   esbuild:
     bundle: true
     minify: false
@@ -92,7 +94,7 @@ functions:
     role:
       Fn::GetAtt: [PredictionLambdaRole, Arn]
     environment:
-      STATE_MACHINE_ARN: arn:aws:states:${aws:region}:${aws:accountId}:stateMachine:hunch-${sls:stage}-resolution
+      STATE_MACHINE_ARN: ${self:custom.stateMachineArn}
     events:
       - httpApi:
           path: /predictions
@@ -112,7 +114,7 @@ functions:
     role:
       Fn::GetAtt: [OfferLambdaRole, Arn]
     environment:
-      STATE_MACHINE_ARN: arn:aws:states:${aws:region}:${aws:accountId}:stateMachine:hunch-${sls:stage}-resolution
+      STATE_MACHINE_ARN: ${self:custom.stateMachineArn}
     events:
       - httpApi:
           path: /offers/{offerId}/accept
@@ -148,7 +150,7 @@ functions:
     role:
       Fn::GetAtt: [RecoveryLambdaRole, Arn]
     environment:
-      STATE_MACHINE_ARN: arn:aws:states:${aws:region}:${aws:accountId}:stateMachine:hunch-${sls:stage}-resolution
+      STATE_MACHINE_ARN: ${self:custom.stateMachineArn}
     events:
       - schedule: rate(5 minutes)
 

@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test'
 
 const start = new Date('2026-10-11T12:00:00.000Z')
 const dueAt = new Date(start.getTime() + 60_000).toISOString()
+// After the settled round's createdAt, so the second placement is shown before /me refreshes.
+const secondAt = new Date(start.getTime() + 63_000).toISOString()
 const playerId = 'anon_a1b2c3d4'
 const accessToken = 'ab'.repeat(32)
 const firstId = 'p_0000000000001_abcd1234'
@@ -17,14 +19,14 @@ test('plays one round and can place another', async ({ page }) => {
   })
   let heldCreate = false
 
-  function pending(id: string) {
+  function pending(id: string, createdAt = start.toISOString()) {
     return {
       predictionId: id,
       playerId,
       direction: 'UP',
       mode: 'STANDARD',
       status: 'PENDING',
-      createdAt: start.toISOString(),
+      createdAt,
       dueAt,
       entryPrice: '70000.50',
       entryTradeTime: start.toISOString(),
@@ -57,7 +59,7 @@ test('plays one round and can place another', async ({ page }) => {
       return { ...base, score: 1, wins: 1, activePrediction: null, latestResolvedPrediction: settled(), waitReason: null }
     }
     if (phase === 'second') {
-      return { ...base, score: 1, wins: 1, activePrediction: pending(secondId), latestResolvedPrediction: settled(), waitReason: 'WAITING_FOR_DEADLINE' }
+      return { ...base, score: 1, wins: 1, activePrediction: pending(secondId, secondAt), latestResolvedPrediction: settled(), waitReason: 'WAITING_FOR_DEADLINE' }
     }
     return { ...base, score: 0, wins: 0, activePrediction: null, latestResolvedPrediction: null, waitReason: null }
   }
@@ -107,7 +109,7 @@ test('plays one round and can place another', async ({ page }) => {
         return
       }
       phase = 'second'
-      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(pending(secondId)) })
+      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify(pending(secondId, secondAt)) })
       return
     }
     await route.fulfill({ status: 404, body: '' })

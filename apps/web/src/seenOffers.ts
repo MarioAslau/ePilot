@@ -1,37 +1,21 @@
+import { readStored, writeStored } from './storage'
+
 const KEY = 'hunch.seenOffers'
-const memory: string[] = []
+const LIMIT = 10
 
-function box(storage?: Storage): Storage | null {
-  try {
-    return storage ?? sessionStorage
-  } catch {
-    return null
-  }
-}
-
+/** Offer ids this tab has shown open, newest last, so a reload can say how they ended. */
 export function readSeenOffers(storage?: Storage): string[] {
-  const available = box(storage)
-  if (!available) return memory.slice(-10)
   try {
-    const raw = available.getItem(KEY)
-    const parsed: unknown = raw ? JSON.parse(raw) : []
-    if (!Array.isArray(parsed)) return memory.slice(-10)
-    return parsed.filter((id): id is string => typeof id === 'string').slice(-10)
+    const parsed: unknown = JSON.parse(readStored(KEY, storage ?? 'session') ?? '[]')
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string').slice(-LIMIT) : []
   } catch {
-    return memory.slice(-10)
+    return []
   }
 }
 
 export function rememberSeenOffer(offerId: string, storage?: Storage): string[] {
   const current = readSeenOffers(storage)
-  const next = current.includes(offerId) ? current : [...current, offerId].slice(-10)
-  memory.splice(0, memory.length, ...next)
-  const available = box(storage)
-  if (!available) return next
-  try {
-    available.setItem(KEY, JSON.stringify(next))
-  } catch {
-    return next
-  }
+  const next = current.includes(offerId) ? current : [...current, offerId].slice(-LIMIT)
+  writeStored(KEY, JSON.stringify(next), storage ?? 'session')
   return next
 }

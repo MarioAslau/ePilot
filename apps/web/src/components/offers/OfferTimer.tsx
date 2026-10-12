@@ -1,4 +1,5 @@
 import { useRef, type ReactNode } from 'react'
+import { MAX_EXTENSIONS } from 'contracts'
 
 export interface OfferClock {
   seconds: number
@@ -34,7 +35,7 @@ export function OfferTimer({
   const fraction = submitting ? frozen.current : remaining / total
   const seconds = Math.max(0, Math.ceil(remaining / 1000))
   const lit = Math.ceil(fraction * 10)
-  const extend = !submitting && extensions < 10
+  const extend = !submitting && extensions < MAX_EXTENSIONS
     ? (
       <button type="button" className="dd-link" data-act="more-time" onClick={onExtend} disabled={busy}>
         Need more time?

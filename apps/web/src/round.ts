@@ -20,24 +20,37 @@ export function secondsRemaining(dueAt: string, offsetMs: number, nowMs: number)
 
 /** 1s near the deadline or while a hold is in progress, 2s for the rest of an active round, 3s when idle. */
 export function pollInterval(input: {
-  hasActive: boolean
-  dueAt?: string
+  /** Deadline of the active round, or null when there is none. */
+  activeDueAt: string | null
   offsetMs: number
   nowMs: number
   waitReason: WaitReason | null
   offerOpen?: boolean
 }): number {
-  if (input.hasActive) {
-    const remaining = input.dueAt ? secondsRemaining(input.dueAt, input.offsetMs, input.nowMs) : 60
-    const holding =
-      input.waitReason === 'CHECKING_PRICE' ||
-      input.waitReason === 'EQUAL_PRICE' ||
-      input.waitReason === 'PROVIDER_HOLD'
+  if (input.activeDueAt) {
+    const remaining = secondsRemaining(input.activeDueAt, input.offsetMs, input.nowMs)
+    const holding = input.waitReason !== null && input.waitReason !== 'WAITING_FOR_DEADLINE'
     if (remaining <= 5 || holding) return 1_000
     return 2_000
   }
   if (input.offerOpen) return 2_000
   return 3_000
+}
+
+const ACTIVE_PHASE: Record<WaitReason, RoundPhase> = {
+  WAITING_FOR_DEADLINE: 'active',
+  CHECKING_PRICE: 'checking',
+  EQUAL_PRICE: 'equal',
+  PROVIDER_HOLD: 'hold',
+}
+
+/** Phases that show the round ticket. */
+export const TICKET_PHASES: ReadonlySet<RoundPhase> = new Set(Object.values(ACTIVE_PHASE))
+
+/** The ledger's one-word state for a pending round. */
+export function ledgerPhase(reason: WaitReason): 'waiting' | 'comparing' | 'hold' {
+  if (reason === 'PROVIDER_HOLD') return 'hold'
+  return reason === 'WAITING_FOR_DEADLINE' ? 'waiting' : 'comparing'
 }
 
 export function roundView(input: {
@@ -49,34 +62,37 @@ export function roundView(input: {
 }): {
   phase: RoundPhase
   active: Prediction | null
+  /** Why the active round has not settled. Null without an active round. */
+  waitReason: WaitReason | null
   settled: Prediction | null
   remaining: number
 } {
-  const active =
-    input.me?.activePrediction ??
-    (input.placed && input.placed.predictionId !== input.me?.latestResolvedPrediction?.predictionId
-      ? input.placed
-      : null)
   const resolved = input.me?.latestResolvedPrediction
+  // `placed` only bridges the gap until /me reports it. A follow-on round settles after it, so
+  // anything the server resolved at or after `placed` was created means it is no longer active.
+  const placedIsNewer =
+    input.placed !== null &&
+    (!resolved || Date.parse(input.placed.createdAt) > Date.parse(resolved.createdAt))
+  const active = input.me?.activePrediction ?? (placedIsNewer ? input.placed : null)
   const settled = !active && resolved?.outcome ? resolved : null
   const remaining = active ? secondsRemaining(active.dueAt, input.offsetMs, input.nowMs) : 0
 
   if (active) {
     const reason = input.me?.waitReason
-    const phase: RoundPhase =
-      reason === 'EQUAL_PRICE'
-        ? 'equal'
-        : reason === 'PROVIDER_HOLD'
-          ? 'hold'
-          : remaining <= 0 || reason === 'CHECKING_PRICE'
-            ? 'checking'
-            : 'active'
-    return { phase, active, settled: null, remaining }
+    // A countdown at zero is already being compared, even before the server says so.
+    const waitReason: WaitReason =
+      reason === 'EQUAL_PRICE' || reason === 'PROVIDER_HOLD'
+        ? reason
+        : remaining <= 0 || reason === 'CHECKING_PRICE'
+          ? 'CHECKING_PRICE'
+          : 'WAITING_FOR_DEADLINE'
+    return { phase: ACTIVE_PHASE[waitReason], active, waitReason, settled: null, remaining }
   }
-  if (input.submitPhase === 'recording') return { phase: 'recording', active: null, settled, remaining: 0 }
-  if (input.submitPhase === 'unknown') return { phase: 'unknown', active: null, settled, remaining: 0 }
-  if (settled) return { phase: 'result', active: null, settled, remaining: 0 }
-  return { phase: 'ready', active: null, settled: null, remaining: 0 }
+  const idle = { active: null, waitReason: null, remaining: 0 }
+  if (input.submitPhase === 'recording') return { ...idle, phase: 'recording', settled }
+  if (input.submitPhase === 'unknown') return { ...idle, phase: 'unknown', settled }
+  if (settled) return { ...idle, phase: 'result', settled }
+  return { ...idle, phase: 'ready', settled: null }
 }
 
 export function announcement(

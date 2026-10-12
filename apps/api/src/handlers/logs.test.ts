@@ -13,7 +13,6 @@ const quote: TickerQuote = {
   price: '84000.00',
   tradeTime: '2026-10-11T14:59:58.000Z',
   fetchedAt: now.toISOString(),
-  source: 'COINBASE_EXCHANGE',
 }
 
 describe('lifecycle logs', () => {
@@ -30,13 +29,13 @@ describe('lifecycle logs', () => {
     const created = createPlayer(now, (size) => Buffer.alloc(size, 7))
     await store.putNew(created)
     const minted = await handleCreatePlayer('create-player', {
-      store,
+      players: store,
       now: () => now,
       nextBytes: (size) => Buffer.alloc(size, 8),
     })
     const mintedBody = JSON.parse(minted.body ?? '') as { accessToken: string }
     const header = `Bearer ${created.playerId}.${created.accessToken}`
-    await handleMe(header, 'me', { store, predictions: store, now: () => now })
+    await handleMe(header, 'me', { players: store, predictions: store, now: () => now })
     const response = await handleCreatePrediction(
       header,
       JSON.stringify({ direction: 'UP', idempotencyKey: '77777777-7777-4777-8777-777777777777' }),

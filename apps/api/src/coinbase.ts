@@ -3,7 +3,10 @@ import { z } from 'zod'
 const TICKER_URL = 'https://api.exchange.coinbase.com/products/BTC-USD/ticker'
 const DISPLAY_TTL_MS = 3_000
 
-export const FRESH_TRADE_MS = 60_000
+/** A display quote older than this is shown as delayed. */
+export const DISPLAY_TRADE_AGE_MS = 60_000
+/** Entry and settlement quotes must come from a trade at most this old. */
+export const SETTLEMENT_TRADE_AGE_MS = 10_000
 
 const TickerSchema = z.object({
   price: z.string().regex(/^\d+(\.\d+)?$/),
@@ -43,8 +46,8 @@ function tradeTime(value: string): string {
   return parsed.data
 }
 
-export function isFreshTrade(time: string, now: Date): boolean {
-  return now.getTime() - new Date(time).getTime() <= FRESH_TRADE_MS
+export function tradeAgeWithin(tradeTime: string, now: Date, maxAgeMs: number): boolean {
+  return now.getTime() - new Date(tradeTime).getTime() <= maxAgeMs
 }
 
 export async function fetchTicker(deps: TickerDeps = {}): Promise<TickerQuote> {

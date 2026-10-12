@@ -53,18 +53,18 @@ describe('clock offset', () => {
 
 describe('pollInterval', () => {
   const base = {
-    dueAt: '2026-10-11T15:01:00.000Z',
+    activeDueAt: '2026-10-11T15:01:00.000Z',
     offsetMs: 0,
     waitReason: 'WAITING_FOR_DEADLINE' as const,
   }
 
   it('waits 3s when idle, 2s while active, and 1s near the deadline or a hold', () => {
-    expect(pollInterval({ ...base, hasActive: false, nowMs: start })).toBe(3_000)
-    expect(pollInterval({ ...base, hasActive: true, nowMs: start })).toBe(2_000)
-    expect(pollInterval({ ...base, hasActive: true, nowMs: start + 55_000 })).toBe(1_000)
-    expect(pollInterval({ ...base, hasActive: true, nowMs: start, waitReason: 'EQUAL_PRICE' })).toBe(1_000)
-    expect(pollInterval({ ...base, hasActive: true, nowMs: start, waitReason: 'PROVIDER_HOLD' })).toBe(1_000)
-    expect(pollInterval({ ...base, hasActive: true, nowMs: start, waitReason: 'CHECKING_PRICE' })).toBe(1_000)
+    expect(pollInterval({ ...base, activeDueAt: null, nowMs: start })).toBe(3_000)
+    expect(pollInterval({ ...base, nowMs: start })).toBe(2_000)
+    expect(pollInterval({ ...base, nowMs: start + 55_000 })).toBe(1_000)
+    expect(pollInterval({ ...base, nowMs: start, waitReason: 'EQUAL_PRICE' })).toBe(1_000)
+    expect(pollInterval({ ...base, nowMs: start, waitReason: 'PROVIDER_HOLD' })).toBe(1_000)
+    expect(pollInterval({ ...base, nowMs: start, waitReason: 'CHECKING_PRICE' })).toBe(1_000)
   })
 })
 
@@ -122,6 +122,33 @@ describe('roundView', () => {
       resolvedAt: '2026-10-11T15:01:03.000Z',
     })
     expect(roundView({ ...input, me: me({ latestResolvedPrediction: settled, score: 1, wins: 1 }) }).phase).toBe('result')
+  })
+
+  it('shows a just-placed round until /me reports it', () => {
+    const earlier = prediction({ predictionId: 'p_earlier', createdAt: '2026-10-11T14:58:00.000Z', status: 'RESOLVED', outcome: 'WIN' })
+    const placed = prediction()
+    const view = roundView({ ...input, placed, me: me({ latestResolvedPrediction: earlier }) })
+    expect(view.active).toBe(placed)
+  })
+
+  it('does not revive the placed round after its follow-on round settles', () => {
+    const placed = prediction()
+    const bonus = prediction({
+      predictionId: 'p_bonus',
+      mode: 'DOUBLE_DOWN',
+      parentPredictionId: placed.predictionId,
+      createdAt: '2026-10-11T15:01:10.000Z',
+      dueAt: '2026-10-11T15:02:10.000Z',
+      status: 'RESOLVED',
+      outcome: 'LOSS',
+      scoreDelta: -2,
+      resolutionPrice: '65001',
+      resolutionTradeTime: '2026-10-11T15:02:12.000Z',
+      resolvedAt: '2026-10-11T15:02:13.000Z',
+    })
+    const view = roundView({ ...input, placed, nowMs: start + 135_000, me: me({ latestResolvedPrediction: bonus }) })
+    expect(view.active).toBeNull()
+    expect(view.phase).toBe('result')
   })
 })
 

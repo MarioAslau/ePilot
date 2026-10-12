@@ -234,8 +234,13 @@ not a settlement input.
 `resolvedAt`. It does not read the clock. If fewer than 60 seconds
 have elapsed it returns `TOO_EARLY` and does not look at the price.
 An equal price returns `EQUAL_PRICE`. `evaluate()` still returns a
-score delta of exactly `+1` or `-1`. `scoreFor(mode, outcome)` maps
+score delta of exactly `+1` or `-1`. `scoreDelta(mode, outcome)` maps
 `STANDARD` to ±1, `DOUBLE_DOWN` to ±2, and `REDEMPTION` to +4 or −2.
+Both bonus modes read from one table, `OFFER_RULES` in
+`packages/contracts/src/offerRules.ts`: the trigger outcome, the payout,
+and whether the direction is fixed. The API, the UI, and the fixtures
+all take their numbers from it. A follow-on ticket keeps its "Follows
+round" line from that table after `GET /me` stops sending the offer.
 
 `GET /me` returns `activePrediction`, `latestResolvedPrediction`
 (identified by `predictionId`), `serverTime`, and `waitReason`.
@@ -263,8 +268,8 @@ off is 404 `OFFER_NOT_FOUND`. `DIRECTION_REQUIRED` is 400. Only
 seconds after its deadline, and only when that offer's mode flag is on.
 After that it is null. The offer includes `mode`, `direction` (null when
 the player has not chosen), `payout` (`win`, `loss`, `parentDelta`), and
-`chosenDirection` after a Redemption accept. `payout` is computed by
-`payoutFor`. It is not stored. A resolved follow-on includes
+`chosenDirection` after a Redemption accept. `payout` is read from
+`OFFER_RULES`. It is not stored. A resolved follow-on includes
 `parent: { predictionId, scoreDelta }`, which is +1 for Double Down and
 −1 for Redemption. `FEATURE_DOUBLE_DOWN` is on only when the Serverless
 param `doubleDown` is `on`. `FEATURE_REDEMPTION` is on only when
@@ -412,7 +417,9 @@ There is no environment flag that switches the store. The handler functions take
 
 `yarn dev:local` sets `VITE_API_BASE_URL=/api`. The Vite plugin in `apps/web/vite.config.ts` runs only while Vite is serving. It loads `apps/api/src/localDev.ts`. `createLocalApp()` calls `memoryGameStore()` once and keeps that object for the process. It passes the same object into `handleCreatePlayer`, `handleMe`, and `handleCreatePrediction`. `yarn dev` leaves the API address empty, so the browser talks to the deployed API instead of this plugin.
 
-Each Lambda export builds its own DynamoDB stores. The `handler` in `apps/api/src/handlers/createPrediction.ts` calls `dynamoPlayerStore()` and `dynamoPredictionStore()`. Those functions read `TABLE_NAME` and open a DynamoDB client. `createPlayer`, `me`, and `resolvePrediction` do the same. Tests inject `memoryGameStore()` the same way the Vite app does.
+Production handlers share `apps/api/src/handlers/common.ts`: authentication, JSON parsing, the entry quote, idempotent replay, and starting the workflow. `apps/api/src/stores.ts` opens one DynamoDB client and one pair of stores per warm container. Tests still inject `memoryGameStore()`.
+
+A row is decoded with a Zod record schema at the store boundary. A row that fails validation is an error. It is not coerced into a guess such as `UP` or `+1`. Rounds written before T12 have no `mode` and still read as `STANDARD`. Offers written before T13 have no `mode` and still read as `DOUBLE_DOWN`. Transaction items carry an `onFail` tag, so a cancelled write is classified by that tag rather than by its position in the transaction.
 
 Local settlement is `scheduleResolution`: a `setTimeout` in the Vite process that waits until `dueAt`, then calls `handleResolvePrediction`. AWS settlement is `startPredictionWorkflow`, which starts the Step Functions execution. Both paths call the same resolver, with the same 5-second equal-price wait and the same 15-second provider wait. The production wait stays 60 seconds. The local path does not call AWS.
 
@@ -555,15 +562,14 @@ Radius hierarchy: 999 px pills, 10 px controls and nested panels,
 
 Desktop (960 px+): two-column grid inside a 1120 px centred content area.
 Left column (7fr): MarketCard and PredictionPanel stacked. Right column
-(5fr): ScoreCard, RoundHistory and HowItWorks stacked.
+(5fr): LedgerCard and HowItWorks stacked.
 
 Mobile (below 960 px): single column. Stacking order:
 1. Header (logo + anonymous ID + score chip)
 2. MarketCard
 3. PredictionPanel
-4. ScoreCard
-5. RoundHistory
-6. HowItWorks
+4. LedgerCard
+5. HowItWorks
 
 Keep the current score visible on mobile at all times without depending
 on the desktop sidebar. The header score chip appears only below 960 px.
@@ -584,8 +590,7 @@ separate from data-fetching.
 | DirectionButtons | Up/Down buttons with locked and loading states |
 | RoundTicket | Active round: "You called" heading, phase eyebrow, wait dial, entry / latest / vs-entry figures, step tracker, and a note that the round keeps running if the page is closed |
 | ResultReceipt | Outcome badge, score delta, entry/compared price, timestamps |
-| ScoreCard | Numeric score; after the first settled round also shows accuracy %, wins and losses counts, labelled as all settled rounds |
-| RoundHistory | Settled prediction list with loading, empty, error, and populated states |
+| LedgerCard | Score, accuracy, and the settled-round list. `ScoreBoard` and `RoundsList` are the two parts. On a wide screen the open list scrolls so the ledger ends with the stage card. On a narrow screen the list shows five rounds, and Show all scrolls the rest inside that same height. The height is measured from elements marked `data-layout-slot`, not from styling class names. |
 | HowItWorks | Expandable accordion; basic rules from T02, plus where settled rounds are listed |
 | StatusNotice | Info / warn / error inline notices with icon, copy and action |
 
@@ -740,11 +745,11 @@ Momentum Double Down and Redemption are both implemented locally and off by defa
 
 ### Momentum Double Down
 
-Implemented locally. A `STANDARD` win creates one offer only when `FEATURE_DOUBLE_DOWN` is `on`. `issuedAt` is that settlement's `resolvedAt`. The first deadline is 10 seconds later. Need more time adds 20 seconds, at most 10 times. Accept starts `DOUBLE_DOWN` in the parent's direction. `evaluate()` stays ±1. `scoreFor(mode, outcome)` maps a bonus round to ±2. The original +1 is never rewritten. A bonus win does not create another offer. `wins` and `losses` still increase by 1 per settled round, including a bonus round. Decline sets `DECLINED`. The settlement transaction puts the offer once; a repeated settle returns `already_settled`.
+Implemented locally. A `STANDARD` win creates one offer only when `FEATURE_DOUBLE_DOWN` is `on`. `issuedAt` is that settlement's `resolvedAt`. The first deadline is 10 seconds later. Need more time adds 20 seconds, at most 10 times. Accept starts `DOUBLE_DOWN` in the parent's direction. `evaluate()` stays ±1. `scoreDelta(mode, outcome)` maps a bonus round to ±2. The original +1 is never rewritten. A bonus win does not create another offer. `wins` and `losses` still increase by 1 per settled round, including a bonus round. Decline sets `DECLINED`. The settlement transaction puts the offer once; a repeated settle returns `already_settled`.
 
 ### Redemption Round
 
-Implemented locally. Mario marked the local check done on 2026-10-11. A `STANDARD` loss creates one offer only when `FEATURE_REDEMPTION` is `on`. The offer has no direction. The original −1 is already settled and is not rewritten. The window, the extension, and the single-use accept are the same offer path as Double Down. Accept starts `REDEMPTION` in the direction the player sends. `scoreFor` maps a win to +4 and a loss to −2. The pair totals are +3 and −3. Decline, expiry, and a replacement standard round leave the −1. A Redemption settlement creates no further offer. The visible name is the constant `REDEMPTION_NAME` in `apps/web/src/featureNames.ts`, currently `Redemption`. See D8.
+Implemented locally. Mario marked the local check done on 2026-10-11. A `STANDARD` loss creates one offer only when `FEATURE_REDEMPTION` is `on`. The offer has no direction. The original −1 is already settled and is not rewritten. The window, the extension, and the single-use accept are the same offer path as Double Down. Accept starts `REDEMPTION` in the direction the player sends. `scoreDelta` maps a win to +4 and a loss to −2. The pair totals are +3 and −3. Decline, expiry, and a replacement standard round leave the −1. A Redemption settlement creates no further offer. The visible name is the constant `REDEMPTION_NAME` in `apps/web/src/featureNames.ts`, currently `Redemption`. See D8.
 
 Both:
 - Backend owns eligibility and expiry.
@@ -1079,7 +1084,7 @@ String comparison is safe only because both values are `toISOString()`. The offe
 ### D8 — Redemption keeps +4/−2, and the name is a constant
 
 **Decision.**
-A Redemption win adds 4 and a loss subtracts 2. The parent −1 stays. The pair is therefore +3 or −3. The on-screen name is `REDEMPTION_NAME` in `apps/web/src/featureNames.ts`. It is `Redemption`. The `rd-second-call` fixture passes another string as a prop so the layout can be checked with a different label. There is no name config.
+A Redemption win adds 4 and a loss subtracts 2. The parent −1 stays. The pair is therefore +3 or −3. The on-screen name is `REDEMPTION_NAME` in `apps/web/src/featureNames.ts`. It is `Redemption`. Changing that constant renames the mode everywhere. There is no name config.
 
 **Reason.**
 The ticket fixes the arithmetic. At roughly even odds, accepting is worth about +1: half the time +4 and half the time −2 averages +1, on top of the −1 already booked. Declining adds nothing, so it keeps −1. Declining is never the better score on that assumption. Changing the deltas to make decline attractive would be a different game. A constant keeps every screen on one word without a settings system.

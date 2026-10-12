@@ -1,9 +1,10 @@
-import type { Direction, OfferPayout, WaitReason } from 'contracts'
-import { ArrowDown, ArrowUp, CornerDownRight, Equal, Layers, Link, Pause } from 'lucide-react'
+import { OFFER_RULES, pairTotals, type Direction, type Mode, type WaitReason } from 'contracts'
+import { ArrowDown, ArrowUp, Equal, Link, Pause } from 'lucide-react'
 import { useEffect, useRef } from 'react'
-import { REDEMPTION_NAME } from '../featureNames'
-import { formatMove, formatUsd } from '../money'
-import { roundLabel } from '../offer'
+import { directionWord, formatDuration, formatMove, formatTime, formatUsd, roundLabel, signedPoints } from '../format'
+import { PLAY_TITLE_ID } from '../focusTargets'
+import { MODE_DISPLAY } from '../offerCopy'
+import { WAIT_SECONDS } from '../timing'
 
 interface Props {
   direction: Direction
@@ -16,9 +17,7 @@ interface Props {
   secondsRemaining?: number
   note?: string
   latestPrice?: string
-  bonus?: boolean
-  followOn?: 'DOUBLE_DOWN' | 'REDEMPTION'
-  payout?: OfferPayout
+  mode?: Mode
   parentPredictionId?: string
   autoFocus?: boolean
   /** Seconds since the last successful player poll. Shown after the minimum wait. */
@@ -27,15 +26,6 @@ interface Props {
 
 const DIAL_R = 44
 const DIAL_C = 2 * Math.PI * DIAL_R
-
-function formatTime(d: Date): string {
-  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-}
-
-function formatClock(seconds: number): string {
-  const whole = Math.max(0, Math.round(seconds))
-  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`
-}
 
 function phaseWord(state: WaitReason): string {
   if (state === 'WAITING_FOR_DEADLINE') return 'Minimum wait'
@@ -63,8 +53,23 @@ function stance(direction: Direction, entry: string, latest: string): { move: st
   }
 }
 
-function pairPoints(n: number): string {
-  return n < 0 ? `−${Math.abs(n)}` : `+${n}`
+function ModeTag({ mode }: { mode: Exclude<Mode, 'STANDARD'> }) {
+  const { name, Icon } = MODE_DISPLAY[mode]
+  return <span><Icon className="ic" aria-hidden="true" /> {name}</span>
+}
+
+/** The kept parent result and what this bonus round can add. */
+function FollowOn({ mode, parentPredictionId }: { mode: Exclude<Mode, 'STANDARD'>; parentPredictionId: string }) {
+  const { payout } = OFFER_RULES[mode]
+  const pair = pairTotals(payout)
+  return (
+    <p className="rd-follow fine">
+      <Link className="ic" aria-hidden="true" />
+      {' '}Follows round {roundLabel(parentPredictionId)} · {signedPoints(payout.parentDelta)} kept
+      {' · '}Right <b className="up-t">{signedPoints(payout.win)}</b> (pair {signedPoints(pair.win)})
+      {' · '}Wrong <b className="down-t">{signedPoints(payout.loss)}</b> (pair {signedPoints(pair.loss)})
+    </p>
+  )
 }
 
 function Dial({ state, secondsRemaining }: { state: WaitReason; secondsRemaining?: number }) {
@@ -72,7 +77,7 @@ function Dial({ state, secondsRemaining }: { state: WaitReason; secondsRemaining
   const comparing = state === 'CHECKING_PRICE'
   if (waiting) {
     const remaining = secondsRemaining ?? 0
-    const progress = Math.max(0, Math.min(1, 1 - remaining / 60))
+    const progress = Math.max(0, Math.min(1, 1 - remaining / WAIT_SECONDS))
     return (
       <div className="dial">
         <svg viewBox="0 0 92 92" aria-hidden="true">
@@ -84,7 +89,7 @@ function Dial({ state, secondsRemaining }: { state: WaitReason; secondsRemaining
             strokeDashoffset={DIAL_C * (1 - progress)}
           />
         </svg>
-        <span role="timer" className="num">{formatClock(remaining)}</span>
+        <span role="timer" className="num">{formatDuration(remaining)}</span>
       </div>
     )
   }
@@ -115,9 +120,7 @@ export function RoundTicket({
   secondsRemaining,
   note,
   latestPrice,
-  bonus = false,
-  followOn,
-  payout,
+  mode = 'STANDARD',
   parentPredictionId,
   autoFocus = false,
   checkedAgoSeconds,
@@ -127,33 +130,27 @@ export function RoundTicket({
     if (autoFocus) heading.current?.focus()
   }, [autoFocus])
 
-  const redemption = followOn === 'REDEMPTION'
-  const bonusRound = bonus || followOn === 'DOUBLE_DOWN'
   const isUp = direction === 'UP'
   const onHold = state === 'EQUAL_PRICE' || state === 'PROVIDER_HOLD'
   const comparing = state !== 'WAITING_FOR_DEADLINE'
   const waitingStep = state === 'WAITING_FOR_DEADLINE'
   const vs = latestPrice ? stance(direction, entryPrice, latestPrice) : null
   const Icon = isUp ? ArrowUp : ArrowDown
-  const word = isUp ? 'Up' : 'Down'
+  const word = directionWord(direction)
 
   return (
     <section
       className={`ticket round ${onHold ? 'hold' : isUp ? 'up' : 'down'}`}
-      aria-labelledby="play-title"
+      aria-labelledby={PLAY_TITLE_ID}
     >
       <div className="rd-top">
         <div className="rd-main">
           <p className="rd-eyebrow">
             <span className={state === 'PROVIDER_HOLD' ? 'warn' : undefined}>{phaseWord(state)}</span>
             <span className="subtle">Round {roundLabel(predictionId)}</span>
-            {redemption ? (
-              <span><CornerDownRight className="ic" aria-hidden="true" /> {REDEMPTION_NAME}</span>
-            ) : bonusRound ? (
-              <span><Layers className="ic" aria-hidden="true" /> Double Down</span>
-            ) : null}
+            {mode !== 'STANDARD' && <ModeTag mode={mode} />}
           </p>
-          <h1 id="play-title" className="rd-title" tabIndex={-1} ref={heading}>
+          <h1 id={PLAY_TITLE_ID} className="rd-title" tabIndex={-1} ref={heading}>
             You called <span className={isUp ? 'up-t' : 'down-t'}><Icon className="ic" aria-hidden="true" /> {word}</span>
           </h1>
           <p className="rd-sub">{stateDetail(state, deadline)}</p>
@@ -164,23 +161,7 @@ export function RoundTicket({
         <Dial state={state} secondsRemaining={secondsRemaining} />
       </div>
 
-      {parentPredictionId && (redemption ? payout : bonusRound) && (
-        <p className="rd-follow fine">
-          <Link className="ic" aria-hidden="true" />
-          {' '}Follows round {roundLabel(parentPredictionId)} · {redemption ? '−1 kept' : '+1 kept'}
-          {redemption && payout ? (
-            <>
-              {' · '}Right <b className="up-t">+{payout.win}</b> (pair {pairPoints(payout.parentDelta + payout.win)})
-              {' · '}Wrong <b className="down-t">−{Math.abs(payout.loss)}</b> (pair {pairPoints(payout.parentDelta + payout.loss)})
-            </>
-          ) : (
-            <>
-              {' · '}Right <b className="up-t">+2</b> (pair +3)
-              {' · '}Wrong <b className="down-t">−2</b> (pair −1)
-            </>
-          )}
-        </p>
-      )}
+      {mode !== 'STANDARD' && parentPredictionId && <FollowOn mode={mode} parentPredictionId={parentPredictionId} />}
 
       <dl className="rd-figs">
         <div>

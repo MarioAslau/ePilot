@@ -1,11 +1,13 @@
+import type { Direction } from 'contracts'
 import { useEffect, useRef, type ReactNode } from 'react'
+import { PLAY_TITLE_ID } from '../focusTargets'
 import { DirectionButtons } from './DirectionButtons'
+import { WAIT_SECONDS } from '../timing'
 
 interface Props {
-  price: string | null
-  onPredict?: (direction: 'UP' | 'DOWN') => void
+  onPredict?: (direction: Direction) => void
   isSubmitting: boolean
-  disabled?: boolean
+  disabled: boolean
   reason?: string | null
   title?: string
   /** Null hides the line. Omitted uses the idle subtitle. */
@@ -15,7 +17,7 @@ interface Props {
 }
 
 const IDLE_TITLE = 'Higher or lower in a minute?'
-const IDLE_SUB = 'Make your call. We\'ll check in at least 60 seconds later and score your prediction.'
+const IDLE_SUB = `Make your call. We'll check in at least ${WAIT_SECONDS} seconds later and score your prediction.`
 
 export function PlayTitle({
   title,
@@ -32,7 +34,7 @@ export function PlayTitle({
   }, [autoFocus])
   return (
     <>
-      <h1 id="play-title" className="play-title" tabIndex={-1} ref={heading} data-act="play-title">{title}</h1>
+      <h1 id={PLAY_TITLE_ID} className="play-title" tabIndex={-1} ref={heading} data-act="play-title">{title}</h1>
       {subtitle ? <p className="play-sub">{subtitle}</p> : null}
     </>
   )
@@ -43,7 +45,6 @@ export function PlayTitle({
  * Disabled when price is unavailable or a submission is in flight.
  */
 export function PredictionPanel({
-  price,
   onPredict,
   isSubmitting,
   disabled,
@@ -53,18 +54,12 @@ export function PredictionPanel({
   autoFocus = false,
   children,
 }: Props) {
-  const locked = disabled ?? (price === null || isSubmitting)
-
   return (
     <div>
       <PlayTitle title={title} subtitle={subtitle} autoFocus={autoFocus} />
       {children}
 
-      <DirectionButtons
-        onPredict={onPredict}
-        disabled={locked}
-        isSubmitting={isSubmitting}
-      />
+      <DirectionButtons onPredict={onPredict} disabled={disabled || isSubmitting} />
       {isSubmitting && <p className="play-sub">Recording entry</p>}
       {!isSubmitting && reason && <p className="play-sub">{reason}</p>}
 

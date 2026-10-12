@@ -11,7 +11,7 @@ Then add optional features that demonstrate product judgment.
 - Active ticket: T14
 - Status: In progress
 
-T13 is complete. Mario marked the local Redemption check done on 2026-10-11. `FEATURE_REDEMPTION` is off unless a deploy passes `--param redemption=on`. `yarn dev:local` defaults Redemption on when that variable is unset, the same way it defaults Double Down on. History, Double Down, and Redemption are not on the hosted site until the next API deploy and Amplify rebuild. T12 stays complete: Mario marked the local Double Down check done on 2026-10-11, and that flag stays off unless a deploy passes `--param doubleDown=on`. T14 is in progress. The README is drafted. Deploy with both modes on, screenshots, and the hosted final manual test are still open. On 2026-10-11 Mario pressed Up on the hosted site, closed the tab, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14.
+T13 is complete. Mario marked the local Redemption check done on 2026-10-11. `FEATURE_REDEMPTION` is off unless a deploy passes `--param redemption=on`. `yarn dev:local` defaults Redemption on when that variable is unset, the same way it defaults Double Down on. History, Double Down, and Redemption are not on the hosted site until the next API deploy and Amplify rebuild. T12 stays complete: Mario marked the local Double Down check done on 2026-10-11, and that flag stays off unless a deploy passes `--param doubleDown=on`. The post-T13 quality review is in the repo and is not deployed. It adds no route. The hosted API keeps the previous Lambdas until the next `serverless deploy`. The new web app still works against that API. T14 is in progress. The README is drafted. Deploy with both modes on, screenshots, and the hosted final manual test are still open. On 2026-10-11 Mario pressed Up on the hosted site, closed the tab, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14.
 
 ## Working agreement
 
@@ -194,6 +194,8 @@ Sources:
 - Grill Me: https://www.aihero.dev/skills-grill-me
 
 - Ponytail: https://github.com/DietrichGebert/ponytail
+
+- Thermo-nuclear code quality review (the nuke), added later for Claude, not as part of this ticket: `~/.claude/skills/thermo-nuclear-code-quality-review`. It is invoked explicitly. It is not in the repository.
 
 Tasks:
 
@@ -1393,6 +1395,20 @@ If time runs short:
 - Decision or tradeoff: the hosted build turns both optional modes on. Screenshots come from the hosted site, not fixtures.
 - Remaining limitation: the README's screenshot images do not exist until they are captured. `docs/architecture.md` Status is updated after the deploy, not before.
 - Commit: Pending. Suggested message: `docs: complete release handover and walkthrough`
+
+### Quality review
+
+- Status: In the repo. Not deployed. Mario has not marked the manual check complete.
+- What changed:
+  - `OFFER_RULES` in `packages/contracts/src/offerRules.ts` is the one table for a mode's trigger, payout, and whether the direction is fixed. `scoreDelta()`, `pairTotals()`, and `offerModeEnabled()` read it. `scoring.ts` is gone. The web app, including How it works and a follow-on ticket whose offer has already left `GET /me`, uses the same numbers.
+  - Handlers share `handlers/common.ts`. One DynamoDB client is created per warm container. Stored rows are decoded with Zod. A bad row errors. Pre-T12 rounds still read as `STANDARD`, and pre-T13 offers still read as `DOUBLE_DOWN`.
+  - `App.tsx` announcements live in `useAnnouncer.ts`. The ledger is `ScoreBoard` and `RoundsList`. The list measures `data-layout-slot` elements, not CSS class names.
+  - The Claude skill used for this pass is the thermo-nuclear code quality review, installed at `~/.claude/skills/thermo-nuclear-code-quality-review`. It is not a project file. Grill Me and Ponytail stay the Cursor project skills.
+- Checks run and results: the review write-up records `yarn typecheck`, `yarn lint`, and `yarn test` (API 89, web 85, contracts 14) and `yarn workspace web e2e` 8/8. Those commands were not re-run for this diary entry. `yarn serverless package` was not run. DynamoDB Local was skipped because `DYNAMODB_ENDPOINT` was unset.
+- Manual verification: not run for this entry.
+- Decision or tradeoff: behavior stays the same, including the 60-second wait. A corrupt stored row now fails instead of being read as `UP` or `+1`.
+- Remaining limitation: the hosted API does not need a new route, and this branch does not have to be deployed for the current site to keep working. The stricter row decoding and the shared handlers are live only after `serverless deploy`. The web changes need an Amplify rebuild. The T13 note that the follow-on strip disappears with the offer is closed by `OFFER_RULES`.
+- Commit: `refactor(api): model offer modes once and share handler steps` and `refactor(web): read offer rules once and decompose App and the ledger`.
 
 ### Future entry template
 

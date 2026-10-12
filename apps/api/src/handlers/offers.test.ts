@@ -17,12 +17,11 @@ const entry: TickerQuote = {
   price: '83062.64',
   tradeTime: '2026-10-11T14:59:58.000Z',
   fetchedAt: createdAt.toISOString(),
-  source: 'COINBASE_EXCHANGE',
 }
 
 function quoteAt(price: string, at: Date): TickerQuote {
   const trade = new Date(at.getTime() - 1_000)
-  return { price, tradeTime: trade.toISOString(), fetchedAt: at.toISOString(), source: 'COINBASE_EXCHANGE' }
+  return { price, tradeTime: trade.toISOString(), fetchedAt: at.toISOString() }
 }
 
 function header(created: { playerId: string; accessToken: string }) {
@@ -47,14 +46,14 @@ async function wonStandard(byte = 7) {
       players: store,
       now: () => resolvedAt,
       quote: async () => quoteAt('84000.00', resolvedAt),
-      doubleDown: true,
+      features: { doubleDown: true, redemption: false },
     },
   )
   const player = await store.get(created.playerId)
   return { store, created, prediction, offerId: player?.openOfferId ?? '' }
 }
 
-const on = { doubleDown: true }
+const on = { features: { doubleDown: true, redemption: false } }
 
 describe('Double Down settlement', () => {
   it('opens one offer on a standard win and does not chain a bonus win', async () => {
@@ -68,7 +67,7 @@ describe('Double Down settlement', () => {
 
     await handleResolvePrediction(
       { playerId: prediction.playerId, predictionId: prediction.predictionId, dueAt: prediction.dueAt },
-      { predictions: store, players: store, now: () => resolvedAt, quote: async () => quoteAt('84000.00', resolvedAt), doubleDown: true },
+      { predictions: store, players: store, now: () => resolvedAt, quote: async () => quoteAt('84000.00', resolvedAt), features: { doubleDown: true, redemption: false } },
     )
     expect((await store.get(created.playerId))?.score).toBe(1)
     expect(await store.getOffer(created.playerId, offerId)).toMatchObject({ status: 'OPEN' })
@@ -87,12 +86,12 @@ describe('Double Down settlement', () => {
     const prediction = JSON.parse(response.body ?? '') as { predictionId: string; dueAt: string; playerId: string }
     await handleResolvePrediction(
       { playerId: prediction.playerId, predictionId: prediction.predictionId, dueAt: prediction.dueAt },
-      { predictions: store, players: store, now: () => resolvedAt, quote: async () => quoteAt('82000.00', resolvedAt), doubleDown: true },
+      { predictions: store, players: store, now: () => resolvedAt, quote: async () => quoteAt('82000.00', resolvedAt), features: { doubleDown: true, redemption: false } },
     )
     expect((await store.get(created.playerId))?.openOfferId).toBeUndefined()
 
     const { store: flagged, created: flaggedPlayer } = await wonStandard(5)
-    const off = await handleMe(header(flaggedPlayer), 'me', { store: flagged, predictions: flagged, now: () => resolvedAt, doubleDown: false })
+    const off = await handleMe(header(flaggedPlayer), 'me', { players: flagged, predictions: flagged, now: () => resolvedAt, features: { doubleDown: false, redemption: false } })
     expect(JSON.parse(off.body ?? '').features.doubleDown).toBe(false)
     expect(JSON.parse(off.body ?? '').offer).toBeNull()
 
@@ -109,7 +108,7 @@ describe('Double Down settlement', () => {
     const bonusResolved = new Date('2026-10-11T15:02:06.000Z')
     await handleResolvePrediction(
       { playerId: bonus.playerId, predictionId: bonus.predictionId, dueAt: bonus.dueAt },
-      { predictions: bonusGame.store, players: bonusGame.store, now: () => bonusResolved, quote: async () => quoteAt('85000.00', bonusResolved), doubleDown: true },
+      { predictions: bonusGame.store, players: bonusGame.store, now: () => bonusResolved, quote: async () => quoteAt('85000.00', bonusResolved), features: { doubleDown: true, redemption: false } },
     )
     expect(await bonusGame.store.getOffer(bonusGame.created.playerId, offerIdFor(bonus.predictionId))).toBeNull()
     expect((await bonusGame.store.get(bonusGame.created.playerId))?.score).toBe(3)
@@ -132,7 +131,7 @@ describe('POST /offers', () => {
         predictions: store,
         now: () => acceptAt,
         quote: async () => quoteAt('84100.00', acceptAt),
-        doubleDown: true,
+        features: { doubleDown: true, redemption: false },
         startWorkflow: async (input) => {
           started.push(input.predictionId)
         },
@@ -309,7 +308,7 @@ describe('POST /offers', () => {
       offerId,
       JSON.stringify({ idempotencyKey: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' }),
       'off',
-      { players: store, predictions: store, now: () => resolvedAt, doubleDown: false },
+      { players: store, predictions: store, now: () => resolvedAt, features: { doubleDown: false, redemption: false } },
     )
     expect(disabled.statusCode).toBe(404)
     const other = createPlayer(createdAt, (size) => Buffer.alloc(size, 9))
@@ -326,19 +325,19 @@ describe('POST /offers', () => {
 
   it('returns the open offer from /me and drops it after the visibility window', async () => {
     const { store, created, offerId } = await wonStandard()
-    const open = JSON.parse((await handleMe(header(created), 'me', { store, predictions: store, now: () => resolvedAt, ...on })).body ?? '')
+    const open = JSON.parse((await handleMe(header(created), 'me', { players: store, predictions: store, now: () => resolvedAt, ...on })).body ?? '')
     expect(open.offer).toMatchObject({ offerId, status: 'OPEN', expiresAt: '2026-10-11T15:01:13.000Z' })
     expect(open.features.doubleDown).toBe(true)
     const later = JSON.parse((await handleMe(
       header(created),
       'later',
-      { store, predictions: store, now: () => new Date('2026-10-11T15:02:14.000Z'), ...on },
+      { players: store, predictions: store, now: () => new Date('2026-10-11T15:02:14.000Z'), ...on },
     )).body ?? '')
     expect(later.offer).toBeNull()
   })
 })
 
-const redemptionOn = { doubleDown: true, redemption: true }
+const redemptionOn = { features: { doubleDown: true, redemption: true } }
 
 async function lostStandard(byte = 21) {
   const store = memoryGameStore()
@@ -384,7 +383,7 @@ describe('Redemption settlement', () => {
     expect((await store.get(created.playerId))?.score).toBe(-1)
     expect(logs.some((line) => line.includes('"event":"offer.created"') && line.includes('"mode":"REDEMPTION"') && !line.includes(created.accessToken))).toBe(true)
 
-    const me = JSON.parse((await handleMe(header(created), 'me', { store, predictions: store, now: () => resolvedAt, ...redemptionOn })).body ?? '')
+    const me = JSON.parse((await handleMe(header(created), 'me', { players: store, predictions: store, now: () => resolvedAt, ...redemptionOn })).body ?? '')
     expect(me.offer).toMatchObject({
       mode: 'REDEMPTION',
       direction: null,
@@ -404,7 +403,7 @@ describe('Redemption settlement', () => {
     const quietPrediction = JSON.parse(quietCreated.body ?? '') as { predictionId: string; dueAt: string; playerId: string }
     await handleResolvePrediction(
       { playerId: quietPrediction.playerId, predictionId: quietPrediction.predictionId, dueAt: quietPrediction.dueAt },
-      { predictions: quiet, players: quiet, now: () => resolvedAt, quote: async () => quoteAt('81000.00', resolvedAt), doubleDown: true, redemption: false },
+      { predictions: quiet, players: quiet, now: () => resolvedAt, quote: async () => quoteAt('81000.00', resolvedAt), features: { doubleDown: true, redemption: false } },
     )
     expect((await quiet.get(quietPlayer.playerId))?.openOfferId).toBeUndefined()
 
@@ -446,7 +445,7 @@ describe('Redemption settlement', () => {
     expect(await store.getOffer(created.playerId, offerIdFor(bonus.predictionId))).toBeNull()
     expect(await store.get(created.playerId)).toMatchObject({ score: 3, wins: 1, losses: 1 })
     expect((await store.get(created.playerId))?.openOfferId).toBeUndefined()
-    const parent = JSON.parse((await handleMe(header(created), 'me', { store, predictions: store, now: () => bonusResolved, ...redemptionOn })).body ?? '')
+    const parent = JSON.parse((await handleMe(header(created), 'me', { players: store, predictions: store, now: () => bonusResolved, ...redemptionOn })).body ?? '')
     expect(parent.latestResolvedPrediction.parent).toEqual({ predictionId: offerId.slice(2), scoreDelta: -1 })
     expect((await store.getOffer(created.playerId, offerId))?.chosenDirection).toBe('DOWN')
   })
@@ -552,7 +551,7 @@ describe('POST /offers redemption', () => {
       offerId,
       JSON.stringify({ idempotencyKey: '00000027-0000-4000-8000-000000000127', direction: 'UP' }),
       'flag',
-      { players: store, predictions: store, now: () => resolvedAt, doubleDown: true, redemption: false },
+      { players: store, predictions: store, now: () => resolvedAt, features: { doubleDown: true, redemption: false } },
     )
     expect(hidden.statusCode).toBe(404)
     const { offerId: bonusId, created: winner, store: winStore } = await wonStandard(29)
@@ -561,7 +560,7 @@ describe('POST /offers redemption', () => {
       bonusId,
       JSON.stringify({ idempotencyKey: '00000029-0000-4000-8000-000000000029' }),
       'dd-off',
-      { players: winStore, predictions: winStore, now: () => resolvedAt, doubleDown: false, redemption: true },
+      { players: winStore, predictions: winStore, now: () => resolvedAt, features: { doubleDown: false, redemption: true } },
     )
     expect(hiddenDown.statusCode).toBe(404)
   })

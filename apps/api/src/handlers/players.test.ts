@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { memoryGameStore } from '../memoryStore.js'
 import { createPlayer } from '../player.js'
 import type { PlayerRecord, PlayerStore } from '../playerStore.js'
 import { handleCreatePlayer } from './createPlayer.js'
@@ -25,7 +26,7 @@ describe('handleCreatePlayer', () => {
   it('returns the raw token once and stores only the hash', async () => {
     const store = memoryStore()
     const response = await handleCreatePlayer('req-1', {
-      store,
+      players: store,
       now: () => now,
       nextBytes: (size) => Buffer.alloc(size, 0x11),
     })
@@ -54,7 +55,7 @@ describe('handleCreatePlayer', () => {
       },
     }
     const response = await handleCreatePlayer('req-2', {
-      store,
+      players: store,
       now: () => now,
       nextBytes: (size) => {
         const buf = Buffer.alloc(size, 0x22)
@@ -81,7 +82,7 @@ describe('handleMe', () => {
     const response = await handleMe(
       `Bearer ${created.playerId}.${created.accessToken}`,
       'req-4',
-      { store, now: () => now },
+      { players: store, predictions: memoryGameStore(), now: () => now },
     )
     const body = JSON.parse(response.body) as {
       score: number
@@ -102,7 +103,7 @@ describe('handleMe', () => {
     const response = await handleMe(
       `Bearer ${created.playerId}.${wrong}`,
       'req-5',
-      { store, now: () => now },
+      { players: store, predictions: memoryGameStore(), now: () => now },
     )
     const body = JSON.parse(response.body) as { code: string }
 
@@ -112,7 +113,8 @@ describe('handleMe', () => {
 
   it('returns 401 when the header is missing', async () => {
     const response = await handleMe(undefined, 'req-6', {
-      store: memoryStore(),
+      players: memoryStore(),
+      predictions: memoryGameStore(),
       now: () => now,
     })
     expect(response.statusCode).toBe(401)

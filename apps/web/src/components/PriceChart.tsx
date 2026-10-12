@@ -1,3 +1,4 @@
+import { formatTime } from '../format'
 import type { PriceSample } from '../market'
 
 export interface ChartRound {
@@ -7,14 +8,6 @@ export interface ChartRound {
 }
 
 const IDLE_MS = 120_000
-
-function formatClock(ms: number): string {
-  return new Date(ms).toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
-}
 
 export function PriceChart({
   samples,
@@ -29,7 +22,7 @@ export function PriceChart({
   const end = round ? Math.max(round.earliestResolveAt + 8_000, now + 3_000) : now
   const visible = samples.filter((sample) => sample.receivedAt >= start && sample.receivedAt <= end)
   const caption = round
-    ? `Your entry. Result window from ${formatClock(round.earliestResolveAt)}`
+    ? `Your entry. Result window from ${formatTime(round.earliestResolveAt)}`
     : 'Last 2 minutes. Now'
 
   const width = 100
@@ -91,7 +84,7 @@ export function PriceChart({
         {round ? (
           <>
             <span><i className="entry-swatch" aria-hidden="true" /> Your entry</span>
-            <span>Result window from {formatClock(round.earliestResolveAt)}</span>
+            <span>Result window from {formatTime(round.earliestResolveAt)}</span>
           </>
         ) : (
           <>

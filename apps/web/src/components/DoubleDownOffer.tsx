@@ -1,9 +1,11 @@
-import type { Offer } from 'contracts'
+import { pairTotals, type Offer } from 'contracts'
 import { Check, ChevronDown, ChevronUp } from 'lucide-react'
-import { roundLabel } from '../offer'
-import { DoubleDownBadge } from './DoubleDownBadge'
+import { directionWord, roundLabel, signedPoints, spokenPoints } from '../format'
+import { layoutSlot } from '../layout'
+import { ModeBadge } from './ModeBadge'
 import { OfferPayoutTiles } from './offers/OfferPayoutTiles'
 import { OfferTimer } from './offers/OfferTimer'
+import { WAIT_SECONDS } from '../timing'
 
 interface Props {
   offer: Offer
@@ -26,11 +28,13 @@ export function DoubleDownOffer({
   onDecline,
   onExtend,
 }: Props) {
-  const word = offer.direction === 'DOWN' ? 'Down' : 'Up'
-  const description = `Your plus 1 is kept. Same direction, ${word}. If right, plus 2, pair total plus 3. If wrong, minus 2, pair total minus 1.`
+  const { payout } = offer
+  const pair = pairTotals(payout)
+  const word = directionWord(offer.direction ?? 'UP')
+  const description = `Your ${spokenPoints(payout.parentDelta)} is kept. Same direction, ${word}. If right, ${spokenPoints(payout.win)}, pair total ${spokenPoints(pair.win)}. If wrong, ${spokenPoints(payout.loss)}, pair total ${spokenPoints(pair.loss)}.`
 
   return (
-    <section className="dd" aria-labelledby="dd-title" aria-describedby="dd-desc" aria-busy={submitting}>
+    <section className="dd" {...layoutSlot('offer')} aria-labelledby="dd-title" aria-describedby="dd-desc" aria-busy={submitting}>
       <OfferTimer
         issuedAt={offer.issuedAt}
         expiresAt={offer.expiresAt}
@@ -43,19 +47,19 @@ export function DoubleDownOffer({
         {(clock) => (
           <>
             <div className="dd-top">
-              <DoubleDownBadge />
+              <ModeBadge mode="DOUBLE_DOWN" />
               <span className="num" aria-hidden="true">{clock.submitting ? 'Timer held' : `${clock.seconds}s left`}</span>
             </div>
             <h2 id="dd-title">Play one bonus round in the same direction?</h2>
             <p className="dd-kept">
               <Check className="ic" size={14} aria-hidden="true" />
-              <span><b>+1 kept</b> from round {roundLabel(offer.parentPredictionId)}. Whatever you choose, it stays.</span>
+              <span><b>{signedPoints(payout.parentDelta)} kept</b> from round {roundLabel(offer.parentPredictionId)}. Whatever you choose, it stays.</span>
             </p>
             <p>
               Direction is fixed: {offer.direction === 'DOWN'
                 ? <ChevronDown className="ic" size={14} aria-hidden="true" />
                 : <ChevronUp className="ic" size={14} aria-hidden="true" />}
-              <b> {word}</b>. New entry price, at least 60 seconds again.
+              <b> {word}</b>. New entry price, at least {WAIT_SECONDS} seconds again.
             </p>
             <OfferPayoutTiles payout={offer.payout} bonusWord />
             <p id="dd-desc" className="sr-only">{description}</p>

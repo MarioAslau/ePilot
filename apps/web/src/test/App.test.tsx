@@ -455,7 +455,8 @@ describe('App predictions', () => {
     expect(await screen.findByText('Correct', { selector: '#receipt-heading' })).toBeInTheDocument()
     expect(screen.getByText('Exact 65000.101 vs 65000.104')).toBeInTheDocument()
     expect(screen.getAllByLabelText('Score: 1').length).toBeGreaterThan(0)
-    expect(screen.getByRole('button', { name: /up/i })).toBeEnabled()
+    // The buttons wait for a live price, which arrives on its own request.
+    await waitFor(() => expect(screen.getByRole('button', { name: /up/i })).toBeEnabled())
   })
 
   it('shows an equal-price hold from the server reason', async () => {

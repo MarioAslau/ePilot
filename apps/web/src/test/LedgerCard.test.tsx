@@ -3,7 +3,8 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { LedgerCard, roundsCap } from '../components/LedgerCard'
+import { LedgerCard } from '../components/LedgerCard'
+import { roundsCap } from '../hooks/useRoundsCap'
 import type { HistoryRound } from '../state/history'
 import { useHistory } from '../useHistory'
 
@@ -20,6 +21,7 @@ function round(overrides: Partial<HistoryRound> = {}): HistoryRound {
     resolutionTradeTime: '2026-10-11T14:03:33.000Z',
     outcome: 'WIN',
     scoreDelta: 1,
+    mode: 'STANDARD',
     ...overrides,
   }
 }
@@ -39,15 +41,15 @@ const card = {
 }
 
 describe('roundsCap', () => {
-  it('stops at two stage sections when a special round is the third', () => {
-    const two = roundsCap({ market: 220, play: 360, offer: 0, score: 180, head: 44, pad: 48 })
-    const three = roundsCap({ market: 220, play: 360 + 280, offer: 280, score: 180, head: 44, pad: 48 })
+  it('stops at the stage bottom, and an offer does not add room', () => {
+    const two = roundsCap({ stageBottom: 900, listTop: 400, offer: 0, below: 48 })
+    const three = roundsCap({ stageBottom: 900 + 280, listTop: 400, offer: 280, below: 48 })
     expect(three).toBe(two)
     expect(two).toBeGreaterThan(152)
   })
 
   it('keeps at least two rows when the stage is short', () => {
-    expect(roundsCap({ market: 80, play: 80, offer: 0, score: 200, head: 44, pad: 48 })).toBe(152)
+    expect(roundsCap({ stageBottom: 500, listTop: 480, offer: 0, below: 48 })).toBe(152)
   })
 })
 
@@ -130,6 +132,43 @@ describe('LedgerCard', () => {
     expect(screen.getByText((_, node) => node?.classList.contains('hp') === true && (node.textContent ?? '').includes('Not this time, −1'))).toBeInTheDocument()
   })
 
+  it('keeps the preview to five round lines, counting a pair as two', () => {
+    const pair = (bonusId: string, parentId: string): HistoryRound[] => [
+      round({ predictionId: bonusId, mode: 'DOUBLE_DOWN', scoreDelta: -2, parentPredictionId: parentId }),
+      round({ predictionId: parentId, scoreDelta: 1 }),
+    ]
+    const rows = [...pair('p_b1', 'p_p1'), ...pair('p_b2', 'p_p2'), ...pair('p_b3', 'p_p3')]
+    render(<LedgerCard {...card} status="ready" predictions={rows} {...idle} />)
+    expect(document.getElementById('history-p_b1')).toBeTruthy()
+    expect(document.getElementById('history-p_b3')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Show all 6 rounds' })).toBeInTheDocument()
+  })
+
+  it('counts the pending round toward the five shown', () => {
+    const rows = Array.from({ length: 5 }, (_, index) => round({
+      predictionId: `p_000000000000${index}_abcd1234`,
+    }))
+    render(
+      <LedgerCard
+        {...card}
+        status="ready"
+        predictions={rows}
+        pending={{
+          direction: 'UP',
+          entryPrice: '70000.00',
+          entryTradeTime: '2026-10-11T14:02:31.000Z',
+          mode: 'STANDARD',
+          phase: 'waiting',
+          score: 1,
+        }}
+        {...idle}
+      />,
+    )
+    expect(screen.getByText('Pending')).toBeInTheDocument()
+    expect(document.getElementById('history-p_0000000000004_abcd1234')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Show all 5 rounds' })).toBeInTheDocument()
+  })
+
   it('opens the capped list and closes it again', async () => {
     const rows = Array.from({ length: 6 }, (_, index) => round({
       predictionId: `p_000000000000${index}_abcd1234`,
@@ -138,6 +177,7 @@ describe('LedgerCard', () => {
     expect(document.querySelector('.hist.is-open')).toBeNull()
     expect(document.getElementById('history-p_0000000000005_abcd1234')).toBeNull()
     await userEvent.click(screen.getByRole('button', { name: 'Show all 6 rounds' }))
+    expect(document.querySelector('.hist-scroll.is-open')).toBeTruthy()
     expect(document.querySelector('.hist.is-open')).toBeTruthy()
     expect(document.getElementById('history-p_0000000000005_abcd1234')).toBeTruthy()
     await userEvent.click(screen.getByRole('button', { name: 'Show fewer' }))

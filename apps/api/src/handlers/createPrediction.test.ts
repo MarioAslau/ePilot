@@ -11,7 +11,6 @@ const quote: TickerQuote = {
   price: '83062.64',
   tradeTime: '2026-10-11T14:59:58.000Z',
   fetchedAt: now.toISOString(),
-  source: 'COINBASE_EXCHANGE',
 }
 
 function session() {
@@ -255,12 +254,12 @@ describe('GET /me active prediction', () => {
       { players: store, predictions: store, now: () => now, quote: async () => quote },
     )
     const waiting = await handleMe(header(created), 'req-17', {
-      store,
+      players: store,
       predictions: store,
       now: () => new Date('2026-10-11T15:00:30.000Z'),
     })
     const checking = await handleMe(header(created), 'req-18', {
-      store,
+      players: store,
       predictions: store,
       now: () => new Date('2026-10-11T15:01:00.000Z'),
     })
@@ -280,7 +279,7 @@ describe('GET /me active prediction', () => {
     const predictionId = JSON.parse(response.body ?? '').predictionId as string
     await store.recordCheck(created.playerId, predictionId, 'EQUAL_PRICE', '2026-10-11T15:01:10.000Z')
     const me = await handleMe(header(created), 'req-20', {
-      store,
+      players: store,
       predictions: store,
       now: () => new Date('2026-10-11T15:01:20.000Z'),
     })
@@ -297,7 +296,7 @@ describe('workflow start', () => {
       predictions: store,
       now: () => now,
       quote: async () => quote,
-      startWorkflow: async (input: { predictionId: string; dueAt: string }) => {
+      startWorkflow: async (input: { playerId: string; predictionId: string; dueAt: string }) => {
         started.push(input)
       },
     }
