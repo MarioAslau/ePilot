@@ -1,16 +1,17 @@
-import type { Mode, Prediction, ScoreDelta } from 'contracts'
+import type { Direction, Mode, Outcome, Prediction, ScoreDelta } from 'contracts'
 
+/** A settled round with every field the history list shows. */
 export interface HistoryRound {
   predictionId: string
-  direction: 'UP' | 'DOWN'
+  direction: Direction
+  mode: Mode
   entryPrice: string
   resolutionPrice: string
   entryTradeTime: string
   resolutionTradeTime: string
-  outcome: 'WIN' | 'LOSS'
+  outcome: Outcome
   scoreDelta: ScoreDelta
   parentPredictionId?: string
-  mode?: Mode
 }
 
 export function historyRound(prediction: Prediction): HistoryRound | null {
@@ -35,6 +36,26 @@ export function historyRound(prediction: Prediction): HistoryRound | null {
     mode: prediction.mode,
     ...(prediction.parentPredictionId ? { parentPredictionId: prediction.parentPredictionId } : {}),
   }
+}
+
+export type HistoryEntry =
+  | { kind: 'round'; round: HistoryRound }
+  | { kind: 'pair'; bonus: HistoryRound; parent: HistoryRound; total: number }
+
+/** Group a bonus round with the parent listed right after it. Rows are newest first. */
+export function pairFromHistory(rows: HistoryRound[]): HistoryEntry[] {
+  const entries: HistoryEntry[] = []
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index]
+    const older = rows[index + 1]
+    if (row?.parentPredictionId && older && older.predictionId === row.parentPredictionId) {
+      entries.push({ kind: 'pair', bonus: row, parent: older, total: row.scoreDelta + older.scoreDelta })
+      index += 1
+      continue
+    }
+    if (row) entries.push({ kind: 'round', round: row })
+  }
+  return entries
 }
 
 /** Score immediately after each listed round, newest first. The first value is the current score. */

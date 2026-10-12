@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import { PLAY_TITLE_ID } from '../focusTargets'
 import { DirectionButtons } from './DirectionButtons'
 
 interface Props {
@@ -32,7 +33,7 @@ export function PlayTitle({
   }, [autoFocus])
   return (
     <>
-      <h1 id="play-title" className="play-title" tabIndex={-1} ref={heading} data-act="play-title">{title}</h1>
+      <h1 id={PLAY_TITLE_ID} className="play-title" tabIndex={-1} ref={heading} data-act="play-title">{title}</h1>
       {subtitle ? <p className="play-sub">{subtitle}</p> : null}
     </>
   )

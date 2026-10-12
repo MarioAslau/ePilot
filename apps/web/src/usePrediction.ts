@@ -1,6 +1,6 @@
 import type { Direction, Prediction } from 'contracts'
 import { useRef, useState } from 'react'
-import { postPrediction } from './predictions'
+import { postPrediction } from './api'
 import type { Session } from './session'
 
 const RETRY_MS = [1_000, 2_000, 4_000]
@@ -8,7 +8,7 @@ const RETRY_MS = [1_000, 2_000, 4_000]
 export function usePrediction(
   baseUrl: string,
   session: Session | null,
-  onFinished: (outcome: 'placed' | 'rejected', code?: string) => void,
+  onFinished: (outcome: 'placed' | 'rejected') => void,
   onReconcile?: () => void,
 ) {
   const [phase, setPhase] = useState<'idle' | 'recording' | 'unknown'>('idle')
@@ -32,14 +32,14 @@ export function usePrediction(
     setNotice('Recording entry')
 
     const result = await postPrediction(baseUrl, session, direction, key)
-    if (result.kind === 'placed') {
+    if (result.kind === 'ok') {
       pending.current = null
       attempts.current = 0
       locked.current = false
       setPhase('idle')
       setNotice(null)
-      setPlaced(result.prediction)
-      setServerPriced(displayedPrice !== null && result.prediction.entryPrice !== displayedPrice)
+      setPlaced(result.value)
+      setServerPriced(displayedPrice !== null && result.value.entryPrice !== displayedPrice)
       onFinished('placed')
       return
     }
@@ -55,7 +55,7 @@ export function usePrediction(
             ? null
             : 'Not placed.',
       )
-      onFinished('rejected', result.code)
+      onFinished('rejected')
       return
     }
 
@@ -91,7 +91,6 @@ export function usePrediction(
     canRetry,
     placed,
     serverPriced,
-    isSubmitting: phase !== 'idle',
     submit,
     retry,
   }

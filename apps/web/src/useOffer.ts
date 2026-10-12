@@ -1,6 +1,6 @@
 import type { Direction, Offer } from 'contracts'
 import { useEffect, useRef, useState } from 'react'
-import { postOffer } from './predictions'
+import { postOffer } from './api'
 import { readSeenOffers, rememberSeenOffer } from './seenOffers'
 import type { Session } from './session'
 

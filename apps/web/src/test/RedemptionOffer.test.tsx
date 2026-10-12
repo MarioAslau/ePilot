@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { OfferPayoutTiles } from '../components/offers/OfferPayoutTiles'
 import { RedemptionOffer } from '../components/RedemptionOffer'
 import { REDEMPTION_NAME } from '../featureNames'
-import { lossOfferAnnouncement } from '../offer'
+import { lossOfferAnnouncement } from '../announcements'
 
 const offer: Offer = {
   offerId: 'o_p_parent0001',
@@ -104,10 +104,10 @@ describe('RedemptionOffer', () => {
   })
 
   it('rejects banned redemption copy', () => {
-    renderOffer({ name: 'Second Call' })
+    renderOffer()
     const copy = `${document.body.textContent} ${lossOfferAnnouncement(-1, offer.payout)}`
     for (const phrase of banned) expect(copy.toLowerCase()).not.toContain(phrase)
-    expect(screen.getByRole('heading', { name: 'Play one Second Call round?' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: `Play one ${REDEMPTION_NAME} round?` })).toBeInTheDocument()
   })
 })
 

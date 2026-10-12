@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appendSample, chartSummary, feedStatus, type PriceSample } from '../market'
+import { appendSample, feedStatus, type PriceSample } from '../market'
 
 const sample = (receivedAt: number, tradeTime: string, price = '10'): PriceSample => ({
   price,
@@ -63,13 +63,5 @@ describe('appendSample', () => {
       1_000,
     )
     expect(samples).toHaveLength(1)
-  })
-})
-
-describe('chartSummary', () => {
-  it('withholds the 1 minute change until a sample is 60 seconds old', () => {
-    const samples = [sample(0, 't1', '10'), sample(59_000, 't2', '12')]
-    expect(chartSummary(samples, 59_000).change1m).toBeNull()
-    expect(chartSummary(samples, 60_000).change1m).toBe(2)
   })
 })

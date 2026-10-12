@@ -1,7 +1,8 @@
-import type { Direction, Offer } from 'contracts'
+import { pairTotals, type Direction, type Offer } from 'contracts'
 import { ArrowDown, ArrowUp, Lock } from 'lucide-react'
 import { REDEMPTION_NAME } from '../featureNames'
-import { roundLabel } from '../offer'
+import { roundLabel, signedPoints, spokenPoints } from '../format'
+import { layoutSlot } from '../layout'
 import { ModeBadge } from './ModeBadge'
 import { OfferPayoutTiles } from './offers/OfferPayoutTiles'
 import { OfferTimer } from './offers/OfferTimer'
@@ -14,7 +15,6 @@ interface Props {
   error: string | null
   busy: boolean
   restored?: boolean
-  name?: string
   onAccept: (direction: Direction) => void
   onDecline: () => void
   onExtend: () => void
@@ -28,17 +28,16 @@ export function RedemptionOffer({
   error,
   busy,
   restored = false,
-  name = REDEMPTION_NAME,
   onAccept,
   onDecline,
   onExtend,
 }: Props) {
-  const winPair = offer.payout.parentDelta + offer.payout.win
-  const lossPair = offer.payout.parentDelta + offer.payout.loss
-  const description = `Optional. Choose up or down for one fresh round. If right, plus ${offer.payout.win}, pair total plus ${winPair}. If wrong, minus ${Math.abs(offer.payout.loss)}, pair total minus ${Math.abs(lossPair)}. The offer lasts 10 seconds; Need more time adds 20 seconds.`
+  const { payout } = offer
+  const pair = pairTotals(payout)
+  const description = `Optional. Choose up or down for one fresh round. If right, ${spokenPoints(payout.win)}, pair total ${spokenPoints(pair.win)}. If wrong, ${spokenPoints(payout.loss)}, pair total ${spokenPoints(pair.loss)}. The offer lasts 10 seconds; Need more time adds 20 seconds.`
 
   return (
-    <section className="dd rd" aria-labelledby="rd-title" aria-describedby="rd-desc" aria-busy={submitting}>
+    <section className="dd rd" {...layoutSlot('offer')} aria-labelledby="rd-title" aria-describedby="rd-desc" aria-busy={submitting}>
       <OfferTimer
         issuedAt={offer.issuedAt}
         expiresAt={offer.expiresAt}
@@ -51,17 +50,17 @@ export function RedemptionOffer({
         {(clock) => (
           <>
             <div className="dd-top">
-              <ModeBadge mode="REDEMPTION" label={name} />
+              <ModeBadge mode="REDEMPTION" />
               <span className="num" aria-hidden="true">{clock.submitting ? 'Timer held' : `${clock.seconds}s left`}</span>
             </div>
-            <h2 id="rd-title">Play one {name} round?</h2>
+            <h2 id="rd-title">Play one {REDEMPTION_NAME} round?</h2>
             <p className="dd-kept">
               <Lock className="ic" size={14} aria-hidden="true" />
-              <span><b>−1 kept</b> from round {roundLabel(offer.parentPredictionId)}. Whatever you choose, it stays.</span>
+              <span><b>{signedPoints(payout.parentDelta)} kept</b> from round {roundLabel(offer.parentPredictionId)}. Whatever you choose, it stays.</span>
             </p>
             <OfferPayoutTiles payout={offer.payout} />
             <p className="fine"><b>Pick a direction to start it</b> · fresh entry price, at least 60 seconds</p>
-            <div className="rd-actions" role="group" aria-label={`${name} round: pick a direction or decline`}>
+            <div className="rd-actions" role="group" aria-label={`${REDEMPTION_NAME} round: pick a direction or decline`}>
               {(['UP', 'DOWN'] as const).map((direction) => {
                 const chosen = submitting && pendingDirection === direction
                 const Icon = direction === 'UP' ? ArrowUp : ArrowDown
@@ -88,7 +87,7 @@ export function RedemptionOffer({
             <p id="rd-desc" className="sr-only">{description}</p>
             {error && (
               <p className="dd-error">
-                <b>{name} round not started.</b> {error}
+                <b>{REDEMPTION_NAME} round not started.</b> {error}
               </p>
             )}
             <p className="fine">

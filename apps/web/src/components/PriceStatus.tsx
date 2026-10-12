@@ -1,6 +1,5 @@
-import { formatUsd } from '../money'
-
-type Status = 'loading' | 'live' | 'stale' | 'unavailable'
+import { formatUsd } from '../format'
+import type { FeedStatus as Status } from '../market'
 
 interface Props {
   price: string | null

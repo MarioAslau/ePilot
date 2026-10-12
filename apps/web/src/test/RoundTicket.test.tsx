@@ -61,9 +61,8 @@ describe('RoundTicket', () => {
     const { rerender } = render(
       <RoundTicket
         {...props}
-        followOn="REDEMPTION"
+        mode="REDEMPTION"
         parentPredictionId="p_0000000002000_ccccdddd"
-        payout={{ win: 4, loss: -2, parentDelta: -1 }}
       />,
     )
     expect(screen.getByText('Redemption')).toBeInTheDocument()
@@ -76,7 +75,7 @@ describe('RoundTicket', () => {
       <RoundTicket
         {...props}
         direction="DOWN"
-        followOn="DOUBLE_DOWN"
+        mode="DOUBLE_DOWN"
         parentPredictionId="p_0000000002000_ccccdddd"
       />,
     )

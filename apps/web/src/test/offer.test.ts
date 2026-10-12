@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { offerPhase, pairFromHistory, type OfferLocal } from '../offer'
-import type { HistoryRound } from '../state/history'
+import { offerPhase, type OfferLocal } from '../offer'
+import { pairFromHistory, type HistoryRound } from '../state/history'
 import type { Offer } from 'contracts'
 
 const offer: Offer = {
@@ -37,7 +37,7 @@ function row(id: string, delta: 1 | -1 | 2 | -2 | 4, parent?: string, mode?: His
     outcome: delta > 0 ? 'WIN' : 'LOSS',
     scoreDelta: delta,
     parentPredictionId: parent,
-    ...(mode ? { mode } : {}),
+    mode: mode ?? (parent ? 'DOUBLE_DOWN' : 'STANDARD'),
   }
 }
 

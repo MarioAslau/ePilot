@@ -16,11 +16,13 @@ export async function fetchMarket(baseUrl: string): Promise<MarketResponse> {
   return MarketResponseSchema.parse(await readJson(response))
 }
 
+export type FeedStatus = 'loading' | 'live' | 'stale' | 'unavailable'
+
 export function feedStatus(input: {
   lastGood: { receivedAt: number; isFresh: boolean } | null
   errored: boolean
   now: number
-}): 'loading' | 'live' | 'stale' | 'unavailable' {
+}): FeedStatus {
   if (!input.lastGood) return input.errored ? 'unavailable' : 'loading'
   const age = input.now - input.lastGood.receivedAt
   if (input.errored || !input.lastGood.isFresh || age > STALE_AFTER_MS) return 'stale'
@@ -37,20 +39,4 @@ export function appendSample(
     return recent
   }
   return [...recent, { price: quote.price, tradeTime: quote.tradeTime, receivedAt }]
-}
-
-export function chartSummary(samples: PriceSample[], now: number): {
-  coverageSeconds: number
-  change1m: number | null
-} {
-  const oldest = samples[0]
-  const newest = samples[samples.length - 1]
-  if (!oldest || !newest) return { coverageSeconds: 0, change1m: null }
-  const coverageSeconds = Math.max(0, Math.round((newest.receivedAt - oldest.receivedAt) / 1000))
-  const baseline = samples.find((sample) => now - sample.receivedAt >= 60_000)
-  if (!baseline) return { coverageSeconds, change1m: null }
-  return {
-    coverageSeconds,
-    change1m: Number(newest.price) - Number(baseline.price),
-  }
 }

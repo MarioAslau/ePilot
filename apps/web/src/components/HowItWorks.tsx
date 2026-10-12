@@ -1,6 +1,13 @@
 import { CircleHelp, X } from 'lucide-react'
 import { useEffect, useRef } from 'react'
+import { OFFER_RULES, pairTotals } from 'contracts'
 import { REDEMPTION_NAME } from '../featureNames'
+import { signedPoints } from '../format'
+
+const dd = OFFER_RULES.DOUBLE_DOWN.payout
+const ddPair = pairTotals(dd)
+const rd = OFFER_RULES.REDEMPTION.payout
+const rdPair = pairTotals(rd)
 
 interface Props {
   doubleDown?: boolean
@@ -93,7 +100,7 @@ export function HowItWorks({ doubleDown = false, redemption = false }: Props) {
               <div>
                 <b>Double Down</b>
                 After a correct standard round, you can play one bonus round in the same direction.
-                Your +1 stays. A correct bonus adds 2 (pair +3). A miss subtracts 2 (pair −1). The offer lasts 10 seconds, and Need more time adds 20 seconds.
+                Your {signedPoints(dd.parentDelta)} stays. A correct bonus adds {dd.win} (pair {signedPoints(ddPair.win)}). A miss subtracts {Math.abs(dd.loss)} (pair {signedPoints(ddPair.loss)}). The offer lasts 10 seconds, and Need more time adds 20 seconds.
               </div>
             </li>
           )}
@@ -102,7 +109,7 @@ export function HowItWorks({ doubleDown = false, redemption = false }: Props) {
               <div>
                 <b>{REDEMPTION_NAME}</b>
                 After a standard loss, the −1 stays. You can choose Up or Down for one fresh round.
-                Right adds 4 (pair +3). Wrong subtracts 2 (pair −3). Decline or expiry keeps the −1. The offer lasts 10 seconds, and Need more time adds 20 seconds.
+                Right adds {rd.win} (pair {signedPoints(rdPair.win)}). Wrong subtracts {Math.abs(rd.loss)} (pair {signedPoints(rdPair.loss)}). Decline or expiry keeps the −1. The offer lasts 10 seconds, and Need more time adds 20 seconds.
               </div>
             </li>
           )}

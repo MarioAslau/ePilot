@@ -53,18 +53,18 @@ describe('clock offset', () => {
 
 describe('pollInterval', () => {
   const base = {
-    dueAt: '2026-10-11T15:01:00.000Z',
+    activeDueAt: '2026-10-11T15:01:00.000Z',
     offsetMs: 0,
     waitReason: 'WAITING_FOR_DEADLINE' as const,
   }
 
   it('waits 3s when idle, 2s while active, and 1s near the deadline or a hold', () => {
-    expect(pollInterval({ ...base, hasActive: false, nowMs: start })).toBe(3_000)
-    expect(pollInterval({ ...base, hasActive: true, nowMs: start })).toBe(2_000)
-    expect(pollInterval({ ...base, hasActive: true, nowMs: start + 55_000 })).toBe(1_000)
-    expect(pollInterval({ ...base, hasActive: true, nowMs: start, waitReason: 'EQUAL_PRICE' })).toBe(1_000)
-    expect(pollInterval({ ...base, hasActive: true, nowMs: start, waitReason: 'PROVIDER_HOLD' })).toBe(1_000)
-    expect(pollInterval({ ...base, hasActive: true, nowMs: start, waitReason: 'CHECKING_PRICE' })).toBe(1_000)
+    expect(pollInterval({ ...base, activeDueAt: null, nowMs: start })).toBe(3_000)
+    expect(pollInterval({ ...base, nowMs: start })).toBe(2_000)
+    expect(pollInterval({ ...base, nowMs: start + 55_000 })).toBe(1_000)
+    expect(pollInterval({ ...base, nowMs: start, waitReason: 'EQUAL_PRICE' })).toBe(1_000)
+    expect(pollInterval({ ...base, nowMs: start, waitReason: 'PROVIDER_HOLD' })).toBe(1_000)
+    expect(pollInterval({ ...base, nowMs: start, waitReason: 'CHECKING_PRICE' })).toBe(1_000)
   })
 })
 

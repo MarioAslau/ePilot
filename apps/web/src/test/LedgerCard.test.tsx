@@ -3,7 +3,8 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { LedgerCard, roundsCap } from '../components/LedgerCard'
+import { LedgerCard } from '../components/LedgerCard'
+import { roundsCap } from '../hooks/useRoundsCap'
 import type { HistoryRound } from '../state/history'
 import { useHistory } from '../useHistory'
 
@@ -20,6 +21,7 @@ function round(overrides: Partial<HistoryRound> = {}): HistoryRound {
     resolutionTradeTime: '2026-10-11T14:03:33.000Z',
     outcome: 'WIN',
     scoreDelta: 1,
+    mode: 'STANDARD',
     ...overrides,
   }
 }

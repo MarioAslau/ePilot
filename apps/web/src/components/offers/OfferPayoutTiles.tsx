@@ -1,18 +1,16 @@
-import type { OfferPayout } from 'contracts'
-
-function signed(value: number): string {
-  return value > 0 ? `+${value}` : `−${Math.abs(value)}`
-}
+import { pairTotals, type OfferPayout } from 'contracts'
+import { signedPoints } from '../../format'
 
 export function OfferPayoutTiles({ payout, bonusWord = false }: { payout: OfferPayout; bonusWord?: boolean }) {
   const bonus = bonusWord ? ' bonus' : ''
+  const pair = pairTotals(payout)
   return (
     <div className="dd-tiles" aria-hidden="true">
       <p className="win">
-        If right · <b>{signed(payout.win)}</b>{bonus} · Pair total <b>{signed(payout.parentDelta + payout.win)}</b>
+        If right · <b>{signedPoints(payout.win)}</b>{bonus} · Pair total <b>{signedPoints(pair.win)}</b>
       </p>
       <p className="loss">
-        If wrong · <b>{signed(payout.loss)}</b>{bonus} · Pair total <b>{signed(payout.parentDelta + payout.loss)}</b>
+        If wrong · <b>{signedPoints(payout.loss)}</b>{bonus} · Pair total <b>{signedPoints(pair.loss)}</b>
       </p>
     </div>
   )

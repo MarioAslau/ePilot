@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
-import { fetchHistory } from './predictions'
+import { fetchHistory } from './api'
 import { readSession } from './session'
 import { historyRound, type HistoryRound } from './state/history'
 
