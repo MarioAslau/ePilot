@@ -1,8 +1,9 @@
 import { ArrowDown, ArrowUp } from 'lucide-react'
-import { useRef } from 'react'
+import { useRef, type ReactNode } from 'react'
 import { formatTime, formatUsd } from '../format'
 import type { Stance } from '../round'
 import { usePainter } from './frame'
+import { GAP_POOL, headPoint } from './layers'
 import { gridLines, xTicks, type ChartRound } from './model'
 
 /** Past this share of the width the price tag sits left of the head dot. */
@@ -21,15 +22,48 @@ function place(element: HTMLElement | null, x: number, y: number, shown = true) 
   if (shown) element.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`
 }
 
+/** A tag beside the head dot, flipping to its left past `FLIP_AT` of the width. */
+function HeadTag({ className, children }: { className: string; children: ReactNode }) {
+  const tag = useRef<HTMLSpanElement>(null)
+  usePainter((frame) => {
+    const point = headPoint(frame)
+    tag.current?.classList.toggle('flip', point ? point.x > frame.scale.size.width * FLIP_AT : false)
+    place(tag.current, point?.x ?? 0, point?.y ?? 0, Boolean(point))
+  })
+  return <span ref={tag} className={`ch-tag ${className}`}>{children}</span>
+}
+
 /** The latest real price beside the head dot. Never the eased value. */
 export function PriceTag({ price, tone }: { price: string; tone: Stance | 'idle' }) {
-  const tag = useRef<HTMLSpanElement>(null)
-  usePainter(({ head, scale }) => {
-    const flip = head ? head.x > scale.size.width * FLIP_AT : false
-    tag.current?.classList.toggle('flip', flip)
-    place(tag.current, head?.x ?? 0, head?.y ?? 0, Boolean(head))
+  return <HeadTag className={`ch-price ${tone}`}>{formatUsd(price)}</HeadTag>
+}
+
+/** "Level · still waiting" or "On hold · not a loss" in place of the price tag. */
+export function HoldTag({ text, kind }: { text: string; kind: 'level' | 'hold' }) {
+  return <HeadTag className={`ch-hold-tag ${kind}`}>{text}</HeadTag>
+}
+
+/** Below this width a gap is hatched but not labelled. */
+const GAP_LABEL_MIN = 40
+
+/** "No price data" centred over each gap wide enough to hold it. */
+export function GapLabels() {
+  const labels = useRef<(HTMLSpanElement | null)[]>([])
+  usePainter(({ gaps, scale }) => {
+    labels.current.forEach((label, index) => {
+      const gap = gaps[index]
+      const from = gap ? scale.xOf(gap.from) : 0
+      const to = gap ? scale.xOf(gap.to) : 0
+      place(label, (from + to) / 2, scale.size.height / 2, Boolean(gap) && to - from >= GAP_LABEL_MIN)
+    })
   })
-  return <span ref={tag} className={`ch-tag ch-price ${tone}`}>{formatUsd(price)}</span>
+  return (
+    <>
+      {Array.from({ length: GAP_POOL }, (_, index) => (
+        <span key={index} ref={(element) => { labels.current[index] = element }} className="ch-tag ch-gap-label">No price data</span>
+      ))}
+    </>
+  )
 }
 
 /** "Entry $X" at the right end of the entry line. It fades when the price tag is about to cover it. */

@@ -4,14 +4,17 @@ import {
   easedValue,
   headTime,
   makeScale,
+  segments,
   stepRange,
   targetRange,
   visibleSamples,
   type ChartRound,
+  type Gap,
   type Range,
   type Scale,
   type Size,
 } from './model'
+import type { FeedStatus } from '../market'
 import type { PriceSample } from './samples'
 
 /** Everything a layer needs to draw one frame. Built by the loop, read by painters. */
@@ -23,8 +26,10 @@ export interface Frame {
   visible: PriceSample[]
   /** The line's head: where it is drawn (eased value, extended time) and the real last quote. */
   head: { x: number; y: number; time: number; value: number; sample: PriceSample } | null
-  /** Polyline points in pixels, ending at the drawn head. */
-  points: [number, number][]
+  /** Runs of line points in pixels; the line is never drawn across a gap. The last run ends at the drawn head. */
+  runs: [number, number][][]
+  /** Time spans with no price data, including a delayed feed's tail. */
+  gaps: Gap[]
 }
 
 export type Painter = (frame: Frame) => void
@@ -34,7 +39,7 @@ export interface ChartData {
   /** Server time, as last reported. The loop advances it between reports while animating. */
   now: number
   round?: ChartRound
-  live: boolean
+  feed: FeedStatus
   size: Size
 }
 
@@ -75,7 +80,7 @@ export function useChartFrame(data: ChartData, reduced: boolean): Registry {
 
   const paint = (at: number) => {
     const current = state.current
-    const { samples, round, live, size } = current.data
+    const { samples, round, feed, size } = current.data
     if (size.width === 0 || size.height === 0) return
     const now = reduced ? current.data.now : current.data.now + Math.min(1_000, at - current.reportedAt)
     const window = chartWindow(now, round)
@@ -84,25 +89,28 @@ export function useChartFrame(data: ChartData, reduced: boolean): Registry {
     if (round) prices.push(Number(round.entryPrice))
     const target = targetRange(prices)
     if (!target) {
-      painters.current.forEach((painter) => painter({ scale: makeScale(window, { low: 0, high: 1 }, size), now, round, visible, head: null, points: [] }))
+      const scale = makeScale(window, { low: 0, high: 1 }, size)
+      painters.current.forEach((painter) => painter({ scale, now, round, visible, head: null, runs: [], gaps: [] }))
       return
     }
     current.range = stepRange(current.range, target, reduced ? 1 : 0.12)
     const scale = makeScale(window, current.range, size)
 
+    const { runs: sampleRuns, gaps } = segments(visible, now, feed === 'stale' || feed === 'unavailable')
+    const runs = sampleRuns.map((run) => run.map((sample): [number, number] => [scale.xOf(sample.time), scale.yOf(Number(sample.price))]))
     const last = visible[visible.length - 1]
+    const lastRun = runs[runs.length - 1]
     let head: Frame['head'] = null
-    const points: [number, number][] = visible.map((sample) => [scale.xOf(sample.time), scale.yOf(Number(sample.price))])
-    if (last && current.head) {
+    if (last && lastRun && current.head) {
       const value = reduced ? current.head.to : easedValue(current.head.from, current.head.to, current.head.startedAt, at)
-      const time = headTime(last.time, now, live)
+      const time = headTime(last.time, now, feed === 'live')
       const x = scale.xOf(time)
       const y = scale.yOf(value)
-      points[points.length - 1] = [scale.xOf(last.time), y]
-      if (time > last.time) points.push([x, y])
+      lastRun[lastRun.length - 1] = [scale.xOf(last.time), y]
+      if (time > last.time) lastRun.push([x, y])
       head = { x, y, time, value, sample: last }
     }
-    const frame: Frame = { scale, now, round, visible, head, points }
+    const frame: Frame = { scale, now, round, visible, head, runs, gaps }
     painters.current.forEach((painter) => painter(frame))
   }
 

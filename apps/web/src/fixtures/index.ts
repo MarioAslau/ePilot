@@ -16,6 +16,7 @@ export type FixtureName =
   | 'active'
   | 'checking'
   | 'equal-price'
+  | 'feed-gap'
   | 'provider-hold'
   | 'win'
   | 'loss'
@@ -54,6 +55,7 @@ export const FIXTURE_NAMES: FixtureName[] = [
   'active',
   'checking',
   'equal-price',
+  'feed-gap',
   'provider-hold',
   'win',
   'loss',
@@ -100,6 +102,8 @@ export interface FixtureState {
   wins: number
   losses: number
   isSubmitting?: boolean
+  /** Seconds-ago span with no chart samples, to preview a gap in the feed. */
+  sampleGap?: [from: number, to: number]
   activeRound?: {
     direction: Direction
     entryPrice: PriceString
@@ -213,6 +217,23 @@ export const fixtures: Record<FixtureName, FixtureState> = {
     },
   },
 
+  'feed-gap': {
+    label: 'Feed gap',
+    price: '65441.80',
+    priceStatus: 'live',
+    score: 3,
+    wins: 5,
+    losses: 2,
+    sampleGap: [62, 41],
+    activeRound: {
+      direction: 'UP',
+      entryPrice: '65432.10',
+      entryTime: NOW,
+      deadline: LATER,
+      state: 'WAITING_FOR_DEADLINE',
+      secondsRemaining: 20,
+    },
+  },
   'provider-hold': {
     label: 'Provider hold',
     price: null,

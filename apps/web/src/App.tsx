@@ -183,6 +183,7 @@ function PlayerStatus() {
                 now={market.now}
                 round={view.active ? {
                   direction: view.active.direction,
+                  waitReason: view.waitReason ?? undefined,
                   acceptedAt: new Date(view.active.entryTradeTime).getTime(),
                   earliestResolveAt: new Date(view.active.dueAt).getTime(),
                   entryPrice: view.active.entryPrice,

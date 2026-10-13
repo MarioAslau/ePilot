@@ -73,7 +73,16 @@ export function FixtureApp() {
   const chartNow = round
     ? round.deadline.getTime() - (round.secondsRemaining ? round.secondsRemaining * 1_000 : -6_000)
     : FIXTURE_NOW.getTime()
-  const chartSamples = state.price ? fixtureSamples(round?.entryPrice ?? state.price, state.price, chartNow) : []
+  // A down feed stops 25 s before "now", so the chart shows the delayed tail as a gap.
+  const feedDown = state.priceStatus === 'stale' || state.priceStatus === 'unavailable'
+  const around = round?.entryPrice ?? state.price
+  const chartSamples = around
+    ? fixtureSamples(around, state.price ?? around, chartNow).filter((sample) => {
+      const ago = (chartNow - sample.time) / 1_000
+      if (feedDown && ago < 25) return false
+      return !state.sampleGap || ago > state.sampleGap[0] || ago < state.sampleGap[1]
+    })
+    : []
 
   return (
     <QueryClientProvider client={qc}>
@@ -108,6 +117,7 @@ export function FixtureApp() {
                 now={chartNow}
                 round={state.activeRound ? {
                   direction: state.activeRound.direction,
+                  waitReason: state.activeRound.state,
                   acceptedAt: state.activeRound.entryTime.getTime(),
                   earliestResolveAt: state.activeRound.deadline.getTime(),
                   entryPrice: state.activeRound.entryPrice,

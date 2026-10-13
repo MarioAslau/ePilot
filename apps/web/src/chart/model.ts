@@ -1,8 +1,10 @@
-import type { Direction } from 'contracts'
+import type { Direction, WaitReason } from 'contracts'
 
 /** What the chart is showing. All times are server milliseconds. */
 export type ChartRound = {
   direction: Direction
+  /** The server's reason the round is still open, when it has one. */
+  waitReason?: WaitReason
   acceptedAt: number
   earliestResolveAt: number
   entryPrice: string
@@ -147,6 +149,13 @@ export function xTicks(now: number, round?: ChartRound): { time: number; label: 
   ]
 }
 
+/** The head's state label when the server holds the round: an unchanged price, or a provider outage. */
+export function holdLabel(round?: ChartRound): { text: string; kind: 'level' | 'hold' } | null {
+  if (round?.waitReason === 'EQUAL_PRICE') return { text: 'Level · still waiting', kind: 'level' }
+  if (round?.waitReason === 'PROVIDER_HOLD') return { text: 'On hold · not a loss', kind: 'hold' }
+  return null
+}
+
 /** Which side of the entry line wins for this call. An Up call wins above, a Down call below. */
 export function winningSide(direction: Direction): 'above' | 'below' {
   return direction === 'UP' ? 'above' : 'below'
@@ -161,4 +170,39 @@ export function pointsFrom(points: [number, number][], x: number): [number, numb
   if (!before || at[0] === x) return points.slice(index)
   const share = (x - before[0]) / (at[0] - before[0])
   return [[x, before[1] + (at[1] - before[1]) * share], ...points.slice(index)]
+}
+
+/** Two samples further apart than this are not joined: the chart shows a gap instead. */
+export const GAP_MS = 8_000
+
+export interface Gap {
+  from: number
+  to: number
+}
+
+/**
+ * Splits samples into runs that the line may join, and lists the gaps between them.
+ * A delayed or unavailable feed also leaves a gap from the last sample to now.
+ */
+export function segments<T extends { time: number }>(
+  samples: T[],
+  now: number,
+  feedDown: boolean,
+): { runs: T[][]; gaps: Gap[] } {
+  const runs: T[][] = []
+  const gaps: Gap[] = []
+  let run: T[] = []
+  samples.forEach((sample, index) => {
+    const previous = samples[index - 1]
+    if (previous && sample.time - previous.time > GAP_MS) {
+      runs.push(run)
+      gaps.push({ from: previous.time, to: sample.time })
+      run = []
+    }
+    run.push(sample)
+  })
+  if (run.length) runs.push(run)
+  const last = samples[samples.length - 1]
+  if (feedDown && last && now > last.time) gaps.push({ from: last.time, to: now })
+  return { runs, gaps }
 }

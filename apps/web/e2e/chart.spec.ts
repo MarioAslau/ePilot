@@ -19,8 +19,15 @@ test('the stage does not scroll sideways at 375 px', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 800 })
   for (const fixture of ['ready', 'active', 'checking', 'rd-active']) {
     await page.goto(`/?fixture=${fixture}`)
-    await expect(page.locator('.ch-line')).toHaveAttribute('points', /\d/)
+    await expect(page.locator('.ch-line')).toHaveAttribute('d', /^M/)
     const overflow = await page.evaluate(() => document.scrollingElement!.scrollWidth - window.innerWidth)
     expect(overflow, fixture).toBeLessThanOrEqual(0)
   }
+})
+
+test('hatches a gap in the feed and labels it', async ({ page }) => {
+  await page.goto('/?fixture=feed-gap')
+  await expect(page.getByText('No price data').first()).toBeVisible()
+  // The line is split into two runs instead of being joined across the gap.
+  await expect(page.locator('.ch-line')).toHaveAttribute('d', /^M[^M]+M[^M]+$/)
 })

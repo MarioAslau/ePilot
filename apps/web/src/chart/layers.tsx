@@ -1,26 +1,72 @@
 import { useId, useRef, type RefObject } from 'react'
-import { usePainter } from './frame'
+import { usePainter, type Frame } from './frame'
 import { gridLines, pointsFrom } from './model'
 
-/** The price line, drawn through the eased head. */
-export function PriceLine() {
-  const line = useRef<SVGPolylineElement>(null)
-  usePainter(({ points }) => {
-    line.current?.setAttribute('points', points.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' '))
-  })
-  return <polyline ref={line} className="ch-line" />
+function pathOf(run: [number, number][]): string {
+  return run.map(([x, y], index) => `${index ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ')
 }
 
-/** The dot at the head of the line. */
+/** The price line, drawn through the eased head, broken at every gap. */
+export function PriceLine() {
+  const line = useRef<SVGPathElement>(null)
+  usePainter(({ runs }) => {
+    line.current?.setAttribute('d', runs.filter((run) => run.length).map(pathOf).join(' '))
+  })
+  return <path ref={line} className="ch-line" />
+}
+
+/** Where the head dot is drawn. On an unchanged price it sits on the entry line, which is what the server compared. */
+export function headPoint({ head, round, scale }: Frame): { x: number; y: number } | null {
+  if (!head) return null
+  if (round?.waitReason === 'EQUAL_PRICE') return { x: head.x, y: scale.yOf(Number(round.entryPrice)) }
+  return head
+}
+
+/** The dot at the head of the line. It is muted while the round is on hold. */
 export function HeadDot() {
   const dot = useRef<SVGCircleElement>(null)
-  usePainter(({ head }) => {
+  usePainter((frame) => {
     const element = dot.current
     if (!element) return
-    element.style.display = head ? '' : 'none'
-    if (head) element.setAttribute('transform', `translate(${head.x.toFixed(1)} ${head.y.toFixed(1)})`)
+    const point = headPoint(frame)
+    element.style.display = point ? '' : 'none'
+    element.classList.toggle('hold', frame.round?.waitReason === 'PROVIDER_HOLD')
+    if (point) element.setAttribute('transform', `translate(${point.x.toFixed(1)} ${point.y.toFixed(1)})`)
   })
   return <circle ref={dot} className="ch-head" r="5" />
+}
+
+/** At most this many gaps are hatched at once; a two-minute window rarely has more than one or two. */
+export const GAP_POOL = 4
+
+/** Diagonal hatching over every span with no price data. Labels are HTML, in `GapLabels`. */
+export function GapHatch() {
+  const id = useId().replace(/:/g, '')
+  const rects = useRef<(SVGRectElement | null)[]>([])
+  usePainter(({ gaps, scale }) => {
+    rects.current.forEach((rect, index) => {
+      if (!rect) return
+      const gap = gaps[index]
+      rect.style.display = gap ? '' : 'none'
+      if (!gap) return
+      const x = scale.xOf(gap.from)
+      rect.setAttribute('x', x.toFixed(1))
+      rect.setAttribute('width', Math.max(0, scale.xOf(gap.to) - x).toFixed(1))
+      rect.setAttribute('height', String(scale.size.height))
+    })
+  })
+  return (
+    <>
+      <defs>
+        <pattern id={`${id}-hatch`} width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <line className="ch-hatch-line" x1="0" y1="0" x2="0" y2="6" />
+        </pattern>
+      </defs>
+      {Array.from({ length: GAP_POOL }, (_, index) => (
+        <rect key={index} ref={(element) => { rects.current[index] = element }} className="ch-gap" y="0" fill={`url(#${id}-hatch)`} data-gap="" />
+      ))}
+    </>
+  )
 }
 
 /** Vertical marks at the entry and at the earliest result time. */
@@ -79,9 +125,9 @@ export function Zones({ win }: { win: 'above' | 'below' }) {
   const clipBelow = useRef<SVGRectElement>(null)
   const fadeAbove = useRef<SVGLinearGradientElement>(null)
   const fadeBelow = useRef<SVGLinearGradientElement>(null)
-  usePainter(({ scale, round, points }) => {
-    const area = round ? pointsFrom(points, scale.xOf(round.acceptedAt)) : []
-    const shown = area.length >= 2 && round
+  usePainter(({ scale, round, runs }) => {
+    const areas = round ? runs.map((run) => pointsFrom(run, scale.xOf(round.acceptedAt))).filter((area) => area.length >= 2) : []
+    const shown = areas.length > 0 && round
     for (const path of [above.current, below.current]) {
       if (!path) continue
       path.style.display = shown ? '' : 'none'
@@ -89,9 +135,11 @@ export function Zones({ win }: { win: 'above' | 'below' }) {
     if (!shown) return
     const { width, height } = scale.size
     const entryY = scale.yOf(Number(round.entryPrice))
-    const first = area[0]!
-    const last = area[area.length - 1]!
-    const d = `M${first[0].toFixed(1)},${entryY.toFixed(1)} ${area.map(([x, y]) => `L${x.toFixed(1)},${y.toFixed(1)}`).join(' ')} L${last[0].toFixed(1)},${entryY.toFixed(1)}Z`
+    const d = areas.map((area) => {
+      const first = area[0]!
+      const last = area[area.length - 1]!
+      return `M${first[0].toFixed(1)},${entryY.toFixed(1)} ${area.map(([x, y]) => `L${x.toFixed(1)},${y.toFixed(1)}`).join(' ')} L${last[0].toFixed(1)},${entryY.toFixed(1)}Z`
+    }).join(' ')
     above.current?.setAttribute('d', d)
     below.current?.setAttribute('d', d)
     clipAbove.current?.setAttribute('width', String(width))

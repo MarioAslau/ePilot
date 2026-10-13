@@ -5,7 +5,9 @@ import {
   headTime,
   HEAD_EXTENSION_MS,
   gridLines,
+  holdLabel,
   makeScale,
+  segments,
   pointsFrom,
   stepRange,
   targetRange,
@@ -137,5 +139,32 @@ describe('board', () => {
     expect(pointsFrom([[0, 0], [10, 10], [20, 0]], 5)).toEqual([[5, 5], [10, 10], [20, 0]])
     expect(pointsFrom([[0, 0], [10, 10]], 10)).toEqual([[10, 10]])
     expect(pointsFrom([[0, 0]], 5)).toEqual([])
+  })
+})
+
+describe('edge states', () => {
+  const at = (...times: number[]) => times.map((time) => ({ time }))
+
+  it('breaks the line where samples are more than 8 s apart, and never joins across', () => {
+    const { runs, gaps } = segments(at(0, 1_000, 2_000, 12_000, 13_000), 13_000, false)
+    expect(runs.map((run) => run.map((sample) => sample.time))).toEqual([[0, 1_000, 2_000], [12_000, 13_000]])
+    expect(gaps).toEqual([{ from: 2_000, to: 12_000 }])
+  })
+
+  it('treats exactly 8 s as joined', () => {
+    expect(segments(at(0, 8_000), 8_000, false).gaps).toEqual([])
+  })
+
+  it('adds a gap from the last sample to now while the feed is down', () => {
+    expect(segments(at(0, 1_000), 30_000, true).gaps).toEqual([{ from: 1_000, to: 30_000 }])
+    expect(segments(at(0, 1_000), 30_000, false).gaps).toEqual([])
+    expect(segments([], 30_000, true)).toEqual({ runs: [], gaps: [] })
+  })
+
+  it('labels an unchanged price and a provider hold, and nothing else', () => {
+    expect(holdLabel({ ...round, waitReason: 'EQUAL_PRICE' })).toEqual({ text: 'Level · still waiting', kind: 'level' })
+    expect(holdLabel({ ...round, waitReason: 'PROVIDER_HOLD' })).toEqual({ text: 'On hold · not a loss', kind: 'hold' })
+    expect(holdLabel({ ...round, waitReason: 'CHECKING_PRICE' })).toBeNull()
+    expect(holdLabel()).toBeNull()
   })
 })
