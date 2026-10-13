@@ -283,6 +283,14 @@ button { font: inherit; color: inherit }
 .ch-grid { stroke: var(--line); stroke-width: 1 }
 .ch-head.hold { fill: var(--muted) }
 .ch-hatch-line { stroke: var(--line-strong); stroke-width: 1 }
+.ch-compared { stroke: var(--surface); stroke-width: 2.5 }
+.ch-compared.win, .ch-compared-tag.win { fill: var(--up); color: var(--up) }
+.ch-compared.loss, .ch-compared-tag.loss { fill: var(--down); color: var(--down) }
+.ch-bracket { fill: none; stroke-width: 1.5 }
+.ch-bracket.win  { stroke: var(--up) }
+.ch-bracket.loss { stroke: var(--down) }
+.ch-connector { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 4 4 }
+.ch-entry-dot { fill: var(--accent); stroke: var(--surface); stroke-width: 2 }
 .ch-fade.win stop  { stop-color: var(--up) }
 .ch-fade.lose stop { stop-color: var(--down) }
 
@@ -301,6 +309,7 @@ button { font: inherit; color: inherit }
 .ch-price.behind { color: var(--down-ink); background: var(--down) }
 .ch-price.level  { color: var(--text); background: var(--line-strong) }
 .ch-entry-tag    { translate: -100% calc(-100% - 3px); color: var(--accent); font-weight: 600; transition: opacity 0.2s }
+.ch-entry-tag.start { translate: 0 4px; background: var(--surface); padding: 0 3px; border-radius: var(--r-sm) }
 .ch-entry-tag.dim { opacity: 0.25 }
 .ch-result-label { translate: calc(-100% - 6px) 4px; color: var(--muted); transition: opacity 0.2s }
 .ch-result-label.dim, .ch-grid-label.dim { opacity: 0 }
@@ -315,6 +324,12 @@ button { font: inherit; color: inherit }
   font-size: var(--t-cap); font-weight: 600; color: var(--muted); background: var(--raised);
 }
 .ch-hold-tag.flip { translate: calc(-100% - 10px) -50% }
+.ch-compared-tag { translate: calc(-100% - 10px) -50%; font-size: var(--t-cap); font-weight: 650; background: var(--surface); padding: 1px 4px; border-radius: var(--r-sm) }
+
+/* The receipt's frozen copy of the chart. */
+.mini-chart { margin: var(--s3) 0 0 }
+.mini-chart .spark.mini { margin: 0; height: 72px }
+.mini-chart figcaption { margin-top: var(--s1) }
 .ch-hold-tag.hold { color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, var(--surface)) }
 
 /* ============ PREDICTION PANEL ============ */

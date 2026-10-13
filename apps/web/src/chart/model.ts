@@ -1,4 +1,4 @@
-import type { Direction, WaitReason } from 'contracts'
+import type { Direction, Outcome, Prediction, WaitReason } from 'contracts'
 
 /** What the chart is showing. All times are server milliseconds. */
 export type ChartRound = {
@@ -8,6 +8,29 @@ export type ChartRound = {
   acceptedAt: number
   earliestResolveAt: number
   entryPrice: string
+  /** Set once the round settles: the compared trade. The chart then freezes on it. */
+  result?: { price: string; time: number; outcome: Outcome }
+}
+
+export type SettledRound = ChartRound & { result: NonNullable<ChartRound['result']> }
+
+export function isSettled(round?: ChartRound): round is SettledRound {
+  return Boolean(round?.result)
+}
+
+/** The chart's view of a round from the server. A resolved round carries its compared trade. */
+export function chartRoundFor(prediction: Prediction, waitReason?: WaitReason): ChartRound {
+  const { outcome, resolutionPrice, resolutionTradeTime } = prediction
+  return {
+    direction: prediction.direction,
+    waitReason,
+    acceptedAt: Date.parse(prediction.entryTradeTime),
+    earliestResolveAt: Date.parse(prediction.dueAt),
+    entryPrice: prediction.entryPrice,
+    result: outcome && resolutionPrice && resolutionTradeTime
+      ? { price: resolutionPrice, time: Date.parse(resolutionTradeTime), outcome }
+      : undefined,
+  }
 }
 
 export interface ChartWindow {
@@ -17,6 +40,8 @@ export interface ChartWindow {
 
 const IDLE_BACK_MS = 120_000
 const LEAD_MS = 4_000
+/** Room right of the compared trade for its marker and bracket. */
+const RESULT_LEAD_MS = 10_000
 const BEFORE_ENTRY_MS = 45_000
 const AFTER_DEADLINE_MS = 10_000
 
@@ -28,7 +53,9 @@ export function chartWindow(now: number, round?: ChartRound): ChartWindow {
   if (!round) return { start: now - IDLE_BACK_MS, end: now + LEAD_MS }
   const start = round.acceptedAt - BEFORE_ENTRY_MS
   const end = round.earliestResolveAt + AFTER_DEADLINE_MS
-  const slidEnd = Math.max(end, now + LEAD_MS)
+  // A settled round freezes as if it were the moment of the compared trade.
+  const at = round.result ? round.result.time + RESULT_LEAD_MS : now + LEAD_MS
+  const slidEnd = Math.max(end, at)
   return { start: start + (slidEnd - end), end: slidEnd }
 }
 
@@ -154,6 +181,14 @@ export function holdLabel(round?: ChartRound): { text: string; kind: 'level' | '
   if (round?.waitReason === 'EQUAL_PRICE') return { text: 'Level · still waiting', kind: 'level' }
   if (round?.waitReason === 'PROVIDER_HOLD') return { text: 'On hold · not a loss', kind: 'hold' }
   return null
+}
+
+/** A settled round's samples between the start of its window and the compared trade. Empty after a reload. */
+export function settledSamples<T extends { time: number }>(samples: T[], round: ChartRound): T[] {
+  if (!round.result) return []
+  const { start } = chartWindow(round.result.time, round)
+  const end = round.result.time
+  return samples.filter((sample) => sample.time >= start && sample.time <= end)
 }
 
 /** Which side of the entry line wins for this call. An Up call wins above, a Down call below. */

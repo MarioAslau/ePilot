@@ -4,10 +4,13 @@ import {
   easedValue,
   headTime,
   HEAD_EXTENSION_MS,
+  chartRoundFor,
   gridLines,
   holdLabel,
+  isSettled,
   makeScale,
   segments,
+  settledSamples,
   pointsFrom,
   stepRange,
   targetRange,
@@ -27,6 +30,11 @@ describe('chartWindow', () => {
 
   it('frames the round from 45 s before entry to 10 s after the earliest result', () => {
     expect(chartWindow(120_000, round)).toEqual({ start: 55_000, end: 170_000 })
+  })
+
+  it('freezes a settled round with room after the compared trade', () => {
+    const settled = { ...round, result: { price: '11', time: 175_000, outcome: 'WIN' as const } }
+    expect(chartWindow(999_999, settled)).toEqual({ start: 70_000, end: 185_000 })
   })
 
   it('slides with a constant width after the deadline instead of stretching', () => {
@@ -166,5 +174,45 @@ describe('edge states', () => {
     expect(holdLabel({ ...round, waitReason: 'PROVIDER_HOLD' })).toEqual({ text: 'On hold · not a loss', kind: 'hold' })
     expect(holdLabel({ ...round, waitReason: 'CHECKING_PRICE' })).toBeNull()
     expect(holdLabel()).toBeNull()
+  })
+})
+
+describe('result', () => {
+  const prediction = {
+    predictionId: 'p_1',
+    playerId: 'anon_1',
+    direction: 'DOWN' as const,
+    mode: 'STANDARD' as const,
+    status: 'RESOLVED' as const,
+    createdAt: '2026-10-11T15:00:00.000Z',
+    dueAt: '2026-10-11T15:01:00.000Z',
+    entryPrice: '100',
+    entryTradeTime: '2026-10-11T14:59:59.000Z',
+    outcome: 'WIN' as const,
+    resolutionPrice: '99',
+    resolutionTradeTime: '2026-10-11T15:01:02.000Z',
+  }
+
+  it('maps a resolved prediction to a settled chart round on the trade clock', () => {
+    const chart = chartRoundFor(prediction)
+    expect(isSettled(chart)).toBe(true)
+    expect(chart).toMatchObject({
+      direction: 'DOWN',
+      acceptedAt: Date.parse('2026-10-11T14:59:59.000Z'),
+      earliestResolveAt: Date.parse('2026-10-11T15:01:00.000Z'),
+      result: { price: '99', time: Date.parse('2026-10-11T15:01:02.000Z'), outcome: 'WIN' },
+    })
+  })
+
+  it('leaves a pending prediction unsettled', () => {
+    const pending = { ...prediction, status: 'PENDING' as const, outcome: undefined, resolutionPrice: undefined, resolutionTradeTime: undefined }
+    expect(isSettled(chartRoundFor(pending, 'CHECKING_PRICE'))).toBe(false)
+  })
+
+  it('keeps only the samples of a settled round, up to the compared trade', () => {
+    const settled = { ...round, result: { price: '11', time: 175_000, outcome: 'WIN' as const } }
+    const samples = [{ time: 60_000 }, { time: 80_000 }, { time: 175_000 }, { time: 176_000 }]
+    expect(settledSamples(samples, settled)).toEqual([{ time: 80_000 }, { time: 175_000 }])
+    expect(settledSamples(samples, round)).toEqual([])
   })
 })

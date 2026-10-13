@@ -191,3 +191,67 @@ export function GridLines() {
   })
   return <>{lines.map((ref, index) => <line key={index} ref={ref} className="ch-grid" x1="0" />)}</>
 }
+
+/** Where the compared trade sits, once the round has settled. */
+export function comparedPoint({ round, scale }: Frame): { x: number; y: number; entryY: number } | null {
+  const result = round?.result
+  if (!result) return null
+  return { x: scale.xOf(result.time), y: scale.yOf(Number(result.price)), entryY: scale.yOf(Number(round.entryPrice)) }
+}
+
+/** The compared trade as a filled marker, and a bracket from the entry price to it, in the outcome colour. */
+export function ComparedMarker() {
+  const dot = useRef<SVGCircleElement>(null)
+  const bracket = useRef<SVGPathElement>(null)
+  usePainter((frame) => {
+    const point = comparedPoint(frame)
+    for (const element of [dot.current, bracket.current]) {
+      if (element) element.style.display = point ? '' : 'none'
+    }
+    if (!point) return
+    const outcome = frame.round?.result?.outcome === 'WIN' ? 'win' : 'loss'
+    for (const element of [dot.current, bracket.current]) {
+      element?.classList.toggle('win', outcome === 'win')
+      element?.classList.toggle('loss', outcome === 'loss')
+    }
+    dot.current?.setAttribute('transform', `translate(${point.x.toFixed(1)} ${point.y.toFixed(1)})`)
+    const x = point.x + BRACKET_OFFSET
+    bracket.current?.setAttribute(
+      'd',
+      `M${(x - 3).toFixed(1)},${point.entryY.toFixed(1)} H${x.toFixed(1)} V${point.y.toFixed(1)} H${(x - 3).toFixed(1)}`,
+    )
+  })
+  return (
+    <>
+      <path ref={bracket} className="ch-bracket" />
+      <circle ref={dot} className="ch-compared" r="5" data-compared="" />
+    </>
+  )
+}
+
+const BRACKET_OFFSET = 9
+
+/** With no samples for a settled round: a dashed straight line from the entry to the compared trade, not a series. */
+export function TwoPointConnector() {
+  const line = useRef<SVGLineElement>(null)
+  const entry = useRef<SVGCircleElement>(null)
+  usePainter((frame) => {
+    const point = comparedPoint(frame)
+    const from = frame.round ? { x: frame.scale.xOf(frame.round.acceptedAt), y: point?.entryY ?? 0 } : null
+    for (const element of [line.current, entry.current]) {
+      if (element) element.style.display = point && from ? '' : 'none'
+    }
+    if (!point || !from) return
+    line.current?.setAttribute('x1', from.x.toFixed(1))
+    line.current?.setAttribute('y1', from.y.toFixed(1))
+    line.current?.setAttribute('x2', point.x.toFixed(1))
+    line.current?.setAttribute('y2', point.y.toFixed(1))
+    entry.current?.setAttribute('transform', `translate(${from.x.toFixed(1)} ${from.y.toFixed(1)})`)
+  })
+  return (
+    <>
+      <line ref={line} className="ch-connector" />
+      <circle ref={entry} className="ch-entry-dot" r="4" />
+    </>
+  )
+}

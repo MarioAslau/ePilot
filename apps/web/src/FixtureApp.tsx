@@ -24,6 +24,7 @@ import { LedgerCard } from './components/LedgerCard'
 import { StatusNotice } from './components/StatusNotice'
 import { type FixtureName, FIXTURE_NAMES, FIXTURE_NOW, fixtures } from './fixtures'
 import { fixtureSamples } from './fixtures/samples'
+import type { SettledRound } from './chart/model'
 import { ledgerPhase } from './round'
 
 const qc = new QueryClient()
@@ -69,15 +70,24 @@ export function FixtureApp() {
   }
 
   const round = state.activeRound
-  // The chart's server clock for this preview: mid-wait, or a few seconds past the deadline.
+  // A result fixture with an active round (a follow-on) shows the round, not the earlier result.
+  const settled: SettledRound | undefined = !round && state.result ? {
+    direction: state.result.direction,
+    acceptedAt: state.result.entryTime.getTime(),
+    earliestResolveAt: state.result.entryTime.getTime() + 60_000,
+    entryPrice: state.result.entryPrice,
+    result: { price: state.result.resolutionPrice, time: state.result.resolutionTime.getTime(), outcome: state.result.outcome },
+  } : undefined
+  // The chart's server clock for this preview: mid-wait, a few seconds past the deadline, or the compared trade.
   const chartNow = round
     ? round.deadline.getTime() - (round.secondsRemaining ? round.secondsRemaining * 1_000 : -6_000)
-    : FIXTURE_NOW.getTime()
+    : settled?.result.time ?? FIXTURE_NOW.getTime()
   // A down feed stops 25 s before "now", so the chart shows the delayed tail as a gap.
   const feedDown = state.priceStatus === 'stale' || state.priceStatus === 'unavailable'
-  const around = round?.entryPrice ?? state.price
-  const chartSamples = around
-    ? fixtureSamples(around, state.price ?? around, chartNow).filter((sample) => {
+  const around = round?.entryPrice ?? settled?.entryPrice ?? state.price
+  const last = settled?.result.price ?? state.price ?? around
+  const chartSamples = around && last && !state.noSamples
+    ? fixtureSamples(around, last, chartNow).filter((sample) => {
       const ago = (chartNow - sample.time) / 1_000
       if (feedDown && ago < 25) return false
       return !state.sampleGap || ago > state.sampleGap[0] || ago < state.sampleGap[1]
@@ -115,13 +125,13 @@ export function FixtureApp() {
                 status={state.priceStatus}
                 samples={chartSamples}
                 now={chartNow}
-                round={state.activeRound ? {
+                round={settled ?? (state.activeRound ? {
                   direction: state.activeRound.direction,
                   waitReason: state.activeRound.state,
                   acceptedAt: state.activeRound.entryTime.getTime(),
                   earliestResolveAt: state.activeRound.deadline.getTime(),
                   entryPrice: state.activeRound.entryPrice,
-                } : undefined}
+                } : undefined)}
               >
                 {state.activeRound ? (
                   <>
@@ -157,6 +167,7 @@ export function FixtureApp() {
                         entryTime={state.result.entryTime}
                         resolutionTime={state.result.resolutionTime}
                         mode={roundMode}
+                        chart={settled && { round: settled, samples: chartSamples }}
                         parent={roundMode === 'STANDARD'
                           ? undefined
                           : { scoreDelta: OFFER_RULES[roundMode].payout.parentDelta }}

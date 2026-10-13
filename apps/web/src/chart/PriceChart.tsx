@@ -1,9 +1,9 @@
 import type { FeedStatus } from '../market'
 import { stance } from '../round'
 import { FrameProvider, useChartFrame } from './frame'
-import { EntryLine, GapHatch, GridLines, HeadDot, PriceLine, RoundMarks, Zones } from './layers'
-import { holdLabel, winningSide, type ChartRound } from './model'
-import { EntryTag, GapLabels, GridLabels, HoldTag, PriceTag, ResultLabel, Ticks, ZoneLabel } from './Tags'
+import { ComparedMarker, EntryLine, GapHatch, GridLines, HeadDot, PriceLine, RoundMarks, Zones } from './layers'
+import { holdLabel, isSettled, winningSide, type ChartRound } from './model'
+import { ComparedTag, EntryTag, GapLabels, GridLabels, HoldTag, PriceTag, ResultLabel, Ticks, ZoneLabel } from './Tags'
 import type { PriceSample } from './samples'
 import { useChartSize } from './useChartSize'
 import { useReducedMotion } from './useReducedMotion'
@@ -50,6 +50,7 @@ export function PriceChart({
           <EntryLine />
           <PriceLine />
           <HeadDot />
+          <ComparedMarker />
         </svg>
         <div className="ch-overlay" aria-hidden="true">
           <GridLabels />
@@ -57,7 +58,9 @@ export function PriceChart({
           {round && <ZoneLabel round={round} />}
           {round && <EntryTag round={round} />}
           {round && <ResultLabel round={round} now={now} />}
-          {latest && (hold ? <HoldTag {...hold} /> : <PriceTag price={latest.price} tone={tone} />)}
+          {isSettled(round)
+            ? <ComparedTag round={round} />
+            : latest && (hold ? <HoldTag {...hold} /> : <PriceTag price={latest.price} tone={tone} />)}
           <Ticks key={round ? 'round' : 'idle'} round={round} />
         </div>
       </FrameProvider>

@@ -1,6 +1,9 @@
 import { scoreDelta as scoreFor, type Direction, type Mode, type Outcome, type ScoreDelta } from 'contracts'
 import { ChevronDown, ChevronUp, Minus, Plus } from 'lucide-react'
 import { directionWord, formatTime, formatUsd, signedPoints, spokenPoints } from '../format'
+import { MiniChart } from '../chart/MiniChart'
+import type { SettledRound } from '../chart/model'
+import type { PriceSample } from '../chart/samples'
 import { RECEIPT_HEADING_ID } from '../focusTargets'
 import { MODE_DISPLAY, PARENT_ROUND } from '../offerCopy'
 import { ModeBadge } from './ModeBadge'
@@ -16,6 +19,8 @@ interface Props {
   settledAt?: Date
   mode?: Mode
   scoreDelta?: ScoreDelta
+  /** The frozen result chart, drawn small. */
+  chart?: { round: SettledRound; samples: PriceSample[] }
   /** The kept parent round of a bonus round. */
   parent?: { scoreDelta: ScoreDelta }
 }
@@ -41,6 +46,7 @@ export function ResultReceipt({
   mode = 'STANDARD',
   scoreDelta,
   parent,
+  chart,
 }: Props) {
   const isWin = outcome === 'WIN'
   const points = scoreDelta ?? scoreFor(mode, outcome)
@@ -71,6 +77,7 @@ export function ResultReceipt({
       {roundName && parent && (
         <PairLine roundName={roundName} parent={parent} points={points} />
       )}
+      {chart && <MiniChart round={chart.round} samples={chart.samples} />}
 
       <dl className="kv">
         <div>

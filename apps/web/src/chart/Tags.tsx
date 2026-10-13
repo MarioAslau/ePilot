@@ -3,8 +3,8 @@ import { useRef, type ReactNode } from 'react'
 import { formatTime, formatUsd } from '../format'
 import type { Stance } from '../round'
 import { usePainter } from './frame'
-import { GAP_POOL, headPoint } from './layers'
-import { gridLines, xTicks, type ChartRound } from './model'
+import { comparedPoint, GAP_POOL, headPoint } from './layers'
+import { gridLines, xTicks, type ChartRound, type SettledRound } from './model'
 
 /** Past this share of the width the price tag sits left of the head dot. */
 const FLIP_AT = 0.55
@@ -66,15 +66,21 @@ export function GapLabels() {
   )
 }
 
-/** "Entry $X" at the right end of the entry line. It fades when the price tag is about to cover it. */
-export function EntryTag({ round }: { round: ChartRound }) {
+/**
+ * "Entry $X" at the right end of the entry line, or at its start in the small receipt chart.
+ * It fades when the price tag or the compared tag is about to cover it.
+ */
+export function EntryTag({ round, at = 'end' }: { round: ChartRound; at?: 'start' | 'end' }) {
   const tag = useRef<HTMLSpanElement>(null)
-  usePainter(({ scale, head }) => {
+  usePainter((frame) => {
+    const { scale, head } = frame
     const y = scale.yOf(Number(round.entryPrice))
-    place(tag.current, scale.size.width - EDGE, y)
-    tag.current?.classList.toggle('dim', Boolean(head && Math.abs(head.y - y) < CLEARANCE))
+    const compared = comparedPoint(frame)
+    place(tag.current, at === 'end' ? scale.size.width - EDGE : scale.xOf(round.acceptedAt), y)
+    const near = (other?: number) => other !== undefined && Math.abs(other - y) < CLEARANCE
+    tag.current?.classList.toggle('dim', near(head?.y) || near(compared?.y))
   })
-  return <span ref={tag} className="ch-tag ch-entry-tag">Entry {formatUsd(round.entryPrice)}</span>
+  return <span ref={tag} className={`ch-tag ch-entry-tag ${at}`}>Entry {formatUsd(round.entryPrice)}</span>
 }
 
 /** The label at the top of the result line. */
@@ -86,7 +92,7 @@ export function ResultLabel({ round, now }: { round: ChartRound; now: number }) 
     const covered = head && head.y < CLEARANCE * 1.5 && head.x > x - RESULT_LABEL_REACH - 80 && head.x < x + 80
     tag.current?.classList.toggle('dim', Boolean(covered))
   })
-  const text = now >= round.earliestResolveAt ? 'Comparing since' : 'Result from'
+  const text = now >= round.earliestResolveAt && !round.result ? 'Comparing since' : 'Result from'
   return <span ref={tag} className="ch-tag ch-result-label">{text} {formatTime(round.earliestResolveAt)}</span>
 }
 
@@ -138,4 +144,19 @@ export function Ticks({ round }: { round?: ChartRound }) {
     })
   })
   return <>{labels.map((label, index) => <span key={label} ref={ticks[index]} className="ch-tag ch-tick">{label}</span>)}</>
+}
+
+/** "Compared $X · HH:MM:SS" beside the compared marker, on its left because the marker sits near the right edge. */
+export function ComparedTag({ round, withTime = true }: { round: SettledRound; withTime?: boolean }) {
+  const tag = useRef<HTMLSpanElement>(null)
+  usePainter((frame) => {
+    const point = comparedPoint(frame)
+    place(tag.current, point?.x ?? 0, point?.y ?? 0, Boolean(point))
+  })
+  const { price, time, outcome } = round.result
+  return (
+    <span ref={tag} className={`ch-tag ch-compared-tag ${outcome === 'WIN' ? 'win' : 'loss'}`}>
+      Compared {formatUsd(price)}{withTime ? ` · ${formatTime(time)}` : ''}
+    </span>
+  )
 }

@@ -20,6 +20,7 @@ export type FixtureName =
   | 'provider-hold'
   | 'win'
   | 'loss'
+  | 'win-reload'
   | 'setup-error'
   | 'history'
   | 'history-empty'
@@ -59,6 +60,7 @@ export const FIXTURE_NAMES: FixtureName[] = [
   'provider-hold',
   'win',
   'loss',
+  'win-reload',
   'setup-error',
   'history',
   'history-empty',
@@ -102,6 +104,8 @@ export interface FixtureState {
   wins: number
   losses: number
   isSubmitting?: boolean
+  /** No chart samples at all, as after a reload: the receipt shows the two-point chart. */
+  noSamples?: boolean
   /** Seconds-ago span with no chart samples, to preview a gap in the feed. */
   sampleGap?: [from: number, to: number]
   activeRound?: {
@@ -259,6 +263,24 @@ export const fixtures: Record<FixtureName, FixtureState> = {
     wins: 6,
     losses: 2,
     flash: 'win',
+    result: {
+      outcome: 'WIN',
+      direction: 'UP',
+      entryPrice: '65432.10',
+      resolutionPrice: '65901.33',
+      entryTime: NOW,
+      resolutionTime: LATER,
+    },
+  },
+
+  'win-reload': {
+    label: 'Win after reload',
+    price: '65901.33',
+    priceStatus: 'live',
+    score: 4,
+    wins: 6,
+    losses: 2,
+    noSamples: true,
     result: {
       outcome: 'WIN',
       direction: 'UP',

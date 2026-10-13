@@ -16,6 +16,7 @@ import { offerPhase, offerSlot } from './offer'
 import { clockOffset, ledgerPhase, pollInterval, roundView, TICKET_PHASES } from './round'
 import { clearSession, readSession, StorageUnavailableError, writeSession } from './session'
 import { useAnnouncer } from './useAnnouncer'
+import { chartRoundFor, isSettled } from './chart/model'
 import { useHistory } from './useHistory'
 import { useMarket } from './useMarket'
 import { useOffer } from './useOffer'
@@ -119,6 +120,10 @@ function PlayerStatus() {
     offsetMs: snapshot?.offsetMs ?? 0,
     nowMs,
   })
+  // The chart follows the active round, then freezes on the settled one while its receipt is shown.
+  const settledRound = view.settled ? chartRoundFor(view.settled) : undefined
+  const resultChart = isSettled(settledRound) ? settledRound : undefined
+  const chartRound = view.active ? chartRoundFor(view.active, view.waitReason ?? undefined) : resultChart
   const market = useMarket(baseUrl, {
     offsetMs: snapshot?.offsetMs ?? 0,
     fastUntil: view.active
@@ -181,13 +186,7 @@ function PlayerStatus() {
                 ageSeconds={market.ageSeconds}
                 samples={market.samples}
                 now={market.now}
-                round={view.active ? {
-                  direction: view.active.direction,
-                  waitReason: view.waitReason ?? undefined,
-                  acceptedAt: new Date(view.active.entryTradeTime).getTime(),
-                  earliestResolveAt: new Date(view.active.dueAt).getTime(),
-                  entryPrice: view.active.entryPrice,
-                } : undefined}
+                round={chartRound}
               >
                 {view.active ? (
                   <>
@@ -239,6 +238,7 @@ function PlayerStatus() {
                         scoreDelta={view.settled.scoreDelta}
                         parent={view.settled.parent}
                         mode={view.settled.mode}
+                        chart={resultChart && { round: resultChart, samples: market.samples }}
                       />
                     )}
                     {view.settled && view.settled.predictionId === announcer.welcomeBackId && (

@@ -64,6 +64,8 @@ export function usePainter(painter: Painter) {
  * With reduced motion it paints once per data change, with no easing. Nothing runs while the chart has no size.
  */
 export function useChartFrame(data: ChartData, reduced: boolean): Registry {
+  // A settled round is frozen, so it needs no loop: it paints once per data change, like reduced motion.
+  const still = reduced || Boolean(data.round?.result)
   const painters = useRef(new Set<Painter>())
   const state = useRef({
     data,
@@ -82,11 +84,14 @@ export function useChartFrame(data: ChartData, reduced: boolean): Registry {
     const current = state.current
     const { samples, round, feed, size } = current.data
     if (size.width === 0 || size.height === 0) return
-    const now = reduced ? current.data.now : current.data.now + Math.min(1_000, at - current.reportedAt)
+    const result = round?.result
+    const now = result ? result.time : reduced ? current.data.now : current.data.now + Math.min(1_000, at - current.reportedAt)
     const window = chartWindow(now, round)
-    const visible = visibleSamples(samples, window)
+    // A settled round shows the line only up to the compared trade.
+    const visible = visibleSamples(result ? samples.filter((sample) => sample.time <= result.time) : samples, window)
     const prices = visible.map((sample) => Number(sample.price))
     if (round) prices.push(Number(round.entryPrice))
+    if (result) prices.push(Number(result.price))
     const target = targetRange(prices)
     if (!target) {
       const scale = makeScale(window, { low: 0, high: 1 }, size)
@@ -101,7 +106,7 @@ export function useChartFrame(data: ChartData, reduced: boolean): Registry {
     const last = visible[visible.length - 1]
     const lastRun = runs[runs.length - 1]
     let head: Frame['head'] = null
-    if (last && lastRun && current.head) {
+    if (last && lastRun && current.head && !result) {
       const value = reduced ? current.head.to : easedValue(current.head.from, current.head.to, current.head.startedAt, at)
       const time = headTime(last.time, now, feed === 'live')
       const x = scale.xOf(time)
@@ -126,12 +131,12 @@ export function useChartFrame(data: ChartData, reduced: boolean): Registry {
         : Number(last.price)
       current.head = { from: shown, to: Number(last.price), startedAt: performance.now(), time: last.time }
     }
-    if (reduced || typeof requestAnimationFrame !== 'function') paint(performance.now())
+    if (still || typeof requestAnimationFrame !== 'function') paint(performance.now())
   })
 
   const drawable = data.size.width > 0 && data.size.height > 0
   useLayoutEffect(() => {
-    if (reduced || !drawable || typeof requestAnimationFrame !== 'function') return
+    if (still || !drawable || typeof requestAnimationFrame !== 'function') return
     let id = 0
     const tick = (at: number) => {
       paint(at)
@@ -149,7 +154,7 @@ export function useChartFrame(data: ChartData, reduced: boolean): Registry {
     }
     // paint reads everything through refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reduced, drawable])
+  }, [still, drawable])
 
   return registry.current
 }

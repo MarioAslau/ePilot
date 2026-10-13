@@ -31,3 +31,24 @@ test('hatches a gap in the feed and labels it', async ({ page }) => {
   // The line is split into two runs instead of being joined across the gap.
   await expect(page.locator('.ch-line')).toHaveAttribute('d', /^M[^M]+M[^M]+$/)
 })
+
+test('a settled round marks the compared trade at its trade time and freezes', async ({ page }) => {
+  await page.goto('/?fixture=win')
+  const stage = page.locator('.stage-market .spark > svg')
+  const marker = stage.locator('[data-compared]')
+  await expect(marker).toBeVisible()
+  const width = Number(await stage.getAttribute('width'))
+  const x = Number((await marker.getAttribute('transform'))!.match(/translate\(([\d.]+)/)![1])
+  // Fixture: entry at 0 s, earliest result at 60 s, compared trade at 75 s.
+  // Frozen like a live round 10 s after the compared trade: the 115 s window slid to [-30 s, 85 s],
+  // so the marker sits at 105 / 115 of the width.
+  expect(Math.abs(x - (width * 105) / 115)).toBeLessThanOrEqual(1)
+  await expect(page.getByText(/^Compared \$65,901\.33 · /)).toBeVisible()
+  await expect(page.locator('.mini-chart [data-compared]')).toBeVisible()
+})
+
+test('after a reload the receipt draws entry and compared price, not a series', async ({ page }) => {
+  await page.goto('/?fixture=win-reload')
+  await expect(page.locator('.mini-chart figcaption')).toHaveText('Entry and compared price')
+  await expect(page.locator('.mini-chart .ch-connector')).toBeVisible()
+})
