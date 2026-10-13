@@ -9,6 +9,10 @@ import {
   holdLabel,
   isSettled,
   makeScale,
+  nearestSample,
+  readout,
+  readoutText,
+  summary,
   segments,
   settledSamples,
   pointsFrom,
@@ -214,5 +218,34 @@ describe('result', () => {
     const samples = [{ time: 60_000 }, { time: 80_000 }, { time: 175_000 }, { time: 176_000 }]
     expect(settledSamples(samples, settled)).toEqual([{ time: 80_000 }, { time: 175_000 }])
     expect(settledSamples(samples, round)).toEqual([])
+  })
+})
+
+describe('reading the chart', () => {
+  it('finds the nearest sample in time, preferring the earlier one on a tie', () => {
+    const samples = [{ time: 0 }, { time: 10 }, { time: 20 }]
+    expect(nearestSample(samples, 14)).toEqual({ time: 10 })
+    expect(nearestSample(samples, 16)).toEqual({ time: 20 })
+    expect(nearestSample(samples, 15)).toEqual({ time: 10 })
+    expect(nearestSample(samples, -50)).toEqual({ time: 0 })
+    expect(nearestSample(samples, 99)).toEqual({ time: 20 })
+    expect(nearestSample([], 5)).toBeNull()
+  })
+
+  it('reads a sample against the entry, or as before the entry', () => {
+    const after = readout({ price: '18.24', time: 120_000 }, { ...round, entryPrice: '10' })
+    expect(after.vs).toEqual({ amount: '$8.24', up: true, tone: 'ahead' })
+    expect(readoutText(after)).toMatch(/\$18\.24 at .+, \$8\.24 above your entry, ahead$/)
+    expect(readout({ price: '9', time: 99_000 }, round).vs).toBe('before')
+    expect(readout({ price: '9', time: 120_000 }, { ...round, direction: 'DOWN' }).vs).toMatchObject({ up: false, tone: 'ahead' })
+    expect(readout({ price: '9', time: 120_000 }).vs).toBeNull()
+  })
+
+  it('summarises entry, latest, side and result time', () => {
+    expect(summary({ price: '11' }, round)).toMatch(/^Your Up call\. Entry \$10\.00\. Latest \$11\.00, above your entry, ahead\. Result from /)
+    expect(summary({ price: '11' }, { ...round, direction: 'DOWN' })).toContain('above your entry, behind')
+    expect(summary({ price: '10' }, round)).toContain('level with your entry')
+    expect(summary({ price: '9' }, { ...round, result: { price: '9', time: 170_000, outcome: 'LOSS' } })).toMatch(/Compared \$9\.00 at .+, below your entry, behind\. Not this time\.$/)
+    expect(summary({ price: '11' })).toBe('BTC/USD price over the last 2 minutes. Latest $11.00.')
   })
 })

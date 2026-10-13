@@ -50,6 +50,13 @@ interface Registry {
 const FrameContext = createContext<Registry | null>(null)
 export const FrameProvider = FrameContext.Provider
 
+/** Keeps the latest frame in a ref, for event handlers that need the current scale. */
+export function useLastFrame(registry: Registry) {
+  const last = useRef<Frame | null>(null)
+  useLayoutEffect(() => registry.register((frame) => { last.current = frame }), [registry])
+  return last
+}
+
 /** Registers a painter for every frame. The painter should only write to refs. */
 export function usePainter(painter: Painter) {
   const registry = useContext(FrameContext)

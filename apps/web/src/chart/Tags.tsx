@@ -4,7 +4,7 @@ import { formatTime, formatUsd } from '../format'
 import type { Stance } from '../round'
 import { usePainter } from './frame'
 import { comparedPoint, GAP_POOL, headPoint } from './layers'
-import { gridLines, xTicks, type ChartRound, type SettledRound } from './model'
+import { gridLines, xTicks, type ChartRound, type Readout, type SettledRound } from './model'
 
 /** Past this share of the width the price tag sits left of the head dot. */
 const FLIP_AT = 0.55
@@ -158,5 +158,35 @@ export function ComparedTag({ round, withTime = true }: { round: SettledRound; w
     <span ref={tag} className={`ch-tag ch-compared-tag ${outcome === 'WIN' ? 'win' : 'loss'}`}>
       Compared {formatUsd(price)}{withTime ? ` · ${formatTime(time)}` : ''}
     </span>
+  )
+}
+
+/** The scrub tooltip: price, time, and the move against the entry. Kept inside the chart. */
+export function ScrubTooltip({ sample, readout }: { sample: { time: number } | null; readout: Readout | null }) {
+  const tip = useRef<HTMLDivElement>(null)
+  usePainter(({ scale }) => {
+    const element = tip.current
+    const shown = Boolean(sample && readout && sample.time >= scale.window.start && sample.time <= scale.window.end)
+    if (!element || !sample || !shown) {
+      place(element, 0, 0, false)
+      return
+    }
+    const width = element.offsetWidth
+    const x = Math.min(scale.size.width - width - EDGE, Math.max(EDGE, scale.xOf(sample.time) - width / 2))
+    place(element, x, 0)
+  })
+  if (!readout) return <div ref={tip} className="ch-tip" style={{ display: 'none' }} />
+  const { vs } = readout
+  const Arrow = vs && vs !== 'before' && vs.up !== null ? (vs.up ? ArrowUp : ArrowDown) : null
+  return (
+    <div ref={tip} className="ch-tip">
+      <b className="num">{readout.price}</b> <span>{readout.time}</span>
+      {vs === 'before' && <span className="ch-tip-vs">Before your entry</span>}
+      {vs && vs !== 'before' && (
+        <span className={`ch-tip-vs stance ${vs.tone}`}>
+          {Arrow && <Arrow className="ic" size={12} aria-hidden="true" />} {vs.amount} vs entry
+        </span>
+      )}
+    </div>
   )
 }

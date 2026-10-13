@@ -255,3 +255,27 @@ export function TwoPointConnector() {
     </>
   )
 }
+
+/** A vertical crosshair and a 7 px dot on the scrubbed sample. */
+export function Crosshair({ sample }: { sample: { price: string; time: number } | null }) {
+  const line = useRef<SVGLineElement>(null)
+  const dot = useRef<SVGCircleElement>(null)
+  usePainter(({ scale }) => {
+    const shown = sample && sample.time >= scale.window.start && sample.time <= scale.window.end
+    for (const element of [line.current, dot.current]) {
+      if (element) element.style.display = shown ? '' : 'none'
+    }
+    if (!shown) return
+    const x = scale.xOf(sample.time).toFixed(1)
+    line.current?.setAttribute('x1', x)
+    line.current?.setAttribute('x2', x)
+    line.current?.setAttribute('y2', String(scale.size.height))
+    dot.current?.setAttribute('transform', `translate(${x} ${scale.yOf(Number(sample.price)).toFixed(1)})`)
+  })
+  return (
+    <>
+      <line ref={line} className="ch-cross" y1="0" />
+      <circle ref={dot} className="ch-cross-dot" r="3.5" />
+    </>
+  )
+}

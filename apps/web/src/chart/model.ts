@@ -1,4 +1,5 @@
 import type { Direction, Outcome, Prediction, WaitReason } from 'contracts'
+import { formatTime, formatUsd } from '../format'
 
 /** What the chart is showing. All times are server milliseconds. */
 export type ChartRound = {
@@ -77,6 +78,8 @@ export interface Scale {
   size: Size
   xOf: (time: number) => number
   yOf: (price: number) => number
+  /** The inverse of `xOf`: the server time at a pixel. */
+  timeAt: (x: number) => number
 }
 
 /** Space kept above the line for the result label, and below it for the head dot. */
@@ -95,6 +98,7 @@ export function makeScale(window: ChartWindow, range: Range, size: Size): Scale 
     range,
     size,
     xOf: (time) => ((time - window.start) / spanT) * size.width,
+    timeAt: (x) => window.start + (x / (size.width || 1)) * spanT,
     yOf: (price) => PAD_TOP + (1 - (price - range.low) / spanP) * plot,
   }
 }
@@ -183,6 +187,13 @@ export function holdLabel(round?: ChartRound): { text: string; kind: 'level' | '
   return null
 }
 
+/** The samples in view: inside the window, and up to the compared trade once the round has settled. */
+export function samplesInView<T extends { time: number }>(samples: T[], now: number, round?: ChartRound): T[] {
+  const { start, end } = chartWindow(now, round)
+  const last = round?.result?.time ?? end
+  return samples.filter((sample) => sample.time >= start && sample.time <= last)
+}
+
 /** A settled round's samples between the start of its window and the compared trade. Empty after a reload. */
 export function settledSamples<T extends { time: number }>(samples: T[], round: ChartRound): T[] {
   if (!round.result) return []
@@ -240,4 +251,70 @@ export function segments<T extends { time: number }>(
   const last = samples[samples.length - 1]
   if (feedDown && last && now > last.time) gaps.push({ from: last.time, to: now })
   return { runs, gaps }
+}
+
+/** The sample closest in time, by binary search over samples sorted oldest first. */
+export function nearestSample<T extends { time: number }>(samples: T[], time: number): T | null {
+  if (samples.length === 0) return null
+  let low = 0
+  let high = samples.length - 1
+  while (low < high) {
+    const middle = (low + high) >> 1
+    if (samples[middle]!.time < time) low = middle + 1
+    else high = middle
+  }
+  const after = samples[low]!
+  const before = samples[low - 1]
+  return before && time - before.time <= after.time - time ? before : after
+}
+
+/**
+ * What a screen reader hears for the chart. It is rebuilt per quote, never per frame.
+ * It names the entry, the latest price and which side of the entry it is on, and the result time.
+ */
+export function summary(latest: { price: string } | undefined, round?: ChartRound): string {
+  if (!round) return latest ? `BTC/USD price over the last 2 minutes. Latest ${formatUsd(latest.price)}.` : 'BTC/USD price chart. Collecting recent prices.'
+  const entry = Number(round.entryPrice)
+  const side = (price: string) => {
+    const value = Number(price)
+    if (value === entry) return 'level with your entry'
+    const above = value > entry
+    const ahead = above === (round.direction === 'UP')
+    return `${above ? 'above' : 'below'} your entry, ${ahead ? 'ahead' : 'behind'}`
+  }
+  const parts = [`Your ${round.direction === 'UP' ? 'Up' : 'Down'} call. Entry ${formatUsd(round.entryPrice)}.`]
+  if (round.result) {
+    parts.push(`Compared ${formatUsd(round.result.price)} at ${formatTime(round.result.time)}, ${side(round.result.price)}.`)
+    parts.push(round.result.outcome === 'WIN' ? 'Correct.' : 'Not this time.')
+  } else {
+    if (latest) parts.push(`Latest ${formatUsd(latest.price)}, ${side(latest.price)}.`)
+    parts.push(`Result from ${formatTime(round.earliestResolveAt)}.`)
+  }
+  return parts.join(' ')
+}
+
+export interface Readout {
+  price: string
+  time: string
+  /** Against the entry: the move and its direction, "before" for a sample before the entry, or null when idle. */
+  vs: { amount: string; up: boolean | null; tone: 'ahead' | 'behind' | 'level' } | 'before' | null
+}
+
+/** What scrubbing shows for one sample: its price and time, and how it stands against the entry. */
+export function readout(sample: { price: string; time: number }, round?: ChartRound): Readout {
+  const base = { price: formatUsd(sample.price), time: formatTime(sample.time) }
+  if (!round) return { ...base, vs: null }
+  if (sample.time < round.acceptedAt) return { ...base, vs: 'before' }
+  const delta = Number(sample.price) - Number(round.entryPrice)
+  const up = delta === 0 ? null : delta > 0
+  const tone = up === null ? 'level' : up === (round.direction === 'UP') ? 'ahead' : 'behind'
+  return { ...base, vs: { amount: formatUsd(String(Math.abs(delta))), up, tone } }
+}
+
+/** The readout as one sentence, for the polite announcement. */
+export function readoutText({ price, time, vs }: Readout): string {
+  if (vs === null) return `${price} at ${time}`
+  if (vs === 'before') return `${price} at ${time}, before your entry`
+  if (vs.up === null) return `${price} at ${time}, level with your entry`
+  return `${price} at ${time}, ${vs.amount} ${vs.up ? 'above' : 'below'} your entry, ${vs.tone}`
 }
