@@ -88,6 +88,13 @@ functions:
       - httpApi:
           path: /market
           method: GET
+  marketRecent:
+    handler: src/handlers/marketRecent.handler
+    description: Recent BTC-USD display samples, one per second, for the chart backfill
+    events:
+      - httpApi:
+          path: /market/recent
+          method: GET
   createPrediction:
     handler: src/handlers/createPrediction.handler
     description: Record one pending prediction for the authenticated player

@@ -1,13 +1,8 @@
+import { chartWindow, type ChartRound } from '../chart/model'
+import type { PriceSample } from '../chart/samples'
 import { formatTime } from '../format'
-import type { PriceSample } from '../market'
 
-export interface ChartRound {
-  acceptedAt: number
-  earliestResolveAt: number
-  entryPrice: string
-}
-
-const IDLE_MS = 120_000
+export type { ChartRound }
 
 export function PriceChart({
   samples,
@@ -18,12 +13,8 @@ export function PriceChart({
   now: number
   round?: ChartRound
 }) {
-  const start = round ? round.acceptedAt - 60_000 : now - IDLE_MS
-  const end = round ? Math.max(round.earliestResolveAt + 8_000, now + 3_000) : now
-  const visible = samples.filter((sample) => sample.receivedAt >= start && sample.receivedAt <= end)
-  const caption = round
-    ? `Your entry. Result window from ${formatTime(round.earliestResolveAt)}`
-    : 'Last 2 minutes. Now'
+  const { start, end } = chartWindow(now, round)
+  const visible = samples.filter((sample) => sample.time >= start && sample.time <= end)
 
   const width = 100
   const height = 40
@@ -39,13 +30,13 @@ export function PriceChart({
   const spanP = high - low || 1
   const yOf = (price: number) => padY + (1 - (price - low) / spanP) * (height - padY * 2)
   const points = visible
-    .map((sample) => `${xOf(sample.receivedAt)},${yOf(Number(sample.price))}`)
+    .map((sample) => `${xOf(sample.time)},${yOf(Number(sample.price))}`)
     .join(' ')
   const latest = visible.reduce<typeof visible[number] | null>(
-    (best, sample) => (!best || sample.receivedAt > best.receivedAt ? sample : best),
+    (best, sample) => (!best || sample.time > best.time ? sample : best),
     null,
   )
-  const latestX = latest ? xOf(latest.receivedAt) : null
+  const latestX = latest ? xOf(latest.time) : null
   const entryX = round ? xOf(round.acceptedAt) : null
   const windowX = round ? xOf(round.earliestResolveAt) : null
   const entryY = round && Number.isFinite(Number(round.entryPrice)) ? yOf(Number(round.entryPrice)) : null
@@ -53,10 +44,7 @@ export function PriceChart({
   return (
     <>
       <div className="spark">
-        <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label={caption}>
-          {windowX != null && (
-            <rect className="window-tint" x={windowX} y="0" width={Math.max(0, width - windowX)} height={height} />
-          )}
+        <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" role="img" aria-label="BTC/USD price chart">
           {points && (
             <polyline
               points={points}

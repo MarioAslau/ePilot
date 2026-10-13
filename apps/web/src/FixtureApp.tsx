@@ -22,7 +22,8 @@ import { ResultReceipt } from './components/ResultReceipt'
 import { RoundTicket } from './components/RoundTicket'
 import { LedgerCard } from './components/LedgerCard'
 import { StatusNotice } from './components/StatusNotice'
-import { type FixtureName, FIXTURE_NAMES, fixtures } from './fixtures'
+import { type FixtureName, FIXTURE_NAMES, FIXTURE_NOW, fixtures } from './fixtures'
+import { fixtureSamples } from './fixtures/samples'
 import { ledgerPhase } from './round'
 
 const qc = new QueryClient()
@@ -67,6 +68,13 @@ export function FixtureApp() {
     status: 'OPEN' as const,
   }
 
+  const round = state.activeRound
+  // The chart's server clock for this preview: mid-wait, or a few seconds past the deadline.
+  const chartNow = round
+    ? round.deadline.getTime() - (round.secondsRemaining ? round.secondsRemaining * 1_000 : -6_000)
+    : FIXTURE_NOW.getTime()
+  const chartSamples = state.price ? fixtureSamples(round?.entryPrice ?? state.price, state.price, chartNow) : []
+
   return (
     <QueryClientProvider client={qc}>
       {/* PREVIEW banner — only rendered in dev fixture mode */}
@@ -96,6 +104,8 @@ export function FixtureApp() {
               <MarketCard
                 price={state.price}
                 status={state.priceStatus}
+                samples={chartSamples}
+                now={chartNow}
                 round={state.activeRound ? {
                   acceptedAt: state.activeRound.entryTime.getTime(),
                   earliestResolveAt: state.activeRound.deadline.getTime(),

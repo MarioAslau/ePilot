@@ -87,7 +87,8 @@ export const FIXTURE_NAMES: FixtureName[] = [
   'rd-reduced-motion',
 ]
 
-const NOW = new Date('2026-10-06T14:00:00Z')
+export const FIXTURE_NOW = new Date('2026-10-06T14:00:00Z')
+const NOW = FIXTURE_NOW
 const LATER = new Date(NOW.getTime() + 75_000)
 
 export interface FixtureState {

@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appendSample, feedStatus, type PriceSample } from '../market'
-
-const sample = (receivedAt: number, tradeTime: string, price = '10'): PriceSample => ({
-  price,
-  tradeTime,
-  receivedAt,
-})
+import { feedStatus, marketPollMs } from '../market'
 
 describe('feedStatus', () => {
   const now = 20_000
@@ -42,26 +36,11 @@ describe('feedStatus', () => {
   })
 })
 
-describe('appendSample', () => {
-  it('keeps one sample per trade time and drops samples older than 10 minutes', () => {
-    const first = appendSample([], { price: '10', tradeTime: 't1', isFresh: true }, 0)
-    const duplicate = appendSample(first, { price: '11', tradeTime: 't1', isFresh: true }, 1_000)
-    const withOld = appendSample(
-      duplicate,
-      { price: '12', tradeTime: 't2', isFresh: true },
-      10 * 60 * 1000 + 1,
-    )
-
-    expect(duplicate).toHaveLength(1)
-    expect(withOld.map((item) => item.tradeTime)).toEqual(['t2'])
-  })
-
-  it('ignores a quote the server marked stale', () => {
-    const samples = appendSample(
-      [sample(0, 't1')],
-      { price: '12', tradeTime: 't2', isFresh: false },
-      1_000,
-    )
-    expect(samples).toHaveLength(1)
+describe('marketPollMs', () => {
+  it('polls every 2 s until fastUntil, then every 5 s', () => {
+    expect(marketPollMs(1_000, Infinity)).toBe(2_000)
+    expect(marketPollMs(1_000, 10_000)).toBe(2_000)
+    expect(marketPollMs(10_000, 10_000)).toBe(5_000)
+    expect(marketPollMs(1_000, 0)).toBe(5_000)
   })
 })

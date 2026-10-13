@@ -8,6 +8,7 @@ import { handleDeclineOffer } from './handlers/declineOffer.js'
 import { handleExtendOffer } from './handlers/extendOffer.js'
 import { handleGetPredictionHistory } from './handlers/getPredictionHistory.js'
 import { handleMarket } from './handlers/market.js'
+import { handleMarketRecent } from './handlers/marketRecent.js'
 import { handleMe } from './handlers/me.js'
 import { handleResolvePrediction } from './handlers/resolvePrediction.js'
 import { errorResponse } from './http.js'
@@ -133,6 +134,7 @@ export function createLocalApp(): LocalApp {
         return handleMe(authorization, 'local', { players: store, predictions: store, features })
       }
       if (method === 'GET' && path === '/api/market') return handleMarket('local')
+      if (method === 'GET' && path === '/api/market/recent') return handleMarketRecent(query, 'local')
       if (method === 'GET' && path === '/api/predictions') {
         return handleGetPredictionHistory(authorization, query, 'local', { players: store, predictions: store })
       }

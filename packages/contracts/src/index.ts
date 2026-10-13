@@ -157,6 +157,23 @@ export const MarketResponseSchema = z.object({
 })
 export type MarketResponse = z.infer<typeof MarketResponseSchema>
 
+/** One display sample: the last Coinbase trade in a whole second. Not a settlement input. */
+export const MarketSampleSchema = z.object({
+  price: PriceStringSchema,
+  tradeTime: z.string().datetime(),
+})
+export type MarketSample = z.infer<typeof MarketSampleSchema>
+
+/** `GET /market/recent?seconds=`: samples oldest first, and how many seconds the provider's trades reached back. */
+export const MarketRecentQuerySchema = z.object({
+  seconds: z.coerce.number().int().min(1).max(600).default(180),
+})
+export const MarketRecentResponseSchema = z.object({
+  samples: z.array(MarketSampleSchema),
+  coveredSeconds: z.number().nonnegative(),
+})
+export type MarketRecentResponse = z.infer<typeof MarketRecentResponseSchema>
+
 export const CreatePredictionRequestSchema = z.object({
   direction: DirectionSchema,
   idempotencyKey: IdempotencyKeySchema,

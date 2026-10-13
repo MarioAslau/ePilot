@@ -111,7 +111,7 @@ describe('displayQuote', () => {
     await displayQuote({ fetch, now: () => new Date(clock) })
     expect(calls).toBe(1)
 
-    clock += 3_001
+    clock += 1_001
     await displayQuote({ fetch, now: () => new Date(clock) })
     expect(calls).toBe(2)
   })

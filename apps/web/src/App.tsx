@@ -21,6 +21,9 @@ import { useMarket } from './useMarket'
 import { useOffer } from './useOffer'
 import { usePrediction } from './usePrediction'
 
+/** The chart keeps polling every 2 s this long after a round settles. */
+const FAST_AFTER_SETTLE_MS = 10_000
+
 const SCORE_COPY = 'Your score is saved on our server. This browser remembers your anonymous player.'
 const STORAGE_LIMIT =
   'Clearing this browser’s storage, or opening the game on another device, starts a new player. The old score stays on the server and cannot be opened from here.'
@@ -109,13 +112,18 @@ function PlayerStatus() {
     hasPlayer: Boolean(me),
   })
   const stalePlayer = problem === 'stale'
-  const market = useMarket(baseUrl)
   const view = roundView({
     me,
     placed: prediction.placed,
     submitPhase: prediction.phase,
     offsetMs: snapshot?.offsetMs ?? 0,
     nowMs,
+  })
+  const market = useMarket(baseUrl, {
+    offsetMs: snapshot?.offsetMs ?? 0,
+    fastUntil: view.active
+      ? Infinity
+      : view.settled?.resolvedAt ? Date.parse(view.settled.resolvedAt) + FAST_AFTER_SETTLE_MS : 0,
   })
   // While an offer is open or just ended, the play area offers "Go again?" alongside it.
   const offerInPlay = slot === 'live' || slot === 'ended'
