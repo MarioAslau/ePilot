@@ -104,7 +104,6 @@ export interface FixtureState {
     entryPrice: PriceString
     entryTime: Date
     deadline: Date
-    predictionId: string
     state: WaitReason
     secondsRemaining?: number
   }
@@ -115,7 +114,6 @@ export interface FixtureState {
     resolutionPrice: PriceString
     entryTime: Date
     resolutionTime: Date
-    predictionId: string
   }
   errorMessage?: string
   flash?: 'win' | 'loss' | null
@@ -175,7 +173,6 @@ export const fixtures: Record<FixtureName, FixtureState> = {
       entryPrice: '65432.10',
       entryTime: NOW,
       deadline: LATER,
-      predictionId: 'pred-fixture-0001',
       state: 'WAITING_FOR_DEADLINE',
       secondsRemaining: 43,
     },
@@ -193,7 +190,6 @@ export const fixtures: Record<FixtureName, FixtureState> = {
       entryPrice: '65432.10',
       entryTime: NOW,
       deadline: LATER,
-      predictionId: 'pred-fixture-0002',
       state: 'CHECKING_PRICE',
       secondsRemaining: 0,
     },
@@ -211,7 +207,6 @@ export const fixtures: Record<FixtureName, FixtureState> = {
       entryPrice: '65432.10',
       entryTime: NOW,
       deadline: LATER,
-      predictionId: 'pred-fixture-0003',
       state: 'EQUAL_PRICE',
       secondsRemaining: 0,
     },
@@ -229,7 +224,6 @@ export const fixtures: Record<FixtureName, FixtureState> = {
       entryPrice: '65432.10',
       entryTime: NOW,
       deadline: LATER,
-      predictionId: 'pred-fixture-0004',
       state: 'PROVIDER_HOLD',
       secondsRemaining: 0,
     },
@@ -250,7 +244,6 @@ export const fixtures: Record<FixtureName, FixtureState> = {
       resolutionPrice: '65901.33',
       entryTime: NOW,
       resolutionTime: LATER,
-      predictionId: 'pred-fixture-0005',
     },
   },
 
@@ -269,7 +262,6 @@ export const fixtures: Record<FixtureName, FixtureState> = {
       resolutionPrice: '64990.01',
       entryTime: NOW,
       resolutionTime: LATER,
-      predictionId: 'pred-fixture-0006',
     },
   },
 
@@ -332,19 +324,19 @@ export const fixtures: Record<FixtureName, FixtureState> = {
   'dd-expired': ddBase('DD expired', { offerPreview: 'expired' }),
   'dd-declined': ddBase('DD declined', { offerPreview: 'declined' }),
   'dd-used': ddBase('DD used', { offerPreview: 'used', roundMode: 'DOUBLE_DOWN', activeRound: {
-    direction: 'UP', entryPrice: '65432.10', entryTime: NOW, deadline: LATER, predictionId: 'p_0000000003000_eeeeffff', state: 'WAITING_FOR_DEADLINE', secondsRemaining: 40,
+    direction: 'UP', entryPrice: '65432.10', entryTime: NOW, deadline: LATER, state: 'WAITING_FOR_DEADLINE', secondsRemaining: 40,
   } }),
   'dd-replaced': ddBase('DD replaced', { offerPreview: 'replaced', activeRound: {
-    direction: 'DOWN', entryPrice: '65432.10', entryTime: NOW, deadline: LATER, predictionId: 'p_0000000003000_eeeeffff', state: 'WAITING_FOR_DEADLINE', secondsRemaining: 40,
+    direction: 'DOWN', entryPrice: '65432.10', entryTime: NOW, deadline: LATER, state: 'WAITING_FOR_DEADLINE', secondsRemaining: 40,
   } }),
   'dd-active': ddBase('DD active', { roundMode: 'DOUBLE_DOWN', activeRound: {
-    direction: 'UP', entryPrice: '65432.10', entryTime: NOW, deadline: LATER, predictionId: 'p_0000000003000_eeeeffff', state: 'WAITING_FOR_DEADLINE', secondsRemaining: 40,
+    direction: 'UP', entryPrice: '65432.10', entryTime: NOW, deadline: LATER, state: 'WAITING_FOR_DEADLINE', secondsRemaining: 40,
   } }),
   'dd-win': ddBase('DD win', { roundMode: 'DOUBLE_DOWN', score: 3, wins: 2, result: {
-    outcome: 'WIN', direction: 'UP', entryPrice: '65432.10', resolutionPrice: '65500.00', entryTime: NOW, resolutionTime: LATER, predictionId: 'p_0000000003000_eeeeffff',
+    outcome: 'WIN', direction: 'UP', entryPrice: '65432.10', resolutionPrice: '65500.00', entryTime: NOW, resolutionTime: LATER,
   } }),
   'dd-loss': ddBase('DD loss', { roundMode: 'DOUBLE_DOWN', score: -1, wins: 1, losses: 1, result: {
-    outcome: 'LOSS', direction: 'UP', entryPrice: '65432.10', resolutionPrice: '65000.00', entryTime: NOW, resolutionTime: LATER, predictionId: 'p_0000000003000_eeeeffff',
+    outcome: 'LOSS', direction: 'UP', entryPrice: '65432.10', resolutionPrice: '65000.00', entryTime: NOW, resolutionTime: LATER,
   } }),
   'dd-history': ddBase('DD history', { score: 3, wins: 2, history: [
     {
@@ -378,7 +370,6 @@ function rdBase(label: string, extra: Partial<FixtureState> = {}): FixtureState 
       resolutionPrice: '65000.00',
       entryTime: NOW,
       resolutionTime: LATER,
-      predictionId: 'p_0000000002000_ccccdddd',
     },
     ...extra,
   }
@@ -394,20 +385,20 @@ function rdFixtures(): Record<Extract<FixtureName, `rd-${string}`>, FixtureState
     'rd-expired': rdBase('RD expired', { offerPreview: 'expired' }),
     'rd-declined': rdBase('RD declined', { offerPreview: 'declined' }),
     'rd-used': rdBase('RD used', { offerPreview: 'used', roundMode: 'REDEMPTION', activeRound: {
-      direction: 'DOWN', entryPrice: '65432.10', entryTime: NOW, deadline: LATER, predictionId: child, state: 'WAITING_FOR_DEADLINE', secondsRemaining: 40,
+      direction: 'DOWN', entryPrice: '65432.10', entryTime: NOW, deadline: LATER, state: 'WAITING_FOR_DEADLINE', secondsRemaining: 40,
     } }),
     'rd-replaced': rdBase('RD replaced', { offerPreview: 'replaced', activeRound: {
-      direction: 'UP', entryPrice: '65432.10', entryTime: NOW, deadline: LATER, predictionId: child, state: 'WAITING_FOR_DEADLINE', secondsRemaining: 40,
+      direction: 'UP', entryPrice: '65432.10', entryTime: NOW, deadline: LATER, state: 'WAITING_FOR_DEADLINE', secondsRemaining: 40,
     } }),
     'rd-restored': rdBase('RD restored', { offerPreview: 'open', restored: true }),
     'rd-active': rdBase('RD active', { roundMode: 'REDEMPTION', activeRound: {
-      direction: 'DOWN', entryPrice: '65432.10', entryTime: NOW, deadline: LATER, predictionId: child, state: 'WAITING_FOR_DEADLINE', secondsRemaining: 40,
+      direction: 'DOWN', entryPrice: '65432.10', entryTime: NOW, deadline: LATER, state: 'WAITING_FOR_DEADLINE', secondsRemaining: 40,
     } }),
     'rd-win': rdBase('RD win', { roundMode: 'REDEMPTION', score: 3, wins: 1, result: {
-      outcome: 'WIN', direction: 'DOWN', entryPrice: '65432.10', resolutionPrice: '65000.00', entryTime: NOW, resolutionTime: LATER, predictionId: child,
+      outcome: 'WIN', direction: 'DOWN', entryPrice: '65432.10', resolutionPrice: '65000.00', entryTime: NOW, resolutionTime: LATER,
     } }),
     'rd-loss': rdBase('RD loss', { roundMode: 'REDEMPTION', score: -3, losses: 2, result: {
-      outcome: 'LOSS', direction: 'UP', entryPrice: '65432.10', resolutionPrice: '65000.00', entryTime: NOW, resolutionTime: LATER, predictionId: child,
+      outcome: 'LOSS', direction: 'UP', entryPrice: '65432.10', resolutionPrice: '65000.00', entryTime: NOW, resolutionTime: LATER,
     } }),
     'rd-history': rdBase('RD history', { score: 3, wins: 1, history: [
       {

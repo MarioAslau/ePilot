@@ -1,7 +1,8 @@
 import { pairTotals, type Offer } from 'contracts'
 import { Check, ChevronDown, ChevronUp } from 'lucide-react'
-import { directionWord, roundLabel, signedPoints, spokenPoints } from '../format'
+import { directionWord, signedPoints, spokenPoints } from '../format'
 import { layoutSlot } from '../layout'
+import { PARENT_ROUND } from '../offerCopy'
 import { ModeBadge } from './ModeBadge'
 import { OfferPayoutTiles } from './offers/OfferPayoutTiles'
 import { OfferTimer } from './offers/OfferTimer'
@@ -53,7 +54,7 @@ export function DoubleDownOffer({
             <h2 id="dd-title">Play one bonus round in the same direction?</h2>
             <p className="dd-kept">
               <Check className="ic" size={14} aria-hidden="true" />
-              <span><b>{signedPoints(payout.parentDelta)} kept</b> from round {roundLabel(offer.parentPredictionId)}. Whatever you choose, it stays.</span>
+              <span><b>{signedPoints(payout.parentDelta)} kept</b> from your {PARENT_ROUND}. Whatever you choose, it stays.</span>
             </p>
             <p>
               Direction is fixed: {offer.direction === 'DOWN'

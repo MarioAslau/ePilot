@@ -188,12 +188,10 @@ function PlayerStatus() {
                       entryPrice={view.active.entryPrice}
                       entryTime={new Date(view.active.entryTradeTime)}
                       deadline={new Date(view.active.dueAt)}
-                      predictionId={view.active.predictionId}
                       state={view.waitReason ?? undefined}
                       secondsRemaining={view.remaining}
                       latestPrice={market.price ?? undefined}
                       mode={view.active.mode}
-                      parentPredictionId={view.active.parentPredictionId}
                       autoFocus={
                         prediction.placed?.predictionId === view.active.predictionId
                         || offer?.bonusPredictionId === view.active.predictionId
@@ -228,7 +226,6 @@ function PlayerStatus() {
                         resolutionTime={new Date(view.settled.resolutionTradeTime)}
                         fetchedAt={view.settled.resolutionFetchedAt ? new Date(view.settled.resolutionFetchedAt) : undefined}
                         settledAt={new Date(view.settled.resolvedAt)}
-                        predictionId={view.settled.predictionId}
                         scoreDelta={view.settled.scoreDelta}
                         parent={view.settled.parent}
                         mode={view.settled.mode}

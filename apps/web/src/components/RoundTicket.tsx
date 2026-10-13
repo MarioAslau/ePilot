@@ -1,9 +1,9 @@
 import { OFFER_RULES, pairTotals, type Direction, type Mode, type WaitReason } from 'contracts'
 import { ArrowDown, ArrowUp, Equal, Link, Pause } from 'lucide-react'
 import { useEffect, useRef } from 'react'
-import { directionWord, formatDuration, formatMove, formatTime, formatUsd, roundLabel, signedPoints } from '../format'
+import { directionWord, formatDuration, formatMove, formatTime, formatUsd, signedPoints } from '../format'
 import { PLAY_TITLE_ID } from '../focusTargets'
-import { MODE_DISPLAY } from '../offerCopy'
+import { MODE_DISPLAY, PARENT_ROUND } from '../offerCopy'
 import { WAIT_SECONDS } from '../timing'
 
 interface Props {
@@ -11,14 +11,12 @@ interface Props {
   entryPrice: string
   entryTime: Date
   deadline: Date
-  predictionId: string
   state?: WaitReason
   /** Seconds remaining until deadline (computed by parent) */
   secondsRemaining?: number
   note?: string
   latestPrice?: string
   mode?: Mode
-  parentPredictionId?: string
   autoFocus?: boolean
   /** Seconds since the last successful player poll. Shown after the minimum wait. */
   checkedAgoSeconds?: number
@@ -59,13 +57,13 @@ function ModeTag({ mode }: { mode: Exclude<Mode, 'STANDARD'> }) {
 }
 
 /** The kept parent result and what this bonus round can add. */
-function FollowOn({ mode, parentPredictionId }: { mode: Exclude<Mode, 'STANDARD'>; parentPredictionId: string }) {
+function FollowOn({ mode }: { mode: Exclude<Mode, 'STANDARD'> }) {
   const { payout } = OFFER_RULES[mode]
   const pair = pairTotals(payout)
   return (
     <p className="rd-follow fine">
       <Link className="ic" aria-hidden="true" />
-      {' '}Follows round {roundLabel(parentPredictionId)} · {signedPoints(payout.parentDelta)} kept
+      {' '}Follows your {PARENT_ROUND} · {signedPoints(payout.parentDelta)} kept
       {' · '}Right <b className="up-t">{signedPoints(payout.win)}</b> (pair {signedPoints(pair.win)})
       {' · '}Wrong <b className="down-t">{signedPoints(payout.loss)}</b> (pair {signedPoints(pair.loss)})
     </p>
@@ -115,13 +113,11 @@ export function RoundTicket({
   entryPrice,
   entryTime,
   deadline,
-  predictionId,
   state = 'WAITING_FOR_DEADLINE',
   secondsRemaining,
   note,
   latestPrice,
   mode = 'STANDARD',
-  parentPredictionId,
   autoFocus = false,
   checkedAgoSeconds,
 }: Props) {
@@ -147,7 +143,6 @@ export function RoundTicket({
         <div className="rd-main">
           <p className="rd-eyebrow">
             <span className={state === 'PROVIDER_HOLD' ? 'warn' : undefined}>{phaseWord(state)}</span>
-            <span className="subtle">Round {roundLabel(predictionId)}</span>
             {mode !== 'STANDARD' && <ModeTag mode={mode} />}
           </p>
           <h1 id={PLAY_TITLE_ID} className="rd-title" tabIndex={-1} ref={heading}>
@@ -161,7 +156,7 @@ export function RoundTicket({
         <Dial state={state} secondsRemaining={secondsRemaining} />
       </div>
 
-      {mode !== 'STANDARD' && parentPredictionId && <FollowOn mode={mode} parentPredictionId={parentPredictionId} />}
+      {mode !== 'STANDARD' && <FollowOn mode={mode} />}
 
       <dl className="rd-figs">
         <div>

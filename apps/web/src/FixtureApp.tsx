@@ -105,19 +105,17 @@ export function FixtureApp() {
                 {state.activeRound ? (
                   <>
                     {(offerPreview === 'used' || offerPreview === 'replaced') && (
-                      <OfferEndNotice mode={offerMode} phase={offerPreview} parentPredictionId={parentPredictionId} />
+                      <OfferEndNotice mode={offerMode} phase={offerPreview} />
                     )}
                     <RoundTicket
                       direction={state.activeRound.direction}
                       entryPrice={state.activeRound.entryPrice}
                       entryTime={state.activeRound.entryTime}
                       deadline={state.activeRound.deadline}
-                      predictionId={state.activeRound.predictionId}
                       state={state.activeRound.state}
                       secondsRemaining={state.activeRound.secondsRemaining}
                       latestPrice={state.price ?? undefined}
                       mode={roundMode}
-                      parentPredictionId={roundMode === 'STANDARD' ? undefined : parentPredictionId}
                       checkedAgoSeconds={2}
                     />
                   </>
@@ -137,11 +135,10 @@ export function FixtureApp() {
                         resolutionPrice={state.result.resolutionPrice}
                         entryTime={state.result.entryTime}
                         resolutionTime={state.result.resolutionTime}
-                        predictionId={state.result.predictionId}
                         mode={roundMode}
                         parent={roundMode === 'STANDARD'
                           ? undefined
-                          : { predictionId: parentPredictionId, scoreDelta: OFFER_RULES[roundMode].payout.parentDelta }}
+                          : { scoreDelta: OFFER_RULES[roundMode].payout.parentDelta }}
                       />
                     )}
                     {(offerPreview === 'open' || offerPreview === 'extended' || offerPreview === 'submitting') && (
@@ -174,7 +171,7 @@ export function FixtureApp() {
                       </div>
                     )}
                     {(offerPreview === 'expired' || offerPreview === 'declined' || offerPreview === 'used' || offerPreview === 'replaced') && (
-                      <OfferEndNotice mode={offerMode} phase={offerPreview} parentPredictionId={parentPredictionId} />
+                      <OfferEndNotice mode={offerMode} phase={offerPreview} />
                     )}
                   </PredictionPanel>
                 )}

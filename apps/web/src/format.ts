@@ -46,8 +46,3 @@ export function spokenPoints(points: number): string {
 export function directionWord(direction: Direction): 'Up' | 'Down' {
   return direction === 'UP' ? 'Up' : 'Down'
 }
-
-/** Short round label, for example #ABCD12. */
-export function roundLabel(predictionId: string): string {
-  return `#${predictionId.slice(-6).toUpperCase()}`
-}

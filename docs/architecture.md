@@ -240,7 +240,8 @@ Both bonus modes read from one table, `OFFER_RULES` in
 `packages/contracts/src/offerRules.ts`: the trigger outcome, the payout,
 and whether the direction is fixed. The API, the UI, and the fixtures
 all take their numbers from it. A follow-on ticket keeps its "Follows
-round" line from that table after `GET /me` stops sending the offer.
+your previous round" line from that table, keyed by the round's `mode`
+alone, after `GET /me` stops sending the offer.
 
 `GET /me` returns `activePrediction`, `latestResolvedPrediction`
 (identified by `predictionId`), `serverTime`, and `waitReason`.
@@ -612,7 +613,7 @@ Show an entry-note if the server price differs from the displayed price.
 
 **Active / Waiting**
 Show one RoundTicket section, labelled by the "You called Up/Down" heading:
-- Phase eyebrow: Minimum wait, Comparing prices, Price unchanged, or On hold, plus the round id. A follow-on round names Double Down or Redemption in that eyebrow.
+- Phase eyebrow: Minimum wait, Comparing prices, Price unchanged, or On hold. A follow-on round names Double Down or Redemption in that eyebrow.
 - Dial: a countdown (`m:ss`) whose ring fills over 60 seconds while waiting; a spinning arc while comparing; an equal mark when the price is unchanged; a pause mark on provider hold. Reduced motion stops the arc.
 - Three figures: entry price and accepted time, latest price labelled "Not final", and the move versus entry (ahead, behind, or level).
 - Step tracker: Placed → Waiting → Comparing → Result. The current step has `aria-current="step"`.
@@ -749,7 +750,7 @@ Implemented locally. A `STANDARD` win creates one offer only when `FEATURE_DOUBL
 
 ### Redemption Round
 
-Implemented locally. Mario marked the local check done on 2026-10-11. A `STANDARD` loss creates one offer only when `FEATURE_REDEMPTION` is `on`. The offer has no direction. The original −1 is already settled and is not rewritten. The window, the extension, and the single-use accept are the same offer path as Double Down. Accept starts `REDEMPTION` in the direction the player sends. `scoreDelta` maps a win to +4 and a loss to −2. The pair totals are +3 and −3. Decline, expiry, and a replacement standard round leave the −1. A Redemption settlement creates no further offer. The visible name is the constant `REDEMPTION_NAME` in `apps/web/src/featureNames.ts`, currently `Redemption`. See D8.
+Implemented locally. Mario marked the local check done on 2026-10-11. A `STANDARD` loss creates one offer only when `FEATURE_REDEMPTION` is `on`. The offer has no direction. The original −1 is already settled and is not rewritten. The window, the extension, and the single-use accept are the same offer path as Double Down. Accept starts `REDEMPTION` in the direction the player sends. `scoreDelta` maps a win to +4 and a loss to −2. The pair totals are +3 and −3. Decline, expiry, and a replacement standard round leave the −1. A Redemption settlement creates no further offer. The visible name is the constant `REDEMPTION_NAME` in `apps/web/src/featureNames.ts`, currently `Redemption`. The UI does not show round ids. Every offer, ticket, receipt, and end notice calls the parent "your previous round", from `PARENT_ROUND` in `apps/web/src/offerCopy.ts`, and reads the kept points from `OFFER_RULES`. See D8.
 
 Both:
 - Backend owns eligibility and expiry.
@@ -801,7 +802,7 @@ These names exist after the T08 deploy of stage `dev` in `eu-north-1`. They are 
 `yarn serverless remove` from `apps/api` deletes the stack and keeps the table. The table's deletion policy is Retain.
 
 Investigation:
-1. Identify the prediction ID from the player item or the receipt.
+1. Identify the prediction ID from the player item (`activePredictionId` or `latestResolvedPredictionId`) or from logs filtered by `playerId`. The UI does not show round ids.
 2. Read the player item and `PREDICTION#<id>`. A settled player has no `activePredictionId`. A pending item still has `pendingKey`.
 3. In Step Functions, open `prediction-<id>`. A recovered failure is `prediction-<id>-r<epochMinutes>`. `aws stepfunctions describe-execution --execution-arn <arn>` shows the status. `aws stepfunctions get-execution-history --execution-arn <arn>` shows the steps.
 4. In Logs Insights, on the create, resolver, and recovery log groups:

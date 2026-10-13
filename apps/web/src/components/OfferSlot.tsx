@@ -46,7 +46,6 @@ export function OfferSlot({
     <OfferEndNotice
       mode={offer.mode}
       phase={phase}
-      parentPredictionId={offer.parentPredictionId}
       onDismiss={() => controls.dismiss(offer.offerId)}
     />
   )

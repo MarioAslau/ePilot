@@ -1,6 +1,7 @@
-import type { OfferMode } from 'contracts'
+import { OFFER_RULES, type OfferMode } from 'contracts'
 import { REDEMPTION_NAME } from '../featureNames'
-import { roundLabel } from '../format'
+import { signedPoints } from '../format'
+import { PARENT_ROUND } from '../offerCopy'
 import { Ban, Check, Clock, Copy } from 'lucide-react'
 import { StatusNotice } from './StatusNotice'
 
@@ -13,30 +14,30 @@ const PHASE_STYLE = {
   replaced: { kind: 'info', icon: Copy },
 } as const
 
-/** Bold lead and the sentence after it, for each mode and way the offer ended. */
-const COPY: Record<OfferMode, Record<OfferEndPhase, (round: string) => [lead: string, rest: string]>> = {
+/** Bold lead and the sentence after it, for each mode and way the offer ended. `kept` is the parent's points, e.g. +1. */
+const COPY: Record<OfferMode, Record<OfferEndPhase, (kept: string) => [lead: string, rest: string]>> = {
   DOUBLE_DOWN: {
-    expired: () => ['Offer ended. Your +1 is kept.', "Pick Up or Down whenever you're ready for a normal round."],
-    declined: () => ['No bonus round. Your +1 is kept.', "Pick Up or Down whenever you're ready."],
-    used: (round) => [
+    expired: (kept) => [`Offer ended. Your ${kept} is kept.`, "Pick Up or Down whenever you're ready for a normal round."],
+    declined: (kept) => [`No bonus round. Your ${kept} is kept.`, "Pick Up or Down whenever you're ready."],
+    used: (kept) => [
       'Offer no longer available.',
-      `You already doubled down on round ${round} in another tab. Your +1 is kept, and that bonus round is the one you see here.`,
+      `You already doubled down on your ${PARENT_ROUND} in another tab. Your ${kept} is kept, and that bonus round is the one you see here.`,
     ],
-    replaced: (round) => [
+    replaced: (kept) => [
       'Offer no longer available.',
-      `A new round was started in another tab, which ended the Double Down offer for round ${round}. Your +1 is kept.`,
+      `A new round was started in another tab, which ended the Double Down offer for your ${PARENT_ROUND}. Your ${kept} is kept.`,
     ],
   },
   REDEMPTION: {
-    expired: () => ['Offer ended. Your −1 stands.', "Pick Up or Down whenever you're ready for a normal round."],
-    declined: () => [`No ${REDEMPTION_NAME} round. Your −1 stands.`, "Pick Up or Down whenever you're ready."],
-    used: (round) => [
+    expired: (kept) => [`Offer ended. Your ${kept} stands.`, "Pick Up or Down whenever you're ready for a normal round."],
+    declined: (kept) => [`No ${REDEMPTION_NAME} round. Your ${kept} stands.`, "Pick Up or Down whenever you're ready."],
+    used: (kept) => [
       'Offer no longer available.',
-      `A ${REDEMPTION_NAME} round for round ${round} was already started in another tab. Your −1 is kept, and that round is the one shown here.`,
+      `A ${REDEMPTION_NAME} round for your ${PARENT_ROUND} was already started in another tab. Your ${kept} is kept, and that round is the one shown here.`,
     ],
-    replaced: (round) => [
+    replaced: (kept) => [
       'Offer no longer available.',
-      `A normal round was started in another tab, which ended the ${REDEMPTION_NAME} offer for round ${round}. Your −1 is kept.`,
+      `A normal round was started in another tab, which ended the ${REDEMPTION_NAME} offer for your ${PARENT_ROUND}. Your ${kept} is kept.`,
     ],
   },
 }
@@ -44,14 +45,12 @@ const COPY: Record<OfferMode, Record<OfferEndPhase, (round: string) => [lead: st
 export function OfferEndNotice({
   mode,
   phase,
-  parentPredictionId,
   onDismiss,
 }: {
   mode: OfferMode
   phase: OfferEndPhase
-  parentPredictionId: string
   onDismiss?: () => void
 }) {
-  const [lead, rest] = COPY[mode][phase](roundLabel(parentPredictionId))
+  const [lead, rest] = COPY[mode][phase](signedPoints(OFFER_RULES[mode].payout.parentDelta))
   return <StatusNotice {...PHASE_STYLE[phase]} onDismiss={onDismiss} message={<><b>{lead}</b> {rest}</>} />
 }

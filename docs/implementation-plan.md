@@ -1403,12 +1403,19 @@ If time runs short:
   - `OFFER_RULES` in `packages/contracts/src/offerRules.ts` is the one table for a mode's trigger, payout, and whether the direction is fixed. `scoreDelta()`, `pairTotals()`, and `offerModeEnabled()` read it. `scoring.ts` is gone. The web app, including How it works and a follow-on ticket whose offer has already left `GET /me`, uses the same numbers.
   - Handlers share `handlers/common.ts`. One DynamoDB client is created per warm container. Stored rows are decoded with Zod. A bad row errors. Pre-T12 rounds still read as `STANDARD`, and pre-T13 offers still read as `DOUBLE_DOWN`.
   - `App.tsx` announcements live in `useAnnouncer.ts`. The ledger is `ScoreBoard` and `RoundsList`. The list measures `data-layout-slot` elements, not CSS class names.
+  - Round ids are no longer shown. The ticket eyebrow, the receipt footer, the offer cards, and the end notices dropped `#ABCD12`, and `roundLabel` is gone. A second review pass removed what only carried those ids:
+    - `RoundTicket` no longer takes `parentPredictionId`; the follow-on line depends on `mode` only.
+    - `ResultReceipt.parent` is `{ scoreDelta }`.
+    - Fixture rounds no longer carry `predictionId`.
+    - End-notice copy reads the kept points from `OFFER_RULES` instead of eight "+1"/"−1" literals.
+    - The parent is called "your previous round" everywhere, from `PARENT_ROUND` in `offerCopy.ts`.
   - The Claude skill used for this pass is the thermo-nuclear code quality review, installed at `~/.claude/skills/thermo-nuclear-code-quality-review`. It is not a project file. Grill Me and Ponytail stay the Cursor project skills.
 - Checks run and results: the review write-up records `yarn typecheck`, `yarn lint`, and `yarn test` (API 89, web 85, contracts 14) and `yarn workspace web e2e` 8/8. Those commands were not re-run for this diary entry. `yarn serverless package` was not run. DynamoDB Local was skipped because `DYNAMODB_ENDPOINT` was unset.
 - Manual verification: not run for this entry.
 - Decision or tradeoff: behavior stays the same, including the 60-second wait. A corrupt stored row now fails instead of being read as `UP` or `+1`.
 - Remaining limitation: the hosted API does not need a new route, and this branch does not have to be deployed for the current site to keep working. The stricter row decoding and the shared handlers are live only after `serverless deploy`. The web changes need an Amplify rebuild. The T13 note that the follow-on strip disappears with the offer is closed by `OFFER_RULES`.
-- Commit: `refactor(api): model offer modes once and share handler steps` and `refactor(web): read offer rules once and decompose App and the ledger`.
+- Checks for the round-id pass: `yarn workspace web test` 91 passed, `tsc --noEmit` exit 0, `yarn lint` exit 0, `yarn workspace web e2e` 8 passed. Not checked by hand in the browser.
+- Commit: `refactor(api): model offer modes once and share handler steps` and `refactor(web): read offer rules once and decompose App and the ledger`. The round-id pass is not committed yet.
 
 ### Future entry template
 

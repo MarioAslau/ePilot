@@ -1,8 +1,8 @@
 import { scoreDelta as scoreFor, type Direction, type Mode, type Outcome, type ScoreDelta } from 'contracts'
 import { ChevronDown, ChevronUp, Minus, Plus } from 'lucide-react'
-import { directionWord, formatTime, formatUsd, roundLabel, signedPoints, spokenPoints } from '../format'
+import { directionWord, formatTime, formatUsd, signedPoints, spokenPoints } from '../format'
 import { RECEIPT_HEADING_ID } from '../focusTargets'
-import { MODE_DISPLAY } from '../offerCopy'
+import { MODE_DISPLAY, PARENT_ROUND } from '../offerCopy'
 import { ModeBadge } from './ModeBadge'
 
 interface Props {
@@ -14,11 +14,10 @@ interface Props {
   resolutionTime: Date
   fetchedAt?: Date
   settledAt?: Date
-  predictionId: string
   mode?: Mode
   scoreDelta?: ScoreDelta
   /** The kept parent round of a bonus round. */
-  parent?: { predictionId: string; scoreDelta: ScoreDelta }
+  parent?: { scoreDelta: ScoreDelta }
 }
 
 function elapsed(from: Date, to: Date): string {
@@ -39,7 +38,6 @@ export function ResultReceipt({
   resolutionTime,
   fetchedAt,
   settledAt,
-  predictionId,
   mode = 'STANDARD',
   scoreDelta,
   parent,
@@ -106,7 +104,6 @@ export function ResultReceipt({
 
       <p className="fine">
         Compared {elapsed(entryTime, resolutionTime)} after the entry trade. Exact prices decide the result, not the rounded display.
-        Round {roundLabel(predictionId)}.
       </p>
     </aside>
   )
@@ -118,14 +115,14 @@ function PairLine({
   points,
 }: {
   roundName: string
-  parent: { predictionId: string; scoreDelta: ScoreDelta }
+  parent: { scoreDelta: ScoreDelta }
   points: number
 }) {
   const pair = parent.scoreDelta + points
-  const label = `Pair total ${spokenPoints(pair)}: ${spokenPoints(parent.scoreDelta)} from round ${roundLabel(parent.predictionId)}, ${spokenPoints(points)} from the ${roundName} round`
+  const label = `Pair total ${spokenPoints(pair)}: ${spokenPoints(parent.scoreDelta)} from your ${PARENT_ROUND}, ${spokenPoints(points)} from the ${roundName} round`
   return (
     <p className="dd-pair" aria-label={label}>
-      Round {roundLabel(parent.predictionId)} <b>{signedPoints(parent.scoreDelta)}</b>
+      Your {PARENT_ROUND} <b>{signedPoints(parent.scoreDelta)}</b>
       {` + ${roundName} `}<b>{signedPoints(points)}</b>
       {' · Pair total '}<b>{signedPoints(pair)}</b>
     </p>

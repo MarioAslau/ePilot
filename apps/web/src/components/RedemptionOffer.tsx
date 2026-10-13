@@ -1,8 +1,9 @@
 import { pairTotals, type Direction, type Offer } from 'contracts'
 import { ArrowDown, ArrowUp, Lock } from 'lucide-react'
 import { REDEMPTION_NAME } from '../featureNames'
-import { roundLabel, signedPoints, spokenPoints } from '../format'
+import { signedPoints, spokenPoints } from '../format'
 import { layoutSlot } from '../layout'
+import { PARENT_ROUND } from '../offerCopy'
 import { ModeBadge } from './ModeBadge'
 import { OfferPayoutTiles } from './offers/OfferPayoutTiles'
 import { OfferTimer } from './offers/OfferTimer'
@@ -57,7 +58,7 @@ export function RedemptionOffer({
             <h2 id="rd-title">Play one {REDEMPTION_NAME} round?</h2>
             <p className="dd-kept">
               <Lock className="ic" size={14} aria-hidden="true" />
-              <span><b>{signedPoints(payout.parentDelta)} kept</b> from round {roundLabel(offer.parentPredictionId)}. Whatever you choose, it stays.</span>
+              <span><b>{signedPoints(payout.parentDelta)} kept</b> from your {PARENT_ROUND}. Whatever you choose, it stays.</span>
             </p>
             <OfferPayoutTiles payout={offer.payout} />
             <p className="fine"><b>Pick a direction to start it</b> · fresh entry price, at least {WAIT_SECONDS} seconds</p>

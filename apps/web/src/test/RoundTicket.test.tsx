@@ -7,7 +7,6 @@ const props = {
   entryPrice: '65000.00',
   entryTime: new Date('2026-10-11T15:00:00.000Z'),
   deadline: new Date('2026-10-11T15:01:00.000Z'),
-  predictionId: 'p_0000000000000_abcd1234',
   latestPrice: '65012.50',
   secondsRemaining: 40,
 }
@@ -62,11 +61,10 @@ describe('RoundTicket', () => {
       <RoundTicket
         {...props}
         mode="REDEMPTION"
-        parentPredictionId="p_0000000002000_ccccdddd"
       />,
     )
     expect(screen.getByText('Redemption')).toBeInTheDocument()
-    expect(screen.getByText(/Follows round #CCDDDD/)).toBeInTheDocument()
+    expect(screen.getByText(/Follows your previous round/)).toBeInTheDocument()
     expect(screen.getByText('+4')).toBeInTheDocument()
     expect(screen.getByText(/pair \+3/)).toBeInTheDocument()
     expect(screen.getByText(/pair −3/)).toBeInTheDocument()
@@ -76,7 +74,6 @@ describe('RoundTicket', () => {
         {...props}
         direction="DOWN"
         mode="DOUBLE_DOWN"
-        parentPredictionId="p_0000000002000_ccccdddd"
       />,
     )
     expect(screen.getByRole('heading', { name: /You called Down/ })).toBeInTheDocument()
