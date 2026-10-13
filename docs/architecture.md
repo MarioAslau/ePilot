@@ -75,6 +75,7 @@ Proposed functions:
 - createPlayer
 - getPlayerState
 - getMarketPrice
+- getRecentMarket (chart backfill)
 - createPrediction (also calls sfn:StartExecution synchronously after the DB write; see D2)
 - resolvePrediction
 - recoverStuckPredictions (scheduled scanner; see D2)
@@ -189,6 +190,9 @@ Do not log tokens or render unsafe user-provided HTML.
 
 - GET /market
   Public display quote. Returns `price`, `source: COINBASE_EXCHANGE`, `fetchedAt`, `tradeTime`, and `isFresh`. No player token. Provider failure is `503 PROVIDER_UNAVAILABLE`. This quote is not a settlement input.
+
+- GET /market/recent?seconds=180
+  Public chart backfill. `seconds` is a whole number from 1 to 600 and defaults to 180; anything else is `400 INVALID_INPUT`. The handler reads Coinbase Exchange `GET /products/BTC-USD/trades?limit=1000`, keeps the last trade in each whole second of that span, and returns `{ samples: [{ price, tradeTime }], coveredSeconds }`, oldest first. `coveredSeconds` is how far back the 1000 trades reached; it is logged as `market.recent`. On 2026-10-13 it was 340–371 seconds. Cached 1 second. Not a settlement input.
 
 - POST /predictions
   Implemented. Accepts `direction` (`UP` or `DOWN`) and a UUID `idempotencyKey`. The server records the entry price, trade time, `createdAt`, and `dueAt` (`createdAt` plus 60 seconds). A new round is `201`. The same key and direction is `200` with the stored prediction. The same key and other direction is `409 IDEMPOTENCY_CONFLICT`. A different key while a round is open is `409 ACTIVE_ROUND`. A provider failure, or an entry trade older than 10 seconds, is `503 PROVIDER_UNAVAILABLE` and writes nothing. Client `entryPrice`, `createdAt`, and `score` are ignored.
@@ -356,9 +360,11 @@ Display freshness, implemented with `GET /market`:
 
 - `fetchTicker` calls the public Coinbase Exchange BTC-USD ticker, sends a User-Agent, and aborts after 3 seconds. It validates `price` as a positive decimal string and `time` as an ISO datetime. Coinbase microseconds are trimmed to milliseconds. This function is uncached so entry and resolution quotes can reuse it.
 - `isFresh` is true when the trade time is at most 60 seconds before the Lambda clock.
-- `displayQuote` keeps one successful quote for about 3 seconds in a warm Lambda. Failures are not cached. A provider failure returns 503. The browser keeps the last price and labels it Delayed.
-- The browser polls about every 5 seconds. It shows Delayed when the latest poll failed, `isFresh` is false, or the last good sample is more than 15 seconds old by the browser clock. Age is measured from when this browser received the quote.
-- The chart stores fresh samples from the current page only, for about 10 minutes. It does not invent earlier history. The 1-minute change stays hidden until a sample is at least 60 seconds old.
+- `displayQuote` keeps one successful quote for 1 second in a warm Lambda, and the recent trades are cached the same way. Failures are not cached. A provider failure returns 503. The browser keeps the last price and labels it Delayed.
+- The browser polls every 2 seconds while a round is running and for 10 seconds after it settles, and every 5 seconds otherwise. It shows Delayed when the latest poll failed, `isFresh` is false, or the last good sample is more than 15 seconds old by the browser clock. Age is measured from when this browser received the quote.
+- The chart plots every sample at its Coinbase trade time on the server clock (`Date.now()` plus the `/me` offset), never at the browser's receive time. Samples are kept for 10 minutes and deduplicated by trade time. `GET /market/recent` fills them in on load, on focus, and after a gap of more than 15 seconds; a failed backfill is silent. Nothing persists across a reload except what the backfill returns.
+- Chart window: idle shows the last 2 minutes plus 4 seconds. An active round runs from 45 seconds before the entry to 10 seconds after the earliest result; after the deadline it slides at that width and never stretches. A settled round freezes as if 10 seconds after the compared trade.
+- Samples more than 8 seconds apart are not joined, and a delayed or unavailable feed leaves its tail open. Each gap is hatched and labelled "No price data" when it is wide enough.
 
 Entry and resolution quotes call `fetchTicker`, not `displayQuote`. An entry trade older than 10 seconds is unusable. That failure returns `503` and does not write a round. Display freshness stays 60 seconds and does not decide whether an entry quote is accepted.
 
@@ -586,7 +592,7 @@ separate from data-fetching.
 | AppHeader | Logo, anonymous player ID, header score chip (mobile) |
 | MarketCard | Price display, source/freshness pill, sparkline chart |
 | PriceStatus | Live / Delayed / Unavailable pill with dot or icon |
-| PriceChart | SVG sparkline built from validated in-session observations |
+| PriceChart | `apps/web/src/chart/`. Mounts once; a requestAnimationFrame loop builds one frame (scale, eased head, line runs) and small painters write SVG attributes and HTML tag positions through refs, so React renders only on new data. Draws the entry line, the win/lose fill, the result line, the head tag, gaps, the level and hold states, and the compared trade after settlement. Scrubbing, keyboard reading, a summary label and a sample table. `MiniChart` is the frozen 72 px copy on the receipt. |
 | PredictionPanel | Hosts DirectionButtons or active RoundTicket or ResultReceipt |
 | DirectionButtons | Up/Down buttons with locked and loading states |
 | RoundTicket | Active round: "You called" heading, phase eyebrow, wait dial, entry / latest / vs-entry figures, step tracker, and a note that the round keeps running if the page is closed |
@@ -662,7 +668,7 @@ anonymous access.
 
 ### Polling and data freshness
 
-Market polling: approximately 5 s interval, configurable.
+Market polling: 2 s during a round and for 10 s after it settles, 5 s otherwise (`MARKET_POLL_MS`).
 Player-state polling, as built: 2 s while a round is active, 3 s when idle, and 1 s when the round is within 5 s of `dueAt` or the server reports checking, an equal price, or a provider hold. Polling pauses while the tab is in the background. Focus always refetches `/me`. TanStack Query does not start a second interval fetch for that query while one is in flight. `/me` aborts after 8 seconds.
 
 The countdown offset is `serverTime − (t0 + t1) / 2`, where `t0` and `t1` are the client times just before and just after `/me`. The ring uses `Date.now() + offset`.
@@ -686,7 +692,7 @@ communicated through text and icons alone.
 | Moment | Treatment | Rationale |
 |--------|-----------|-----------|
 | Price tick | Small up/down arrow badge; price number stays white | Shows last-move direction without colouring the price |
-| Chart live dot | Soft ping every 2 s while live; stops when delayed | Marks "now" on the chart |
+| Chart head | A new quote eases in over 450 ms; the y range eases toward its target; the line runs flat toward now for at most 2.5 s while live | The line moves continuously without inventing prices |
 | Live pill dot | Pulses every 2 s | Distinguishes live from delayed at a glance |
 | Minimum-wait ring | Yellow arc fills over 60 s around the timer | Makes the core mechanic physical |
 | Comparing | Small spinner | Waiting on the server, not a timer |
@@ -706,7 +712,7 @@ communicated through text and icons alone.
   - Result with outcome and new score total.
   - Do not announce every price tick or countdown second.
 - Direction and outcome use arrow icons plus words; never colour alone.
-- Chart has a text alternative (`aria-label` on the SVG).
+- The chart is `role="img"` with a summary label (entry, latest, which side of the entry, ahead or behind, the result time), rebuilt per quote. It is focusable: Left/Right step through samples, Home/End jump, and the readout is announced politely after 300 ms. "View as table" lists the samples. On touch, scrubbing needs a 250 ms hold so vertical scrolling still works. Reduced motion turns off the easing and the continuous scroll.
 - Prices and timers use tabular figures so layouts do not shift.
 
 ### Round history
@@ -792,7 +798,7 @@ These names exist after the T08 deploy of stage `dev` in `eu-north-1`. They are 
 
 - Table `hunch-dev`, index `pending-by-due`.
 - State machine `hunch-dev-resolution`.
-- Functions `hunch-dev-resolvePrediction`, `hunch-dev-recoverStuckPredictions`, `hunch-dev-getPredictionHistory`, `hunch-dev-acceptOffer`, `hunch-dev-declineOffer`, and `hunch-dev-extendOffer`.
+- Functions `hunch-dev-marketRecent`, `hunch-dev-resolvePrediction`, `hunch-dev-recoverStuckPredictions`, `hunch-dev-getPredictionHistory`, `hunch-dev-acceptOffer`, `hunch-dev-declineOffer`, and `hunch-dev-extendOffer`.
 - Roles `hunch-dev-predictions`, `hunch-dev-resolver`, `hunch-dev-recovery`, `hunch-dev-resolution`, `hunch-dev-history`, and `hunch-dev-offers`. `hunch-dev-history` can `GetItem` and `Query` the table. It cannot scan or write. `hunch-dev-offers` can `GetItem`, `PutItem`, `UpdateItem`, and `TransactWriteItems`, and can start a resolution execution. The resolver can also `PutItem`, because the win transaction puts the offer. These functions and roles are in the packaged template. They are in the account only after the next deploy. The deploy param `doubleDown` defaults to `off`. Pass `--param doubleDown=on` to turn that feature on. The deploy param `redemption` defaults to `off`. Pass `--param redemption=on` to turn Redemption on. The two params are independent. Turning Redemption off does not change Double Down or standard scoring.
 - Topic `hunch-dev-alerts`. Email subscription only when deploy passes `--param alarmEmail=...`. Confirm that email or the alarms have no subscriber.
 - Alarms, all to that topic, period 300 seconds, threshold 1, missing data does not breach: `hunch-dev-resolution-failed`, `hunch-dev-resolution-timed-out`, `hunch-dev-resolver-errors`, `hunch-dev-recovery-errors`, `hunch-dev-workflow-start-failed`.

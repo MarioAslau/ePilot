@@ -104,7 +104,7 @@ Modes: `provider-down`, `drop-response`, `equal-price`, `resolution-provider-dow
 ## Tests
 
 ```bash
-yarn check                                          # typecheck, lint, unit/component tests, build
+yarn run check                                      # typecheck, lint, unit/component tests, build
 yarn workspace web exec playwright install chromium # first time only
 yarn workspace web e2e                              # browser journey, mocked API and clock
 ```

@@ -1417,6 +1417,23 @@ If time runs short:
 - Checks for the round-id pass: `yarn workspace web test` 91 passed, `tsc --noEmit` exit 0, `yarn lint` exit 0, `yarn workspace web e2e` 8 passed. Not checked by hand in the browser.
 - Commit: `refactor(api): model offer modes once and share handler steps` and `refactor(web): read offer rules once and decompose App and the ledger`. The round-id pass is not committed yet.
 
+### Price chart rework
+
+- Status: In the repo, on `feat/price-chart-rework`. Not deployed. Mario has not checked it by hand.
+- What changed, one commit per phase:
+  - Data: samples are plotted at their Coinbase trade time on the server clock, not at the browser's receive time. New `GET /market/recent?seconds=180` returns the last trade per second from Coinbase `/trades` (limit 1000), cached 1 s, and logs `coveredSeconds`. The client merges it on load, on focus and after a gap over 15 s. `/market` is polled every 2 s during a round and for 10 s after it, 5 s otherwise, and its cache drops from 3 s to 1 s. The active window no longer stretches after the deadline.
+  - Rendering: `apps/web/src/chart/` mounts once. A requestAnimationFrame loop eases the head (450 ms) and the y range, and painters write through refs. The loop pauses when hidden, when the chart has no size, for a settled round, and under reduced motion.
+  - Board: win/lose fill split at the entry line, "Up wins above" / "Down wins below", head price tag, entry tag, result line label, two gridlines, 0s/30s/60s ticks.
+  - Edge states: gaps over 8 s are hatched and never joined; a delayed feed leaves its tail open. "Level · still waiting" on an unchanged price, "On hold · not a loss" on a provider hold.
+  - Result: the chart freezes on the settled round with the compared marker, its tag and an outcome-coloured bracket. The receipt has a 72 px copy, or an entry/compared two-point chart after a reload.
+  - Interaction: hover, a 250 ms long-press on touch, keyboard stepping with a debounced announcement, a summary `aria-label`, and "View as table".
+  - `stance()` moved to `round.ts` so the ticket and the chart share one rule. The README's `yarn check` is now `yarn run check`: on Yarn 1, `yarn check` runs Yarn's own dependency checker, not the repo script.
+- Checks run and results: `yarn run check` passed (API 108 + 10 skipped, web 120, contracts 14, build). `yarn workspace web e2e` 14 passed, and 42/42 with `--repeat-each=3`. One earlier e2e run failed once on a `toBeVisible` and did not reproduce in five later runs. `curl localhost:5173/api/market/recent?seconds=180` returned 139 samples covering 371 s; `seconds=0` returned 400. `apps/web/scripts/chart-shots.mjs` captured every chart fixture at 375 and 1280 px with no horizontal overflow.
+- Manual verification: not run by Mario. The chart was driven in Chromium for hover, keyboard, the table and reduced motion. A real touch long-press was only tested in jsdom.
+- Decision or tradeoff: the frozen result window uses the same constant-width slide as a live round, ending 10 s after the compared trade. Gridline and result labels hide when the price tag crowds them instead of moving.
+- Remaining limitation: the hosted site needs `serverless deploy` for `/market/recent` and the 1 s cache, and an Amplify rebuild. Until then the backfill fails silently and the chart fills from live polls only. The chart's quotes between entry and settlement are not stored; after a reload only the backfill window can be shown.
+- Commit: `feat(chart): …` × 6, plus `docs(chart): …`.
+
 ### Future entry template
 
 - Ticket:
