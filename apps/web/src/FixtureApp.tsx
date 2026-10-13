@@ -107,6 +107,7 @@ export function FixtureApp() {
                 samples={chartSamples}
                 now={chartNow}
                 round={state.activeRound ? {
+                  direction: state.activeRound.direction,
                   acceptedAt: state.activeRound.entryTime.getTime(),
                   earliestResolveAt: state.activeRound.deadline.getTime(),
                   entryPrice: state.activeRound.entryPrice,

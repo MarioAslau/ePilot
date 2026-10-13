@@ -1,4 +1,19 @@
-import type { MeResponse, Prediction, WaitReason } from 'contracts'
+import type { Direction, MeResponse, Prediction, WaitReason } from 'contracts'
+import { formatMove } from './format'
+
+export type Stance = 'ahead' | 'behind' | 'level'
+
+/** Whether the latest price is on the winning side of the entry for this call. Equal is level. */
+export function stance(direction: Direction, entry: string, latest: string): { move: string; word: string; tone: Stance } {
+  const delta = Number(latest) - Number(entry)
+  if (!Number.isFinite(delta) || delta === 0) return { move: formatMove(0), word: 'Level with entry', tone: 'level' }
+  const ahead = direction === 'UP' ? delta > 0 : delta < 0
+  return {
+    move: formatMove(delta),
+    word: ahead ? 'Ahead of entry' : 'Behind entry',
+    tone: ahead ? 'ahead' : 'behind',
+  }
+}
 
 export type RoundPhase =
   | 'ready'

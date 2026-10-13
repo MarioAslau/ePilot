@@ -4,14 +4,19 @@ import {
   easedValue,
   headTime,
   HEAD_EXTENSION_MS,
+  gridLines,
   makeScale,
+  pointsFrom,
   stepRange,
   targetRange,
   visibleSamples,
+  winningSide,
+  xTicks,
 } from '../chart/model'
+import { stance } from '../round'
 import { mergeSamples, SAMPLE_WINDOW_MS } from '../chart/samples'
 
-const round = { acceptedAt: 100_000, earliestResolveAt: 160_000, entryPrice: '10' }
+const round = { direction: 'UP' as const, acceptedAt: 100_000, earliestResolveAt: 160_000, entryPrice: '10' }
 
 describe('chartWindow', () => {
   it('shows the last two minutes plus a short lead when idle', () => {
@@ -76,8 +81,8 @@ describe('scale and easing', () => {
   it('maps the window to pixels', () => {
     const scale = makeScale({ start: 0, end: 100 }, { low: 0, high: 10 }, { width: 200, height: 132 })
     expect(scale.xOf(50)).toBe(100)
-    expect(scale.yOf(10)).toBe(16)
-    expect(scale.yOf(0)).toBe(116)
+    expect(scale.yOf(10)).toBe(26)
+    expect(scale.yOf(0)).toBe(118)
   })
 })
 
@@ -93,5 +98,44 @@ describe('head and visible samples', () => {
     expect(visibleSamples(samples, { start: 25, end: 35 })).toEqual([{ time: 20 }, { time: 30 }])
     expect(visibleSamples(samples, { start: 50, end: 60 })).toEqual([{ time: 40 }])
     expect(visibleSamples([], { start: 0, end: 1 })).toEqual([])
+  })
+})
+
+describe('board', () => {
+  it('decides ahead, behind and level for both directions', () => {
+    expect(stance('UP', '100', '101').tone).toBe('ahead')
+    expect(stance('UP', '100', '99').tone).toBe('behind')
+    expect(stance('DOWN', '100', '99').tone).toBe('ahead')
+    expect(stance('DOWN', '100', '101').tone).toBe('behind')
+    expect(stance('DOWN', '100', '100.00').tone).toBe('level')
+  })
+
+  it('colours the winning side by direction: Up above, Down below', () => {
+    expect(winningSide('UP')).toBe('above')
+    expect(winningSide('DOWN')).toBe('below')
+  })
+
+  it('picks at most two round gridline prices inside the range', () => {
+    expect(gridLines({ low: 65_405, high: 65_437 })).toEqual([65_410, 65_420])
+    expect(gridLines({ low: 0, high: 0 })).toEqual([])
+    gridLines({ low: 83_700.5, high: 83_790.2 }).forEach((level) => {
+      expect(level).toBeGreaterThan(83_700.5)
+      expect(level).toBeLessThan(83_790.2)
+    })
+  })
+
+  it('ticks seconds since entry with 60s on the result line, and minutes ago when idle', () => {
+    expect(xTicks(500_000, round)).toEqual([
+      { time: 100_000, label: '0s' },
+      { time: 130_000, label: '30s' },
+      { time: 160_000, label: '60s' },
+    ])
+    expect(xTicks(500_000).map((tick) => tick.label)).toEqual(['−2m', '−1m', 'Now'])
+  })
+
+  it('cuts a polyline at x with an interpolated first point', () => {
+    expect(pointsFrom([[0, 0], [10, 10], [20, 0]], 5)).toEqual([[5, 5], [10, 10], [20, 0]])
+    expect(pointsFrom([[0, 0], [10, 10]], 10)).toEqual([[10, 10]])
+    expect(pointsFrom([[0, 0]], 5)).toEqual([])
   })
 })

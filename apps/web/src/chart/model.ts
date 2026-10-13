@@ -1,5 +1,8 @@
+import type { Direction } from 'contracts'
+
 /** What the chart is showing. All times are server milliseconds. */
 export type ChartRound = {
+  direction: Direction
   acceptedAt: number
   earliestResolveAt: number
   entryPrice: string
@@ -47,8 +50,9 @@ export interface Scale {
   yOf: (price: number) => number
 }
 
-/** Space kept above and below the line so the head dot and tags never touch the edge. */
-export const PAD_Y = 16
+/** Space kept above the line for the result label, and below it for the head dot. */
+export const PAD_TOP = 26
+export const PAD_BOTTOM = 14
 /** The y range never gets narrower than this share of the price, so tiny moves do not look like cliffs. */
 const MIN_SPAN_SHARE = 0.0002
 const RANGE_MARGIN = 0.12
@@ -56,13 +60,13 @@ const RANGE_MARGIN = 0.12
 export function makeScale(window: ChartWindow, range: Range, size: Size): Scale {
   const spanT = window.end - window.start || 1
   const spanP = range.high - range.low || 1
-  const plot = Math.max(0, size.height - PAD_Y * 2)
+  const plot = Math.max(0, size.height - PAD_TOP - PAD_BOTTOM)
   return {
     window,
     range,
     size,
     xOf: (time) => ((time - window.start) / spanT) * size.width,
-    yOf: (price) => PAD_Y + (1 - (price - range.low) / spanP) * plot,
+    yOf: (price) => PAD_TOP + (1 - (price - range.low) / spanP) * plot,
   }
 }
 
@@ -110,4 +114,51 @@ export function visibleSamples<T extends { time: number }>(samples: T[], window:
   const firstInside = samples.findIndex((sample) => sample.time >= window.start)
   if (firstInside === -1) return samples.length ? samples.slice(-1) : []
   return samples.slice(Math.max(0, firstInside - 1)).filter((sample) => sample.time <= window.end)
+}
+
+/** Up to two round price levels inside the range, for light gridlines. */
+export function gridLines(range: Range): number[] {
+  const span = range.high - range.low
+  if (!(span > 0)) return []
+  const rough = span / 4
+  const magnitude = 10 ** Math.floor(Math.log10(rough))
+  const step = [1, 2, 2.5, 5, 10].map((unit) => unit * magnitude).find((candidate) => candidate >= rough) ?? rough
+  const levels: number[] = []
+  for (let level = Math.ceil(range.low / step) * step; level < range.high; level += step) levels.push(level)
+  if (levels.length <= 2) return levels
+  const middle = Math.floor((levels.length - 2) / 2)
+  return levels.slice(middle, middle + 2)
+}
+
+/** Labelled times under the chart: seconds since entry in a round (60s sits on the result line), minutes ago when idle. */
+export function xTicks(now: number, round?: ChartRound): { time: number; label: string }[] {
+  if (!round) {
+    return [
+      { time: now - 120_000, label: '−2m' },
+      { time: now - 60_000, label: '−1m' },
+      { time: now, label: 'Now' },
+    ]
+  }
+  const { acceptedAt, earliestResolveAt } = round
+  return [
+    { time: acceptedAt, label: '0s' },
+    { time: (acceptedAt + earliestResolveAt) / 2, label: '30s' },
+    { time: earliestResolveAt, label: '60s' },
+  ]
+}
+
+/** Which side of the entry line wins for this call. An Up call wins above, a Down call below. */
+export function winningSide(direction: Direction): 'above' | 'below' {
+  return direction === 'UP' ? 'above' : 'below'
+}
+
+/** The part of a polyline from `x` onward, starting with an interpolated point exactly at `x`. */
+export function pointsFrom(points: [number, number][], x: number): [number, number][] {
+  const index = points.findIndex(([px]) => px >= x)
+  if (index === -1) return []
+  const at = points[index]!
+  const before = points[index - 1]
+  if (!before || at[0] === x) return points.slice(index)
+  const share = (x - before[0]) / (at[0] - before[0])
+  return [[x, before[1] + (at[1] - before[1]) * share], ...points.slice(index)]
 }

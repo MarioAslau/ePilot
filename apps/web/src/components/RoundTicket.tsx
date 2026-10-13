@@ -1,7 +1,8 @@
 import { OFFER_RULES, pairTotals, type Direction, type Mode, type WaitReason } from 'contracts'
 import { ArrowDown, ArrowUp, Equal, Link, Pause } from 'lucide-react'
 import { useEffect, useRef } from 'react'
-import { directionWord, formatDuration, formatMove, formatTime, formatUsd, signedPoints } from '../format'
+import { directionWord, formatDuration, formatTime, formatUsd, signedPoints } from '../format'
+import { stance } from '../round'
 import { PLAY_TITLE_ID } from '../focusTargets'
 import { MODE_DISPLAY, PARENT_ROUND } from '../offerCopy'
 import { WAIT_SECONDS } from '../timing'
@@ -38,17 +39,6 @@ function stateDetail(state: WaitReason, deadline: Date): string {
   if (state === 'EQUAL_PRICE') return 'The latest price equals your entry price. Still waiting.'
   if (state === 'PROVIDER_HOLD') return 'Our price source is temporarily unavailable. Your round is on hold, and an outage never counts as a loss.'
   return ''
-}
-
-function stance(direction: Direction, entry: string, latest: string): { move: string; word: string; tone: 'ahead' | 'behind' | 'level' } {
-  const delta = Number(latest) - Number(entry)
-  if (!Number.isFinite(delta) || delta === 0) return { move: formatMove(0), word: 'Level with entry', tone: 'level' }
-  const ahead = direction === 'UP' ? delta > 0 : delta < 0
-  return {
-    move: formatMove(delta),
-    word: ahead ? 'Ahead of entry' : 'Behind entry',
-    tone: ahead ? 'ahead' : 'behind',
-  }
 }
 
 function ModeTag({ mode }: { mode: Exclude<Mode, 'STANDARD'> }) {
