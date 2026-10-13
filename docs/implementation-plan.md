@@ -11,7 +11,7 @@ Then add optional features that demonstrate product judgment.
 - Active ticket: T14
 - Status: In progress
 
-T13 is complete. Mario marked the local Redemption check done on 2026-10-11. `FEATURE_REDEMPTION` is off unless a deploy passes `--param redemption=on`. `yarn dev:local` defaults Redemption on when that variable is unset, the same way it defaults Double Down on. History, Double Down, and Redemption are not on the hosted site until the next API deploy and Amplify rebuild. T12 stays complete: Mario marked the local Double Down check done on 2026-10-11, and that flag stays off unless a deploy passes `--param doubleDown=on`. The post-T13 quality review is in the repo and is not deployed. It adds no route. The hosted API keeps the previous Lambdas until the next `serverless deploy`. The new web app still works against that API. T14 is in progress. The README is drafted. Deploy with both modes on, screenshots, and the hosted final manual test are still open. On 2026-10-11 Mario pressed Up on the hosted site, closed the tab, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14.
+T13 is complete. Mario marked the local Redemption check done on 2026-10-11. Both optional modes are always on; the deploy flags were removed (see the diary). History, Double Down, and Redemption are not on the hosted site until the next API deploy and Amplify rebuild. T12 stays complete: Mario marked the local Double Down check done on 2026-10-11. The post-T13 quality review is in the repo and is not deployed. It adds no route. The hosted API keeps the previous Lambdas until the next `serverless deploy`. The new web app still works against that API. T14 is in progress. The README is drafted. Deploy, screenshots, and the hosted final manual test are still open. On 2026-10-11 Mario pressed Up on the hosted site, closed the tab, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14.
 
 ## Working agreement
 
@@ -111,8 +111,8 @@ The HTML uses a seeded random price walk, an in-page mock server, fake in-memory
 | T09 | Complete exceptional states, focus, responsive polish and repeat-play/restoration behaviour. |
 | T10 | Verified deployed MVP; extras begin only after this gate. |
 | T11 | Real history. Complete locally on 2026-10-11. Not on the hosted site until the next deploy. |
-| T12 | Momentum Double Down. Complete locally on 2026-10-11. Off on a deploy unless `--param doubleDown=on`. Not on the hosted site until the next deploy. |
-| T13 | Redemption. Complete locally on 2026-10-11. Off on a deploy unless `--param redemption=on`. Not on the hosted site until the next deploy. |
+| T12 | Momentum Double Down. Complete locally on 2026-10-11. Not on the hosted site until the next deploy. |
+| T13 | Redemption. Complete locally on 2026-10-11. Not on the hosted site until the next deploy. |
 
 A local fixture view helps test presentation without waiting for markets. It is not proof of backend fairness. Each backend ticket gets API/integration checks and its relevant browser checkpoint.
 
@@ -1374,7 +1374,7 @@ If time runs short:
 
 ### T14
 
-- Status: In progress. README drafted. Deploy with both modes on, screenshots, and the hosted "Final manual test" are still open.
+- Status: In progress. README drafted. Deploy, screenshots, and the hosted "Final manual test" are still open.
 - What changed:
   - The active round is one section. The heading is "You called Up" or "You called Down", with a phase eyebrow, a dial, three figures (entry, latest, vs entry), the step line, and "You can close this page." Focus stays on `#play-title`. "Checked Ns ago" is the age of the last successful `/me` poll and only shows after the minimum wait. History rows use a bare arrow, and a pair list is a block so its price line stays on one line.
   - `README.md`: rewritten for reviewers. It now has:
@@ -1387,7 +1387,7 @@ If time runs short:
     The per-ticket T05–T13 manual checks were removed from the README. The full checklist stays in **Final manual test** above.
 - Checks run and results: README commands were checked against `package.json`, `serverless.yml`, `amplify.yml`, `.github/workflows/ci.yml`, `localDev.ts` and the fixture list. The secrets scan of tracked files found no AWS keys or Serverless access keys. After the active-round redesign: `yarn workspace web test` 79 passed, `yarn workspace web typecheck` exit 0, `yarn lint` exit 0, `yarn workspace web e2e` 8 passed. Fixtures `active`, `checking`, `provider-hold`, `rd-active` and `dd-history` were checked in the browser at 375px and 1024–1080px. Reduced motion sets the comparing arc animation to none.
 - Manual verification: the fixture pass above is done. The hosted check is still pending. Mario will:
-  - deploy with `--param doubleDown=on --param redemption=on`
+  - deploy the API (both modes are always on now)
   - run the hosted steps 15–24 above
   - save `ready.png`, `active.png`, `result.png`, `history.png` and `mobile.png` in `docs/screenshots/`
   - remove the README's "Hosted build pending redeploy" line
@@ -1416,6 +1416,41 @@ If time runs short:
 - Remaining limitation: the hosted API does not need a new route, and this branch does not have to be deployed for the current site to keep working. The stricter row decoding and the shared handlers are live only after `serverless deploy`. The web changes need an Amplify rebuild. The T13 note that the follow-on strip disappears with the offer is closed by `OFFER_RULES`.
 - Checks for the round-id pass: `yarn workspace web test` 91 passed, `tsc --noEmit` exit 0, `yarn lint` exit 0, `yarn workspace web e2e` 8 passed. Not checked by hand in the browser.
 - Commit: `refactor(api): model offer modes once and share handler steps` and `refactor(web): read offer rules once and decompose App and the ledger`. The round-id pass is not committed yet.
+
+### Price chart rework
+
+- Status: In the repo, on `feat/price-chart-rework`. Not deployed. Mario has not checked it by hand.
+- What changed, one commit per phase:
+  - Data: samples are plotted at their Coinbase trade time on the server clock, not at the browser's receive time. New `GET /market/recent?seconds=180` returns the last trade per second from Coinbase `/trades` (limit 1000), cached 1 s, and logs `coveredSeconds`. The client merges it on load, on focus and after a gap over 15 s. `/market` is polled every 2 s during a round and for 10 s after it, 5 s otherwise, and its cache drops from 3 s to 1 s. The active window no longer stretches after the deadline.
+  - Rendering: `apps/web/src/chart/` mounts once. A requestAnimationFrame loop eases the head (450 ms) and the y range, and painters write through refs. The loop pauses when hidden, when the chart has no size, for a settled round, and under reduced motion.
+  - Board: win/lose fill split at the entry line, "Up wins above" / "Down wins below", head price tag, entry tag, result line label, two gridlines, 0s/30s/60s ticks.
+  - Edge states: gaps over 8 s are hatched and never joined; a delayed feed leaves its tail open. "Level · still waiting" on an unchanged price, "On hold · not a loss" on a provider hold.
+  - Result: the chart freezes on the settled round with the compared marker, its tag and an outcome-coloured bracket. The receipt has a 72 px copy, or an entry/compared two-point chart after a reload.
+  - Interaction: hover, a 250 ms long-press on touch, keyboard stepping with a debounced announcement, a summary `aria-label`, and "View as table".
+  - `stance()` moved to `round.ts` so the ticket and the chart share one rule. The README's `yarn check` is now `yarn run check`: on Yarn 1, `yarn check` runs Yarn's own dependency checker, not the repo script.
+- Checks run and results: `yarn run check` passed (API 108 + 10 skipped, web 120, contracts 14, build). `yarn workspace web e2e` 14 passed, and 42/42 with `--repeat-each=3`. One earlier e2e run failed once on a `toBeVisible` and did not reproduce in five later runs. `curl localhost:5173/api/market/recent?seconds=180` returned 139 samples covering 371 s; `seconds=0` returned 400. `apps/web/scripts/chart-shots.mjs` captured every chart fixture at 375 and 1280 px with no horizontal overflow.
+- Manual verification: not run by Mario. The chart was driven in Chromium for hover, keyboard, the table and reduced motion. A real touch long-press was only tested in jsdom.
+- Decision or tradeoff: the frozen result window uses the same constant-width slide as a live round, ending 10 s after the compared trade. Gridline and result labels hide when the price tag crowds them instead of moving.
+- Remaining limitation: the hosted site needs `serverless deploy` for `/market/recent` and the 1 s cache, and an Amplify rebuild. Until then the backfill fails silently and the chart fills from live polls only. The chart's quotes between entry and settlement are not stored; after a reload only the backfill window can be shown.
+- Code-quality review (thermo-nuclear pass) of the chart rework, fixed in `refactor(chart): one frame builder, one stance rule, one draw helper`:
+  - The ahead / behind / level rule had been written three times (`stance()`, `readout()`, `summary()`); the chart now always calls `stance()`.
+  - Frame geometry moved out of the animation hook into pure `viewAt()` / `buildFrame()`, now unit-tested. The frame carries the entry height, the head dot (with the unchanged-price pin) and the compared point, so painters stop recomputing them.
+  - `draw()` / `place()` replace about ten hand-written show/hide blocks.
+  - `settledSamples()` duplicated `samplesInView()` and is gone.
+  - `mergeSamples()` trims relative to the newest sample, which removed the clock offset and two `eslint-disable`s from `useMarket`.
+  - One label-crowding rule; the result label measures itself instead of guessed constants.
+  - `ZoneSide` replaces six parallel refs; `Ticks` lost a remount hack; the tooltip keeps one element; fixture chart data moved to `fixtures/chart.ts`.
+  - Checks: `yarn run check` passed (API 108 + 10 skipped, web 125, contracts 14, build), `yarn workspace web e2e` 14 passed, and every chart fixture was reshot at 375 and 1280 px with no horizontal overflow and no visible change.
+- Commit: `feat(chart): …` × 6, `docs(chart): …`, and `refactor(chart): …`.
+
+### Remove the optional-mode flags
+
+- Status: In the repo, on `feat/price-chart-rework`. Not deployed.
+- What changed: Double Down and Redemption are always on, so the `doubleDown` / `redemption` deploy params, `FEATURE_DOUBLE_DOWN` / `FEATURE_REDEMPTION`, `readFeatures()`, `offerModeEnabled()`, the `Features` type and `features` on `GET /me` are gone. A settled standard round always gets its offer from `OFFER_RULES` by outcome. `GET /me` returns any visible offer, and offer access only checks that the offer exists and belongs to the player. How it works always lists both modes, and its Redemption text reads the kept −1 from `OFFER_RULES`.
+- Why: both modes were needed on in release and locally, so the flags only added code paths and a way to deploy the wrong game by forgetting two params.
+- Checks run and results: `yarn run check` passed (API 108 + 10 skipped, web 125, contracts 14, build). `yarn workspace web e2e` 14 passed. The flag-off test cases were removed; a standard loss now asserts a Redemption offer.
+- Remaining limitation: until the frontend is rebuilt, the hosted page reads `features` from `/me`; the old schema defaults it to off, so the old How it works hides the two modes until Amplify rebuilds. The game itself is unaffected.
+- Commit: `refactor: remove the optional-mode feature flags`.
 
 ### Future entry template
 

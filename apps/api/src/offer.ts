@@ -7,10 +7,8 @@ import {
   OFFER_RULES,
   OfferModeSchema,
   OfferSchema,
-  offerModeEnabled,
   MAX_EXTENSIONS,
   type Direction,
-  type Features,
   type Offer,
   type OfferMode,
   type Outcome,
@@ -53,18 +51,6 @@ export function offerExpiresAt(issuedAt: string, extensions = 0): string {
   return new Date(new Date(issuedAt).getTime() + OFFER_WINDOW_MS + extensions * EXTENSION_MS).toISOString()
 }
 
-/**
- * Feature flags from the environment. `on` enables a mode.
- * Local play passes `localDefault: true` so an unset variable means on; an explicit value still wins.
- */
-export function readFeatures(
-  env: Record<string, string | undefined> = process.env,
-  { localDefault = false }: { localDefault?: boolean } = {},
-): Features {
-  const flag = (value: string | undefined) => (value === undefined ? localDefault : value === 'on')
-  return { doubleDown: flag(env.FEATURE_DOUBLE_DOWN), redemption: flag(env.FEATURE_REDEMPTION) }
-}
-
 /** The offer a settled standard round grants, if any. Bonus rounds never chain. */
 export interface OfferGrant {
   offerId: string
@@ -77,10 +63,9 @@ export interface OfferGrant {
 export function offerFor(
   prediction: Pick<PredictionRecord, 'predictionId' | 'direction' | 'mode'>,
   outcome: Outcome,
-  features: Features,
 ): OfferGrant | undefined {
   if (prediction.mode !== 'STANDARD') return undefined
-  const mode = OFFER_MODES.find((candidate) => OFFER_RULES[candidate].trigger === outcome && offerModeEnabled(candidate, features))
+  const mode = OFFER_MODES.find((candidate) => OFFER_RULES[candidate].trigger === outcome)
   if (!mode) return undefined
   return {
     offerId: offerIdFor(prediction.predictionId),

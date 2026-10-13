@@ -10,16 +10,11 @@ const ddPair = pairTotals(dd)
 const rd = OFFER_RULES.REDEMPTION.payout
 const rdPair = pairTotals(rd)
 
-interface Props {
-  doubleDown?: boolean
-  redemption?: boolean
-}
-
 function setPageScroll(locked: boolean) {
   document.documentElement.classList.toggle('modal-open', locked)
 }
 
-export function HowItWorks({ doubleDown = false, redemption = false }: Props) {
+export function HowItWorks() {
   const dialog = useRef<HTMLDialogElement>(null)
 
   useEffect(() => {
@@ -96,24 +91,20 @@ export function HowItWorks({ doubleDown = false, redemption = false }: Props) {
               Each settled round stays in the list with its direction, entry price, compared price, and point change.
             </div>
           </li>
-          {doubleDown && (
-            <li>
-              <div>
-                <b>Double Down</b>
-                After a correct standard round, you can play one bonus round in the same direction.
-                Your {signedPoints(dd.parentDelta)} stays. A correct bonus adds {dd.win} (pair {signedPoints(ddPair.win)}). A miss subtracts {Math.abs(dd.loss)} (pair {signedPoints(ddPair.loss)}). The offer lasts {OFFER_SECONDS} seconds, and Need more time adds {EXTENSION_SECONDS} seconds.
-              </div>
-            </li>
-          )}
-          {redemption && (
-            <li>
-              <div>
-                <b>{REDEMPTION_NAME}</b>
-                After a standard loss, the −1 stays. You can choose Up or Down for one fresh round.
-                Right adds {rd.win} (pair {signedPoints(rdPair.win)}). Wrong subtracts {Math.abs(rd.loss)} (pair {signedPoints(rdPair.loss)}). Decline or expiry keeps the −1. The offer lasts {OFFER_SECONDS} seconds, and Need more time adds {EXTENSION_SECONDS} seconds.
-              </div>
-            </li>
-          )}
+          <li>
+            <div>
+              <b>Double Down</b>
+              After a correct standard round, you can play one bonus round in the same direction.
+              Your {signedPoints(dd.parentDelta)} stays. A correct bonus adds {dd.win} (pair {signedPoints(ddPair.win)}). A miss subtracts {Math.abs(dd.loss)} (pair {signedPoints(ddPair.loss)}). The offer lasts {OFFER_SECONDS} seconds, and Need more time adds {EXTENSION_SECONDS} seconds.
+            </div>
+          </li>
+          <li>
+            <div>
+              <b>{REDEMPTION_NAME}</b>
+              After a standard loss, the {signedPoints(rd.parentDelta)} stays. You can choose Up or Down for one fresh round.
+              Right adds {rd.win} (pair {signedPoints(rdPair.win)}). Wrong subtracts {Math.abs(rd.loss)} (pair {signedPoints(rdPair.loss)}). Decline or expiry keeps the {signedPoints(rd.parentDelta)}. The offer lasts {OFFER_SECONDS} seconds, and Need more time adds {EXTENSION_SECONDS} seconds.
+            </div>
+          </li>
         </ol>
         <div className="rulebox">
           <strong>Rules</strong>

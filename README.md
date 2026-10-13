@@ -29,7 +29,7 @@ A small web game built for the epilot coding assignment. You guess whether the B
 
 | Requirement | How it is met |
 |---|---|
-| Current score and latest BTC/USD price always visible | Score from `GET /me`; price from `GET /market` (Coinbase BTC-USD ticker), polled about every 5 s with a Live / Delayed / Unavailable state. |
+| Current score and latest BTC/USD price always visible | Score from `GET /me`; price from `GET /market` (Coinbase BTC-USD ticker), polled every 2 s during a round and 5 s otherwise, with a Live / Delayed / Unavailable state. The chart backfills the last 3 minutes from `GET /market/recent`. |
 | Guess up or down | `POST /predictions`. The server fetches its own entry price and never trusts one from the browser. |
 | One guess at a time | A DynamoDB transaction locks the player while a round is open, so two tabs or a double click get `409 ACTIVE_ROUND`. |
 | Resolve after the price changed **and** ≥ 60 s passed | A Step Functions workflow waits until entry + 60 s, then compares a fresh trade whose timestamp is also ≥ 60 s after entry. An equal price waits 5 s and checks again. |
@@ -43,7 +43,7 @@ A small web game built for the epilot coding assignment. You guess whether the B
 
 ```
 Browser (React, AWS Amplify Hosting)
-   │  polls GET /market (~5 s) and GET /me (1–3 s)
+   │  polls GET /market (2–5 s) and GET /me (1–3 s); GET /market/recent backfills the chart
    ▼
 API Gateway HTTP API ──► Lambda handlers ──► DynamoDB (players, rounds, offers)
                               │
@@ -62,14 +62,14 @@ API Gateway HTTP API ──► Lambda handlers ──► DynamoDB (players, roun
 EventBridge schedule (every 5 min) ──► recovery Lambda restarts any round whose workflow is missing
 ```
 
-- **Fairness:** the server owns every price and timestamp; the browser's price is display only.
+- **Fairness:** the server owns every price and timestamp; the browser's price is display only. The chart plots each price at its exchange trade time, shows the winning and losing side of your entry, and after settlement marks the exact compared trade.
 - **Reliability:** one active round per player is a DynamoDB condition, guesses carry an idempotency key so retries return the same round, and settlement is conditional so it cannot count twice. CloudWatch alarms cover failed workflows and Lambda errors.
 - **Identity:** no accounts. `POST /players` returns a random 256-bit token once; the server stores only its SHA-256 hash.
 - **Stack:** React, TypeScript, Vite, Tailwind CSS, TanStack Query, Zod · AWS Lambda, API Gateway, DynamoDB, Step Functions, EventBridge, CloudWatch, SNS · Serverless Framework v4 · AWS Amplify Hosting · Vitest, React Testing Library, Playwright · GitHub Actions.
 
 ### Optional modes
 
-Beyond the brief, each behind its own deploy flag (off by default, on in the hosted build). Standard rounds always score ±1.
+Beyond the brief, and always on: after each standard round the player can accept or decline one follow-on. Standard rounds always score ±1.
 
 - **Momentum Double Down:** after a win, one bonus round in the same direction: +2 / −2 (pair total +3 or −1).
 - **Redemption:** after a loss, one round in a direction you choose: +4 / −2 (pair total +3 or −3).
@@ -87,7 +87,7 @@ yarn install
 yarn dev:local
 ```
 
-The app opens at http://localhost:5173. The port is fixed because the API's CORS rule and the fault-switch URL depend on it; if it is in use, the command stops and can be re-run once the port is free. `yarn dev:local` runs the real API handlers in memory inside the Vite dev server, with real Coinbase prices and real 60-second rounds. Both optional modes are on (set `FEATURE_DOUBLE_DOWN=off` or `FEATURE_REDEMPTION=off` to hide one). Data is lost when the command stops; if the browser then reports that its player was rejected, **Start a new player** resolves it.
+The app opens at http://localhost:5173. The port is fixed because the API's CORS rule and the fault-switch URL depend on it; if it is in use, the command stops and can be re-run once the port is free. `yarn dev:local` runs the real API handlers in memory inside the Vite dev server, with real Coinbase prices and real 60-second rounds. Data is lost when the command stops; if the browser then reports that its player was rejected, **Start a new player** resolves it.
 
 To run the frontend against a deployed API instead, copy `.env.example` to `.env` in the repository root, set `VITE_API_BASE_URL`, and run `yarn dev`.
 
@@ -104,7 +104,7 @@ Modes: `provider-down`, `drop-response`, `equal-price`, `resolution-provider-dow
 ## Tests
 
 ```bash
-yarn check                                          # typecheck, lint, unit/component tests, build
+yarn run check                                      # typecheck, lint, unit/component tests, build
 yarn workspace web exec playwright install chromium # first time only
 yarn workspace web e2e                              # browser journey, mocked API and clock
 ```
@@ -133,9 +133,7 @@ CI (`.github/workflows/ci.yml`) runs `check`, the DynamoDB race tests and the Pl
 cd apps/api
 yarn serverless deploy --stage dev --region eu-north-1 \
   --param amplifyOrigin=https://<your-amplify-domain> \
-  --param alarmEmail=<you@example.com> \
-  --param doubleDown=on \
-  --param redemption=on
+  --param alarmEmail=<you@example.com>
 ```
 
 This creates the DynamoDB table `hunch-<stage>`, the Lambdas, the HTTP API, the state machine, the recovery schedule, and the alarms with their SNS topic. It prints the API URL. `yarn serverless package …` validates without deploying.
@@ -144,7 +142,6 @@ This creates the DynamoDB table `hunch-<stage>`, the Lambdas, the HTTP API, the 
 |---|---|---|---|
 | `amplifyOrigin` | deploy param | `http://localhost:5173` | Origin allowed by CORS (localhost is always allowed). |
 | `alarmEmail` | deploy param | none | Alarm email. Confirm the email AWS sends. |
-| `doubleDown` / `redemption` | deploy param → `FEATURE_*` Lambda env | `off` | Optional modes. Locally on unless set to `off`. |
 | `VITE_API_BASE_URL` | frontend build | empty | API Gateway URL, no trailing slash. `yarn dev:local` sets it to `/api`. |
 
 No secrets live in the repository.

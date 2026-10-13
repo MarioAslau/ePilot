@@ -16,9 +16,11 @@ export type FixtureName =
   | 'active'
   | 'checking'
   | 'equal-price'
+  | 'feed-gap'
   | 'provider-hold'
   | 'win'
   | 'loss'
+  | 'win-reload'
   | 'setup-error'
   | 'history'
   | 'history-empty'
@@ -54,9 +56,11 @@ export const FIXTURE_NAMES: FixtureName[] = [
   'active',
   'checking',
   'equal-price',
+  'feed-gap',
   'provider-hold',
   'win',
   'loss',
+  'win-reload',
   'setup-error',
   'history',
   'history-empty',
@@ -87,7 +91,8 @@ export const FIXTURE_NAMES: FixtureName[] = [
   'rd-reduced-motion',
 ]
 
-const NOW = new Date('2026-10-06T14:00:00Z')
+export const FIXTURE_NOW = new Date('2026-10-06T14:00:00Z')
+const NOW = FIXTURE_NOW
 const LATER = new Date(NOW.getTime() + 75_000)
 
 export interface FixtureState {
@@ -99,6 +104,10 @@ export interface FixtureState {
   wins: number
   losses: number
   isSubmitting?: boolean
+  /** No chart samples at all, as after a reload: the receipt shows the two-point chart. */
+  noSamples?: boolean
+  /** Seconds-ago span with no chart samples, to preview a gap in the feed. */
+  sampleGap?: [from: number, to: number]
   activeRound?: {
     direction: Direction
     entryPrice: PriceString
@@ -119,8 +128,6 @@ export interface FixtureState {
   flash?: 'win' | 'loss' | null
   history?: HistoryRound[]
   offerPreview?: 'open' | 'extended' | 'submitting' | 'expired' | 'declined' | 'used' | 'replaced'
-  doubleDownHelp?: boolean
-  redemptionHelp?: boolean
   restored?: boolean
   /** Which offer the preview shows. Defaults to Double Down. */
   offerMode?: OfferMode
@@ -136,7 +143,6 @@ function ddBase(label: string, extra: Partial<FixtureState> = {}): FixtureState 
     score: 1,
     wins: 1,
     losses: 0,
-    doubleDownHelp: true,
     ...extra,
   }
 }
@@ -212,6 +218,23 @@ export const fixtures: Record<FixtureName, FixtureState> = {
     },
   },
 
+  'feed-gap': {
+    label: 'Feed gap',
+    price: '65441.80',
+    priceStatus: 'live',
+    score: 3,
+    wins: 5,
+    losses: 2,
+    sampleGap: [62, 41],
+    activeRound: {
+      direction: 'UP',
+      entryPrice: '65432.10',
+      entryTime: NOW,
+      deadline: LATER,
+      state: 'WAITING_FOR_DEADLINE',
+      secondsRemaining: 20,
+    },
+  },
   'provider-hold': {
     label: 'Provider hold',
     price: null,
@@ -237,6 +260,24 @@ export const fixtures: Record<FixtureName, FixtureState> = {
     wins: 6,
     losses: 2,
     flash: 'win',
+    result: {
+      outcome: 'WIN',
+      direction: 'UP',
+      entryPrice: '65432.10',
+      resolutionPrice: '65901.33',
+      entryTime: NOW,
+      resolutionTime: LATER,
+    },
+  },
+
+  'win-reload': {
+    label: 'Win after reload',
+    price: '65901.33',
+    priceStatus: 'live',
+    score: 4,
+    wins: 6,
+    losses: 2,
+    noSamples: true,
     result: {
       outcome: 'WIN',
       direction: 'UP',
@@ -361,7 +402,6 @@ function rdBase(label: string, extra: Partial<FixtureState> = {}): FixtureState 
     score: -1,
     wins: 0,
     losses: 1,
-    redemptionHelp: true,
     offerMode: 'REDEMPTION',
     result: {
       outcome: 'LOSS',

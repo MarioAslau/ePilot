@@ -23,6 +23,8 @@ import { RoundTicket } from './components/RoundTicket'
 import { LedgerCard } from './components/LedgerCard'
 import { StatusNotice } from './components/StatusNotice'
 import { type FixtureName, FIXTURE_NAMES, fixtures } from './fixtures'
+import { fixtureChart } from './fixtures/chart'
+import { isSettled } from './chart/model'
 import { ledgerPhase } from './round'
 
 const qc = new QueryClient()
@@ -67,6 +69,8 @@ export function FixtureApp() {
     status: 'OPEN' as const,
   }
 
+  const chart = fixtureChart(state)
+
   return (
     <QueryClientProvider client={qc}>
       {/* PREVIEW banner — only rendered in dev fixture mode */}
@@ -96,11 +100,9 @@ export function FixtureApp() {
               <MarketCard
                 price={state.price}
                 status={state.priceStatus}
-                round={state.activeRound ? {
-                  acceptedAt: state.activeRound.entryTime.getTime(),
-                  earliestResolveAt: state.activeRound.deadline.getTime(),
-                  entryPrice: state.activeRound.entryPrice,
-                } : undefined}
+                samples={chart.samples}
+                now={chart.now}
+                round={chart.round}
               >
                 {state.activeRound ? (
                   <>
@@ -136,6 +138,7 @@ export function FixtureApp() {
                         entryTime={state.result.entryTime}
                         resolutionTime={state.result.resolutionTime}
                         mode={roundMode}
+                        chart={isSettled(chart.round) ? { round: chart.round, samples: chart.samples } : undefined}
                         parent={roundMode === 'STANDARD'
                           ? undefined
                           : { scoreDelta: OFFER_RULES[roundMode].payout.parentDelta }}
@@ -209,7 +212,7 @@ export function FixtureApp() {
             </div>
           </div>
         </main>
-        <HowItWorks doubleDown={state.doubleDownHelp} redemption={state.redemptionHelp} />
+        <HowItWorks />
       </div>
     </QueryClientProvider>
   )

@@ -1,24 +1,23 @@
-import { offerModeEnabled } from 'contracts'
 import { errorResponse, json } from '../http.js'
 import { log } from '../log.js'
-import { offerResponse, readFeatures, type OfferConflict, type OfferRecord } from '../offer.js'
+import { offerResponse, type OfferConflict, type OfferRecord } from '../offer.js'
 import type { PlayerRecord } from '../playerStore.js'
 import { authenticate, type HandlerDeps } from './common.js'
 
 type Response = ReturnType<typeof json>
 
-/** Authenticate, then load an offer that belongs to the player and whose mode is enabled. */
+/** Authenticate, then load an offer that belongs to the player. */
 export async function loadOffer(
   header: string | undefined,
   offerId: string | undefined,
   requestId: string,
-  deps: Pick<HandlerDeps, 'players' | 'predictions' | 'now' | 'features'>,
+  deps: Pick<HandlerDeps, 'players' | 'predictions' | 'now'>,
 ): Promise<{ player: PlayerRecord; offer: OfferRecord; offerId: string; clock: Date } | { response: Response }> {
   if (!offerId) return { response: errorResponse('OFFER_NOT_FOUND', requestId) }
   const player = await authenticate(header, deps.players)
   if (!player) return { response: errorResponse('UNAUTHORIZED', requestId) }
   const offer = await deps.predictions.getOffer(player.playerId, offerId)
-  if (!offer || offer.playerId !== player.playerId || !offerModeEnabled(offer.mode, deps.features ?? readFeatures())) {
+  if (!offer || offer.playerId !== player.playerId) {
     return { response: errorResponse('OFFER_NOT_FOUND', requestId) }
   }
   return { player, offer, offerId, clock: (deps.now ?? (() => new Date()))() }

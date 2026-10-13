@@ -36,8 +36,6 @@ describe('prediction contracts', () => {
       serverTime: '2026-10-11T15:01:03.000Z',
     })
     expect(parsed.offer).toBeNull()
-    expect(parsed.features.doubleDown).toBe(false)
-    expect(parsed.features.redemption).toBe(false)
   })
 
   it('round-trips an open offer', () => {

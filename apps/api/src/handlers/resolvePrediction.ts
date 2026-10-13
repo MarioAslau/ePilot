@@ -26,9 +26,9 @@ export interface ResolveInput {
  */
 export async function handleResolvePrediction(
   input: ResolveInput,
-  deps: Pick<HandlerDeps, 'players' | 'predictions' | 'now' | 'quote' | 'features'>,
+  deps: Pick<HandlerDeps, 'players' | 'predictions' | 'now' | 'quote'>,
 ): Promise<ResolveInput & { status: ResolveStatus }> {
-  const { players, predictions, now, quote, features } = withDefaults(deps)
+  const { players, predictions, now, quote } = withDefaults(deps)
   const { playerId, predictionId, executionName } = input
   const base = { playerId, predictionId, dueAt: input.dueAt }
   const finish = (
@@ -72,7 +72,7 @@ export async function handleResolvePrediction(
     return finish(recorded === 'already_settled' ? 'ALREADY_SETTLED' : decision.status, 'prediction.check', cause ? { cause } : {})
   }
 
-  const createOffer = offerFor(prediction, decision.outcome, features)
+  const createOffer = offerFor(prediction, decision.outcome)
   const settled = await predictions.settle({
     playerId,
     predictionId,

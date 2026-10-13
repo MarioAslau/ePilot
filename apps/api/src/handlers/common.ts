@@ -1,10 +1,8 @@
-import type { Features } from 'contracts'
 import { randomBytes } from 'node:crypto'
 import type { z } from 'zod'
 import { fetchTicker, ProviderUnavailableError, SETTLEMENT_TRADE_AGE_MS, tradeAgeWithin, type TickerQuote } from '../coinbase.js'
 import { errorResponse, json } from '../http.js'
 import { log } from '../log.js'
-import { readFeatures } from '../offer.js'
 import { readPlayerAuthorization, tokenMatches } from '../player.js'
 import type { PlayerRecord, PlayerStore } from '../playerStore.js'
 import {
@@ -27,7 +25,6 @@ export interface HandlerDeps {
   nextBytes?: (size: number) => Buffer
   quote?: () => Promise<TickerQuote>
   startWorkflow?: (input: WorkflowInput) => Promise<void>
-  features?: Features
 }
 
 export function withDefaults<T extends HandlerDeps>(deps: T) {
@@ -37,7 +34,6 @@ export function withDefaults<T extends HandlerDeps>(deps: T) {
     now,
     nextBytes: deps.nextBytes ?? randomBytes,
     quote: deps.quote ?? (() => fetchTicker({ now })),
-    features: deps.features ?? readFeatures(),
   }
 }
 

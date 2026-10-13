@@ -1,19 +1,27 @@
-import { MarketResponseSchema, type MarketResponse } from 'contracts'
+import { MarketRecentResponseSchema, MarketResponseSchema, type MarketResponse } from 'contracts'
 import { readJson } from './api'
+import { sampleAt, type PriceSample } from './chart/samples'
 
-export const MARKET_POLL_MS = 5_000
+/** Poll every 2 s while a round is running or just settled, otherwise every 5 s. */
+export const MARKET_POLL_MS = { fast: 2_000, normal: 5_000 } as const
 const STALE_AFTER_MS = 15_000
-const SAMPLE_WINDOW_MS = 10 * 60 * 1000
 
-export interface PriceSample {
-  price: string
-  tradeTime: string
-  receivedAt: number
+/** 2 s until `fastUntil` (an active round, or just after it settles), 5 s otherwise. Both are server times. */
+export function marketPollMs(serverNow: number, fastUntil: number): number {
+  return serverNow < fastUntil ? MARKET_POLL_MS.fast : MARKET_POLL_MS.normal
 }
+/** How far back the chart asks for samples it missed. */
+export const BACKFILL_SECONDS = 180
 
 export async function fetchMarket(baseUrl: string): Promise<MarketResponse> {
   const response = await fetch(`${baseUrl}/market`)
   return MarketResponseSchema.parse(await readJson(response))
+}
+
+export async function fetchMarketRecent(baseUrl: string): Promise<PriceSample[]> {
+  const response = await fetch(`${baseUrl}/market/recent?seconds=${BACKFILL_SECONDS}`)
+  const body = MarketRecentResponseSchema.parse(await readJson(response))
+  return body.samples.map((sample) => sampleAt(sample.price, sample.tradeTime))
 }
 
 export type FeedStatus = 'loading' | 'live' | 'stale' | 'unavailable'
@@ -27,16 +35,4 @@ export function feedStatus(input: {
   const age = input.now - input.lastGood.receivedAt
   if (input.errored || !input.lastGood.isFresh || age > STALE_AFTER_MS) return 'stale'
   return 'live'
-}
-
-export function appendSample(
-  samples: PriceSample[],
-  quote: { price: string; tradeTime: string; isFresh: boolean },
-  receivedAt: number,
-): PriceSample[] {
-  const recent = samples.filter((sample) => receivedAt - sample.receivedAt <= SAMPLE_WINDOW_MS)
-  if (!quote.isFresh || recent.some((sample) => sample.tradeTime === quote.tradeTime)) {
-    return recent
-  }
-  return [...recent, { price: quote.price, tradeTime: quote.tradeTime, receivedAt }]
 }

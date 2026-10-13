@@ -104,7 +104,7 @@ async function boot(page: Page, phase: { current: Phase }) {
       return
     }
     if (request.method() === 'GET' && path === '/me') {
-      const base = { playerId, losses: 1, serverTime: issued, features: { doubleDown: true, redemption: true } }
+      const base = { playerId, losses: 1, serverTime: issued }
       const current = phase.current
       if (current === 'active') {
         await json({ ...base, score: -1, wins: 0, activePrediction: child('PENDING'), latestResolvedPrediction: parentSettled(), waitReason: 'WAITING_FOR_DEADLINE', offer: offer('ACCEPTED') })

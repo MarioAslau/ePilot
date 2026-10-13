@@ -16,10 +16,14 @@ import { offerPhase, offerSlot } from './offer'
 import { clockOffset, ledgerPhase, pollInterval, roundView, TICKET_PHASES } from './round'
 import { clearSession, readSession, StorageUnavailableError, writeSession } from './session'
 import { useAnnouncer } from './useAnnouncer'
+import { chartRoundFor, isSettled } from './chart/model'
 import { useHistory } from './useHistory'
 import { useMarket } from './useMarket'
 import { useOffer } from './useOffer'
 import { usePrediction } from './usePrediction'
+
+/** The chart keeps polling every 2 s this long after a round settles. */
+const FAST_AFTER_SETTLE_MS = 10_000
 
 const SCORE_COPY = 'Your score is saved on our server. This browser remembers your anonymous player.'
 const STORAGE_LIMIT =
@@ -109,13 +113,22 @@ function PlayerStatus() {
     hasPlayer: Boolean(me),
   })
   const stalePlayer = problem === 'stale'
-  const market = useMarket(baseUrl)
   const view = roundView({
     me,
     placed: prediction.placed,
     submitPhase: prediction.phase,
     offsetMs: snapshot?.offsetMs ?? 0,
     nowMs,
+  })
+  // The chart follows the active round, then freezes on the settled one while its receipt is shown.
+  const settledRound = view.settled ? chartRoundFor(view.settled) : undefined
+  const resultChart = isSettled(settledRound) ? settledRound : undefined
+  const chartRound = view.active ? chartRoundFor(view.active, view.waitReason ?? undefined) : resultChart
+  const market = useMarket(baseUrl, {
+    offsetMs: snapshot?.offsetMs ?? 0,
+    fastUntil: view.active
+      ? Infinity
+      : view.settled?.resolvedAt ? Date.parse(view.settled.resolvedAt) + FAST_AFTER_SETTLE_MS : 0,
   })
   // While an offer is open or just ended, the play area offers "Go again?" alongside it.
   const offerInPlay = slot === 'live' || slot === 'ended'
@@ -173,11 +186,7 @@ function PlayerStatus() {
                 ageSeconds={market.ageSeconds}
                 samples={market.samples}
                 now={market.now}
-                round={view.active ? {
-                  acceptedAt: new Date(view.active.entryTradeTime).getTime(),
-                  earliestResolveAt: new Date(view.active.dueAt).getTime(),
-                  entryPrice: view.active.entryPrice,
-                } : undefined}
+                round={chartRound}
               >
                 {view.active ? (
                   <>
@@ -229,6 +238,7 @@ function PlayerStatus() {
                         scoreDelta={view.settled.scoreDelta}
                         parent={view.settled.parent}
                         mode={view.settled.mode}
+                        chart={resultChart && { round: resultChart, samples: market.samples }}
                       />
                     )}
                     {view.settled && view.settled.predictionId === announcer.welcomeBackId && (
@@ -296,7 +306,7 @@ function PlayerStatus() {
           </div>
         </div>
       </main>
-      <HowItWorks doubleDown={Boolean(me?.features.doubleDown)} redemption={Boolean(me?.features.redemption)} />
+      <HowItWorks />
     </>
   )
 }

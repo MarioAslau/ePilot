@@ -141,9 +141,6 @@ export const MeResponseSchema = z.object({
   waitReason: WaitReasonSchema.nullable(),
   serverTime: z.string().datetime(),
   offer: OfferSchema.nullable().default(null),
-  features: z
-    .object({ doubleDown: z.boolean(), redemption: z.boolean() })
-    .default({ doubleDown: false, redemption: false }),
 })
 export type MeResponse = z.infer<typeof MeResponseSchema>
 
@@ -156,6 +153,23 @@ export const MarketResponseSchema = z.object({
   isFresh: z.boolean(),
 })
 export type MarketResponse = z.infer<typeof MarketResponseSchema>
+
+/** One display sample: the last Coinbase trade in a whole second. Not a settlement input. */
+export const MarketSampleSchema = z.object({
+  price: PriceStringSchema,
+  tradeTime: z.string().datetime(),
+})
+export type MarketSample = z.infer<typeof MarketSampleSchema>
+
+/** `GET /market/recent?seconds=`: samples oldest first, and how many seconds the provider's trades reached back. */
+export const MarketRecentQuerySchema = z.object({
+  seconds: z.coerce.number().int().min(1).max(600).default(180),
+})
+export const MarketRecentResponseSchema = z.object({
+  samples: z.array(MarketSampleSchema),
+  coveredSeconds: z.number().nonnegative(),
+})
+export type MarketRecentResponse = z.infer<typeof MarketRecentResponseSchema>
 
 export const CreatePredictionRequestSchema = z.object({
   direction: DirectionSchema,
@@ -224,5 +238,5 @@ export type ErrorResponse = z.infer<typeof ErrorResponseSchema>
 export { evaluate } from './evaluator.js'
 export type { EvaluatorInput, EvaluatorResult } from './evaluator.js'
 export { EXTENSION_MS, MAX_EXTENSIONS, MINIMUM_WAIT_MS, OFFER_WINDOW_MS } from './timing.js'
-export { OFFER_MODES, OFFER_RULES, offerModeEnabled, pairTotals, scoreDelta } from './offerRules.js'
-export type { Features, OfferRule } from './offerRules.js'
+export { OFFER_MODES, OFFER_RULES, pairTotals, scoreDelta } from './offerRules.js'
+export type { OfferRule } from './offerRules.js'
