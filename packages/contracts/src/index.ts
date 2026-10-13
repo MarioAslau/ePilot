@@ -141,9 +141,6 @@ export const MeResponseSchema = z.object({
   waitReason: WaitReasonSchema.nullable(),
   serverTime: z.string().datetime(),
   offer: OfferSchema.nullable().default(null),
-  features: z
-    .object({ doubleDown: z.boolean(), redemption: z.boolean() })
-    .default({ doubleDown: false, redemption: false }),
 })
 export type MeResponse = z.infer<typeof MeResponseSchema>
 
@@ -241,5 +238,5 @@ export type ErrorResponse = z.infer<typeof ErrorResponseSchema>
 export { evaluate } from './evaluator.js'
 export type { EvaluatorInput, EvaluatorResult } from './evaluator.js'
 export { EXTENSION_MS, MAX_EXTENSIONS, MINIMUM_WAIT_MS, OFFER_WINDOW_MS } from './timing.js'
-export { OFFER_MODES, OFFER_RULES, offerModeEnabled, pairTotals, scoreDelta } from './offerRules.js'
-export type { Features, OfferRule } from './offerRules.js'
+export { OFFER_MODES, OFFER_RULES, pairTotals, scoreDelta } from './offerRules.js'
+export type { OfferRule } from './offerRules.js'

@@ -14,7 +14,6 @@ import { handleResolvePrediction } from './handlers/resolvePrediction.js'
 import { errorResponse } from './http.js'
 import { memoryGameStore } from './memoryStore.js'
 import type { DevFault, LocalApp } from './localDevTypes.js'
-import { readFeatures } from './offer.js'
 import type { WorkflowInput } from './workflowClient.js'
 
 export type { DevFault, LocalApp, LocalResult } from './localDevTypes.js'
@@ -45,7 +44,6 @@ const providerDown = async (): Promise<TickerQuote> => {
  */
 export function createLocalApp(): LocalApp {
   const store = memoryGameStore()
-  const features = readFeatures(process.env, { localDefault: true })
   let nextFault: DevFault | null = null
   const scripted = new Set<ScriptedPrice>()
   let resolutionHolds = 0
@@ -74,7 +72,6 @@ export function createLocalApp(): LocalApp {
         {
           predictions: store,
           players: store,
-          features,
           quote: async () => {
             if (resolutionHolds > 0) {
               resolutionHolds -= 1
@@ -100,7 +97,6 @@ export function createLocalApp(): LocalApp {
     return {
       players: store,
       predictions: store,
-      features,
       quote: fault === 'provider-down' ? providerDown : () => fetchTicker(),
       startWorkflow: async (input) => scheduleResolution(input),
     }
@@ -131,7 +127,7 @@ export function createLocalApp(): LocalApp {
 
       if (method === 'POST' && path === '/api/players') return handleCreatePlayer('local', { players: store })
       if (method === 'GET' && path === '/api/me') {
-        return handleMe(authorization, 'local', { players: store, predictions: store, features })
+        return handleMe(authorization, 'local', { players: store, predictions: store })
       }
       if (method === 'GET' && path === '/api/market') return handleMarket('local')
       if (method === 'GET' && path === '/api/market/recent') return handleMarketRecent(query, 'local')

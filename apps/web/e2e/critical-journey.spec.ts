@@ -242,7 +242,7 @@ test('accepts a double down and shows the pair, expiry, and a replaced offer', a
   }
 
   function me() {
-    const base = { playerId, losses: 0, serverTime: start.toISOString(), features: { doubleDown: true, redemption: false } }
+    const base = { playerId, losses: 0, serverTime: start.toISOString() }
     if (phase === 'won') return { ...base, score: 1, wins: 1, activePrediction: null, latestResolvedPrediction: parentSettled(), waitReason: null, offer: offer('OPEN') }
     if (phase === 'bonus') return { ...base, score: 1, wins: 1, activePrediction: bonusPending(), latestResolvedPrediction: parentSettled(), waitReason: 'WAITING_FOR_DEADLINE', offer: offer('ACCEPTED') }
     if (phase === 'bonus-won') return { ...base, score: 3, wins: 2, activePrediction: null, latestResolvedPrediction: bonusSettled(), waitReason: null, offer: null }

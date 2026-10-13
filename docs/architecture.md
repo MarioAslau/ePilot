@@ -2,14 +2,14 @@
 
 ## Status
 
-T11, T12, and T13 are complete locally. Redemption is not deployed. Mario confirmed history on 2026-10-11 and marked Double Down done the same day. Both optional flags default off. `yarn dev:local` defaults each one on when its variable is unset. The hosted site `https://release.d2yczmbttcpoe9.amplifyapp.com` still shows the T10 build until the next API deploy and Amplify rebuild. History, Double Down, and Redemption are in the packaged template and are not in the account until that deploy. A deploy leaves Double Down off unless it passes `--param doubleDown=on`, and leaves Redemption off unless it passes `--param redemption=on`. T10's hosted check still stands: on 2026-10-11 Mario pressed Up, closed the tab while the round was running, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14.
+T11, T12, and T13 are complete locally. Redemption is not deployed. Mario confirmed history on 2026-10-11 and marked Double Down done the same day. Double Down and Redemption are always on, locally and in every deploy; the earlier `doubleDown` / `redemption` deploy flags were removed. The hosted site `https://release.d2yczmbttcpoe9.amplifyapp.com` still shows the T10 build until the next API deploy and Amplify rebuild. History, Double Down, and Redemption are in the packaged template and are not in the account until that deploy. T10's hosted check still stands: on 2026-10-11 Mario pressed Up, closed the tab while the round was running, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14.
 
 ## Product goal
 
 A player should understand the game quickly, trust the result and
 return to their saved progress without needing to register.
 
-The standard prediction loop is the game. Momentum Double Down is an optional continuation after a standard win. Redemption is an optional continuation after a standard loss. Each one is off until a deploy passes `--param doubleDown=on` or `--param redemption=on`.
+The standard prediction loop is the game. Momentum Double Down is an optional continuation after a standard win. Redemption is an optional continuation after a standard loss. Both are always on; the player chooses whether to accept each offer.
 
 ## Standard rules
 
@@ -264,21 +264,16 @@ Error codes: `INVALID_INPUT`, `UNAUTHORIZED`, `ACTIVE_ROUND`,
 `IDEMPOTENCY_CONFLICT`, `PROVIDER_UNAVAILABLE`, `OFFER_EXPIRED`,
 `OFFER_ACCEPTED`, `OFFER_DECLINED`, `OFFER_REPLACED`, `MAX_EXTENSIONS`,
 `OFFER_NOT_FOUND`, and `DIRECTION_REQUIRED`. Offer conflicts are 409.
-A missing offer, another player's offer, or an offer whose mode flag is
-off is 404 `OFFER_NOT_FOUND`. `DIRECTION_REQUIRED` is 400. Only
+A missing offer or another player's offer is 404 `OFFER_NOT_FOUND`. `DIRECTION_REQUIRED` is 400. Only
 `PROVIDER_UNAVAILABLE` is in `RECOVERABLE_ERROR_CODES`.
 
-`GET /me` also returns `offer` and `features`, with `doubleDown` and
-`redemption`. `offer` is the latest offer while it is open, and for 60
-seconds after its deadline, and only when that offer's mode flag is on.
-After that it is null. The offer includes `mode`, `direction` (null when
+`GET /me` also returns `offer`: the latest offer while it is open, and for 60
+seconds after its deadline. After that it is null. The offer includes `mode`, `direction` (null when
 the player has not chosen), `payout` (`win`, `loss`, `parentDelta`), and
 `chosenDirection` after a Redemption accept. `payout` is read from
 `OFFER_RULES`. It is not stored. A resolved follow-on includes
 `parent: { predictionId, scoreDelta }`, which is +1 for Double Down and
-−1 for Redemption. `FEATURE_DOUBLE_DOWN` is on only when the Serverless
-param `doubleDown` is `on`. `FEATURE_REDEMPTION` is on only when
-`redemption` is `on`. Both default off.
+−1 for Redemption.
 
 ## Proposed data model
 
@@ -748,21 +743,20 @@ The following prototype behaviours must NOT appear in production:
 
 ## Optional modes
 
-Momentum Double Down and Redemption are both implemented locally and off by default.
+Momentum Double Down and Redemption are both always on. Removing the deploy flags is recorded in the implementation diary.
 
 ### Momentum Double Down
 
-Implemented locally. A `STANDARD` win creates one offer only when `FEATURE_DOUBLE_DOWN` is `on`. `issuedAt` is that settlement's `resolvedAt`. The first deadline is 10 seconds later. Need more time adds 20 seconds, at most 10 times. Accept starts `DOUBLE_DOWN` in the parent's direction. `evaluate()` stays ±1. `scoreDelta(mode, outcome)` maps a bonus round to ±2. The original +1 is never rewritten. A bonus win does not create another offer. `wins` and `losses` still increase by 1 per settled round, including a bonus round. Decline sets `DECLINED`. The settlement transaction puts the offer once; a repeated settle returns `already_settled`.
+A `STANDARD` win creates one offer. `issuedAt` is that settlement's `resolvedAt`. The first deadline is 10 seconds later. Need more time adds 20 seconds, at most 10 times. Accept starts `DOUBLE_DOWN` in the parent's direction. `evaluate()` stays ±1. `scoreDelta(mode, outcome)` maps a bonus round to ±2. The original +1 is never rewritten. A bonus win does not create another offer. `wins` and `losses` still increase by 1 per settled round, including a bonus round. Decline sets `DECLINED`. The settlement transaction puts the offer once; a repeated settle returns `already_settled`.
 
 ### Redemption Round
 
-Implemented locally. Mario marked the local check done on 2026-10-11. A `STANDARD` loss creates one offer only when `FEATURE_REDEMPTION` is `on`. The offer has no direction. The original −1 is already settled and is not rewritten. The window, the extension, and the single-use accept are the same offer path as Double Down. Accept starts `REDEMPTION` in the direction the player sends. `scoreDelta` maps a win to +4 and a loss to −2. The pair totals are +3 and −3. Decline, expiry, and a replacement standard round leave the −1. A Redemption settlement creates no further offer. The visible name is the constant `REDEMPTION_NAME` in `apps/web/src/featureNames.ts`, currently `Redemption`. The UI does not show round ids. Every offer, ticket, receipt, and end notice calls the parent "your previous round", from `PARENT_ROUND` in `apps/web/src/offerCopy.ts`, and reads the kept points from `OFFER_RULES`. See D8.
+Mario marked the local check done on 2026-10-11. A `STANDARD` loss creates one offer. The offer has no direction. The original −1 is already settled and is not rewritten. The window, the extension, and the single-use accept are the same offer path as Double Down. Accept starts `REDEMPTION` in the direction the player sends. `scoreDelta` maps a win to +4 and a loss to −2. The pair totals are +3 and −3. Decline, expiry, and a replacement standard round leave the −1. A Redemption settlement creates no further offer. The visible name is the constant `REDEMPTION_NAME` in `apps/web/src/featureNames.ts`, currently `Redemption`. The UI does not show round ids. Every offer, ticket, receipt, and end notice calls the parent "your previous round", from `PARENT_ROUND` in `apps/web/src/offerCopy.ts`, and reads the kept points from `OFFER_RULES`. See D8.
 
 Both:
 - Backend owns eligibility and expiry.
 - Acceptance is conditional and single-use.
 - Respect one active prediction.
-- Use separate feature flags.
 - Explain exact arithmetic before acceptance.
 - No real money.
 
@@ -799,7 +793,7 @@ These names exist after the T08 deploy of stage `dev` in `eu-north-1`. They are 
 - Table `hunch-dev`, index `pending-by-due`.
 - State machine `hunch-dev-resolution`.
 - Functions `hunch-dev-marketRecent`, `hunch-dev-resolvePrediction`, `hunch-dev-recoverStuckPredictions`, `hunch-dev-getPredictionHistory`, `hunch-dev-acceptOffer`, `hunch-dev-declineOffer`, and `hunch-dev-extendOffer`.
-- Roles `hunch-dev-predictions`, `hunch-dev-resolver`, `hunch-dev-recovery`, `hunch-dev-resolution`, `hunch-dev-history`, and `hunch-dev-offers`. `hunch-dev-history` can `GetItem` and `Query` the table. It cannot scan or write. `hunch-dev-offers` can `GetItem`, `PutItem`, `UpdateItem`, and `TransactWriteItems`, and can start a resolution execution. The resolver can also `PutItem`, because the win transaction puts the offer. These functions and roles are in the packaged template. They are in the account only after the next deploy. The deploy param `doubleDown` defaults to `off`. Pass `--param doubleDown=on` to turn that feature on. The deploy param `redemption` defaults to `off`. Pass `--param redemption=on` to turn Redemption on. The two params are independent. Turning Redemption off does not change Double Down or standard scoring.
+- Roles `hunch-dev-predictions`, `hunch-dev-resolver`, `hunch-dev-recovery`, `hunch-dev-resolution`, `hunch-dev-history`, and `hunch-dev-offers`. `hunch-dev-history` can `GetItem` and `Query` the table. It cannot scan or write. `hunch-dev-offers` can `GetItem`, `PutItem`, `UpdateItem`, and `TransactWriteItems`, and can start a resolution execution. The resolver can also `PutItem`, because the win transaction puts the offer. These functions and roles are in the packaged template. They are in the account only after the next deploy.
 - Topic `hunch-dev-alerts`. Email subscription only when deploy passes `--param alarmEmail=...`. Confirm that email or the alarms have no subscriber.
 - Alarms, all to that topic, period 300 seconds, threshold 1, missing data does not breach: `hunch-dev-resolution-failed`, `hunch-dev-resolution-timed-out`, `hunch-dev-resolver-errors`, `hunch-dev-recovery-errors`, `hunch-dev-workflow-start-failed`.
 
@@ -1101,4 +1095,4 @@ The ticket fixes the arithmetic. At roughly even odds, accepting is worth about 
 - A remote or env name: rejected. One string does not need a config system.
 
 **Tradeoff or limitation.**
-A player who wants to stop does not improve the expected score by declining. The copy stays neutral and does not say the decline is a better bet. The hosted flag stays off until a deploy passes `--param redemption=on`.
+A player who wants to stop does not improve the expected score by declining. The copy stays neutral and does not say the decline is a better bet.

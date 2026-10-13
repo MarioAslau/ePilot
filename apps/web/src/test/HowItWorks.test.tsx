@@ -12,5 +12,7 @@ describe('HowItWorks', () => {
     expect(screen.getByText(/make your call/i)).toBeInTheDocument()
     expect(screen.getByText('Your rounds')).toBeInTheDocument()
     expect(screen.getByText(/at least 60 seconds/i)).toBeInTheDocument()
+    expect(screen.getByText('Double Down')).toBeInTheDocument()
+    expect(screen.getByText('Redemption')).toBeInTheDocument()
   })
 })

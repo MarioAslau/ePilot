@@ -1,7 +1,7 @@
 import type { APIGatewayProxyHandlerV2 } from 'aws-lambda'
-import { MeResponseSchema, offerModeEnabled, type Features, type Prediction, type WaitReason } from 'contracts'
+import { MeResponseSchema, type Prediction, type WaitReason } from 'contracts'
 import { authorizationHeader, errorResponse, json } from '../http.js'
-import { offerIsVisible, offerResponse, readFeatures } from '../offer.js'
+import { offerIsVisible, offerResponse } from '../offer.js'
 import type { PlayerStore } from '../playerStore.js'
 import { predictionResponse, type PredictionRecord } from '../prediction.js'
 import type { PredictionStore } from '../predictionStore.js'
@@ -25,7 +25,6 @@ export async function handleMe(
     players: PlayerStore
     predictions: Pick<PredictionStore, 'getPrediction' | 'getOffer'>
     now?: () => Date
-    features?: Features
   },
 ) {
   const record = await authenticate(header, deps.players)
@@ -33,17 +32,13 @@ export async function handleMe(
 
   const { playerId } = record
   const clock = (deps.now ?? (() => new Date()))()
-  const features = deps.features ?? readFeatures()
   const prediction = (id: string | undefined) => (id ? deps.predictions.getPrediction(playerId, id) : null)
   const [active, latest, storedOffer] = await Promise.all([
     prediction(record.activePredictionId),
     prediction(record.latestResolvedPredictionId),
     record.latestOfferId ? deps.predictions.getOffer(playerId, record.latestOfferId) : null,
   ])
-  const offer =
-    storedOffer && offerIsVisible(storedOffer, clock) && offerModeEnabled(storedOffer.mode, features)
-      ? offerResponse(storedOffer, clock)
-      : null
+  const offer = storedOffer && offerIsVisible(storedOffer, clock) ? offerResponse(storedOffer, clock) : null
   const resolved = latest?.status === 'RESOLVED' ? latest : null
   const parentRecord = resolved && resolved.mode !== 'STANDARD' ? await prediction(resolved.parentPredictionId) : null
   const parent: Prediction['parent'] = parentRecord?.scoreDelta
@@ -62,7 +57,6 @@ export async function handleMe(
       waitReason: waitReasonFor(active, clock),
       serverTime: clock.toISOString(),
       offer,
-      features,
     }),
   )
 }

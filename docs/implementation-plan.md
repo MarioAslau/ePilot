@@ -11,7 +11,7 @@ Then add optional features that demonstrate product judgment.
 - Active ticket: T14
 - Status: In progress
 
-T13 is complete. Mario marked the local Redemption check done on 2026-10-11. `FEATURE_REDEMPTION` is off unless a deploy passes `--param redemption=on`. `yarn dev:local` defaults Redemption on when that variable is unset, the same way it defaults Double Down on. History, Double Down, and Redemption are not on the hosted site until the next API deploy and Amplify rebuild. T12 stays complete: Mario marked the local Double Down check done on 2026-10-11, and that flag stays off unless a deploy passes `--param doubleDown=on`. The post-T13 quality review is in the repo and is not deployed. It adds no route. The hosted API keeps the previous Lambdas until the next `serverless deploy`. The new web app still works against that API. T14 is in progress. The README is drafted. Deploy with both modes on, screenshots, and the hosted final manual test are still open. On 2026-10-11 Mario pressed Up on the hosted site, closed the tab, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14.
+T13 is complete. Mario marked the local Redemption check done on 2026-10-11. Both optional modes are always on; the deploy flags were removed (see the diary). History, Double Down, and Redemption are not on the hosted site until the next API deploy and Amplify rebuild. T12 stays complete: Mario marked the local Double Down check done on 2026-10-11. The post-T13 quality review is in the repo and is not deployed. It adds no route. The hosted API keeps the previous Lambdas until the next `serverless deploy`. The new web app still works against that API. T14 is in progress. The README is drafted. Deploy, screenshots, and the hosted final manual test are still open. On 2026-10-11 Mario pressed Up on the hosted site, closed the tab, and reopened after 5 minutes. The round had settled as a loss. The fuller pass before submission remains the hosted list under T14.
 
 ## Working agreement
 
@@ -111,8 +111,8 @@ The HTML uses a seeded random price walk, an in-page mock server, fake in-memory
 | T09 | Complete exceptional states, focus, responsive polish and repeat-play/restoration behaviour. |
 | T10 | Verified deployed MVP; extras begin only after this gate. |
 | T11 | Real history. Complete locally on 2026-10-11. Not on the hosted site until the next deploy. |
-| T12 | Momentum Double Down. Complete locally on 2026-10-11. Off on a deploy unless `--param doubleDown=on`. Not on the hosted site until the next deploy. |
-| T13 | Redemption. Complete locally on 2026-10-11. Off on a deploy unless `--param redemption=on`. Not on the hosted site until the next deploy. |
+| T12 | Momentum Double Down. Complete locally on 2026-10-11. Not on the hosted site until the next deploy. |
+| T13 | Redemption. Complete locally on 2026-10-11. Not on the hosted site until the next deploy. |
 
 A local fixture view helps test presentation without waiting for markets. It is not proof of backend fairness. Each backend ticket gets API/integration checks and its relevant browser checkpoint.
 
@@ -1374,7 +1374,7 @@ If time runs short:
 
 ### T14
 
-- Status: In progress. README drafted. Deploy with both modes on, screenshots, and the hosted "Final manual test" are still open.
+- Status: In progress. README drafted. Deploy, screenshots, and the hosted "Final manual test" are still open.
 - What changed:
   - The active round is one section. The heading is "You called Up" or "You called Down", with a phase eyebrow, a dial, three figures (entry, latest, vs entry), the step line, and "You can close this page." Focus stays on `#play-title`. "Checked Ns ago" is the age of the last successful `/me` poll and only shows after the minimum wait. History rows use a bare arrow, and a pair list is a block so its price line stays on one line.
   - `README.md`: rewritten for reviewers. It now has:
@@ -1387,7 +1387,7 @@ If time runs short:
     The per-ticket T05–T13 manual checks were removed from the README. The full checklist stays in **Final manual test** above.
 - Checks run and results: README commands were checked against `package.json`, `serverless.yml`, `amplify.yml`, `.github/workflows/ci.yml`, `localDev.ts` and the fixture list. The secrets scan of tracked files found no AWS keys or Serverless access keys. After the active-round redesign: `yarn workspace web test` 79 passed, `yarn workspace web typecheck` exit 0, `yarn lint` exit 0, `yarn workspace web e2e` 8 passed. Fixtures `active`, `checking`, `provider-hold`, `rd-active` and `dd-history` were checked in the browser at 375px and 1024–1080px. Reduced motion sets the comparing arc animation to none.
 - Manual verification: the fixture pass above is done. The hosted check is still pending. Mario will:
-  - deploy with `--param doubleDown=on --param redemption=on`
+  - deploy the API (both modes are always on now)
   - run the hosted steps 15–24 above
   - save `ready.png`, `active.png`, `result.png`, `history.png` and `mobile.png` in `docs/screenshots/`
   - remove the README's "Hosted build pending redeploy" line
@@ -1442,6 +1442,15 @@ If time runs short:
   - `ZoneSide` replaces six parallel refs; `Ticks` lost a remount hack; the tooltip keeps one element; fixture chart data moved to `fixtures/chart.ts`.
   - Checks: `yarn run check` passed (API 108 + 10 skipped, web 125, contracts 14, build), `yarn workspace web e2e` 14 passed, and every chart fixture was reshot at 375 and 1280 px with no horizontal overflow and no visible change.
 - Commit: `feat(chart): …` × 6, `docs(chart): …`, and `refactor(chart): …`.
+
+### Remove the optional-mode flags
+
+- Status: In the repo, on `feat/price-chart-rework`. Not deployed.
+- What changed: Double Down and Redemption are always on, so the `doubleDown` / `redemption` deploy params, `FEATURE_DOUBLE_DOWN` / `FEATURE_REDEMPTION`, `readFeatures()`, `offerModeEnabled()`, the `Features` type and `features` on `GET /me` are gone. A settled standard round always gets its offer from `OFFER_RULES` by outcome. `GET /me` returns any visible offer, and offer access only checks that the offer exists and belongs to the player. How it works always lists both modes, and its Redemption text reads the kept −1 from `OFFER_RULES`.
+- Why: both modes were needed on in release and locally, so the flags only added code paths and a way to deploy the wrong game by forgetting two params.
+- Checks run and results: `yarn run check` passed (API 108 + 10 skipped, web 125, contracts 14, build). `yarn workspace web e2e` 14 passed. The flag-off test cases were removed; a standard loss now asserts a Redemption offer.
+- Remaining limitation: until the frontend is rebuilt, the hosted page reads `features` from `/me`; the old schema defaults it to off, so the old How it works hides the two modes until Amplify rebuilds. The game itself is unaffected.
+- Commit: `refactor: remove the optional-mode feature flags`.
 
 ### Future entry template
 

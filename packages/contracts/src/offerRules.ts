@@ -29,12 +29,3 @@ export function scoreDelta(mode: Mode, outcome: Outcome): ScoreDelta {
 export function pairTotals(payout: OfferPayout): { win: number; loss: number } {
   return { win: payout.parentDelta + payout.win, loss: payout.parentDelta + payout.loss }
 }
-
-export interface Features {
-  doubleDown: boolean
-  redemption: boolean
-}
-
-export function offerModeEnabled(mode: OfferMode, features: Features): boolean {
-  return mode === 'REDEMPTION' ? features.redemption : features.doubleDown
-}

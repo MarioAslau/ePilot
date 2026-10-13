@@ -128,8 +128,6 @@ export interface FixtureState {
   flash?: 'win' | 'loss' | null
   history?: HistoryRound[]
   offerPreview?: 'open' | 'extended' | 'submitting' | 'expired' | 'declined' | 'used' | 'replaced'
-  doubleDownHelp?: boolean
-  redemptionHelp?: boolean
   restored?: boolean
   /** Which offer the preview shows. Defaults to Double Down. */
   offerMode?: OfferMode
@@ -145,7 +143,6 @@ function ddBase(label: string, extra: Partial<FixtureState> = {}): FixtureState 
     score: 1,
     wins: 1,
     losses: 0,
-    doubleDownHelp: true,
     ...extra,
   }
 }
@@ -405,7 +402,6 @@ function rdBase(label: string, extra: Partial<FixtureState> = {}): FixtureState 
     score: -1,
     wins: 0,
     losses: 1,
-    redemptionHelp: true,
     offerMode: 'REDEMPTION',
     result: {
       outcome: 'LOSS',

@@ -212,7 +212,7 @@ export function FixtureApp() {
             </div>
           </div>
         </main>
-        <HowItWorks doubleDown={state.doubleDownHelp} redemption={state.redemptionHelp} />
+        <HowItWorks />
       </div>
     </QueryClientProvider>
   )

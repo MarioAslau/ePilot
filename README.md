@@ -69,7 +69,7 @@ EventBridge schedule (every 5 min) ──► recovery Lambda restarts any round 
 
 ### Optional modes
 
-Beyond the brief, each behind its own deploy flag (off by default, on in the hosted build). Standard rounds always score ±1.
+Beyond the brief, and always on: after each standard round the player can accept or decline one follow-on. Standard rounds always score ±1.
 
 - **Momentum Double Down:** after a win, one bonus round in the same direction: +2 / −2 (pair total +3 or −1).
 - **Redemption:** after a loss, one round in a direction you choose: +4 / −2 (pair total +3 or −3).
@@ -87,7 +87,7 @@ yarn install
 yarn dev:local
 ```
 
-The app opens at http://localhost:5173. The port is fixed because the API's CORS rule and the fault-switch URL depend on it; if it is in use, the command stops and can be re-run once the port is free. `yarn dev:local` runs the real API handlers in memory inside the Vite dev server, with real Coinbase prices and real 60-second rounds. Both optional modes are on (set `FEATURE_DOUBLE_DOWN=off` or `FEATURE_REDEMPTION=off` to hide one). Data is lost when the command stops; if the browser then reports that its player was rejected, **Start a new player** resolves it.
+The app opens at http://localhost:5173. The port is fixed because the API's CORS rule and the fault-switch URL depend on it; if it is in use, the command stops and can be re-run once the port is free. `yarn dev:local` runs the real API handlers in memory inside the Vite dev server, with real Coinbase prices and real 60-second rounds. Data is lost when the command stops; if the browser then reports that its player was rejected, **Start a new player** resolves it.
 
 To run the frontend against a deployed API instead, copy `.env.example` to `.env` in the repository root, set `VITE_API_BASE_URL`, and run `yarn dev`.
 
@@ -133,9 +133,7 @@ CI (`.github/workflows/ci.yml`) runs `check`, the DynamoDB race tests and the Pl
 cd apps/api
 yarn serverless deploy --stage dev --region eu-north-1 \
   --param amplifyOrigin=https://<your-amplify-domain> \
-  --param alarmEmail=<you@example.com> \
-  --param doubleDown=on \
-  --param redemption=on
+  --param alarmEmail=<you@example.com>
 ```
 
 This creates the DynamoDB table `hunch-<stage>`, the Lambdas, the HTTP API, the state machine, the recovery schedule, and the alarms with their SNS topic. It prints the API URL. `yarn serverless package …` validates without deploying.
@@ -144,7 +142,6 @@ This creates the DynamoDB table `hunch-<stage>`, the Lambdas, the HTTP API, the 
 |---|---|---|---|
 | `amplifyOrigin` | deploy param | `http://localhost:5173` | Origin allowed by CORS (localhost is always allowed). |
 | `alarmEmail` | deploy param | none | Alarm email. Confirm the email AWS sends. |
-| `doubleDown` / `redemption` | deploy param → `FEATURE_*` Lambda env | `off` | Optional modes. Locally on unless set to `off`. |
 | `VITE_API_BASE_URL` | frontend build | empty | API Gateway URL, no trailing slash. `yarn dev:local` sets it to `/api`. |
 
 No secrets live in the repository.

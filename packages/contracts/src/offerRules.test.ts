@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { OFFER_RULES, offerModeEnabled, pairTotals, scoreDelta } from './index.js'
+import { OFFER_RULES, pairTotals, scoreDelta } from './index.js'
 
 describe('offer rules', () => {
   it('scores standard rounds at one point and optional rounds from the payout table', () => {
@@ -18,10 +18,8 @@ describe('offer rules', () => {
     expect(pairTotals(OFFER_RULES.REDEMPTION.payout)).toEqual({ win: 3, loss: -3 })
   })
 
-  it('opens Double Down on a win and Redemption on a loss, each behind its own flag', () => {
+  it('opens Double Down on a win and Redemption on a loss', () => {
     expect(OFFER_RULES.DOUBLE_DOWN.trigger).toBe('WIN')
     expect(OFFER_RULES.REDEMPTION.trigger).toBe('LOSS')
-    expect(offerModeEnabled('DOUBLE_DOWN', { doubleDown: true, redemption: false })).toBe(true)
-    expect(offerModeEnabled('REDEMPTION', { doubleDown: true, redemption: false })).toBe(false)
   })
 })

@@ -306,7 +306,7 @@ function PlayerStatus() {
           </div>
         </div>
       </main>
-      <HowItWorks doubleDown={Boolean(me?.features.doubleDown)} redemption={Boolean(me?.features.redemption)} />
+      <HowItWorks />
     </>
   )
 }
