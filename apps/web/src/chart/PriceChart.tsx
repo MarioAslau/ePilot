@@ -11,7 +11,6 @@ import type { PriceSample } from './samples'
 import { useChartSize } from './useChartSize'
 import { useReducedMotion } from './useReducedMotion'
 
-export type { ChartRound }
 
 /**
  * The stage chart. It mounts once; a frame loop moves its layers through refs.
@@ -61,7 +60,7 @@ export function PriceChart({
             <EntryLine />
             <PriceLine />
             <HeadDot />
-            <ComparedMarker />
+            {isSettled(round) && <ComparedMarker outcome={round.result.outcome} />}
             <Crosshair sample={hover} />
           </svg>
           <div className="ch-overlay" aria-hidden="true">

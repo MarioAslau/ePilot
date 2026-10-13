@@ -1,5 +1,6 @@
 import type { Direction, Outcome, Prediction, WaitReason } from 'contracts'
 import { formatTime, formatUsd } from '../format'
+import { stance, type Stance } from '../round'
 
 /** What the chart is showing. All times are server milliseconds. */
 export type ChartRound = {
@@ -194,14 +195,6 @@ export function samplesInView<T extends { time: number }>(samples: T[], now: num
   return samples.filter((sample) => sample.time >= start && sample.time <= last)
 }
 
-/** A settled round's samples between the start of its window and the compared trade. Empty after a reload. */
-export function settledSamples<T extends { time: number }>(samples: T[], round: ChartRound): T[] {
-  if (!round.result) return []
-  const { start } = chartWindow(round.result.time, round)
-  const end = round.result.time
-  return samples.filter((sample) => sample.time >= start && sample.time <= end)
-}
-
 /** Which side of the entry line wins for this call. An Up call wins above, a Down call below. */
 export function winningSide(direction: Direction): 'above' | 'below' {
   return direction === 'UP' ? 'above' : 'below'
@@ -274,13 +267,10 @@ export function nearestSample<T extends { time: number }>(samples: T[], time: nu
  */
 export function summary(latest: { price: string } | undefined, round?: ChartRound): string {
   if (!round) return latest ? `BTC/USD price over the last 2 minutes. Latest ${formatUsd(latest.price)}.` : 'BTC/USD price chart. Collecting recent prices.'
-  const entry = Number(round.entryPrice)
   const side = (price: string) => {
-    const value = Number(price)
-    if (value === entry) return 'level with your entry'
-    const above = value > entry
-    const ahead = above === (round.direction === 'UP')
-    return `${above ? 'above' : 'below'} your entry, ${ahead ? 'ahead' : 'behind'}`
+    const { tone } = stance(round.direction, round.entryPrice, price)
+    if (tone === 'level') return 'level with your entry'
+    return `${Number(price) > Number(round.entryPrice) ? 'above' : 'below'} your entry, ${tone}`
   }
   const parts = [`Your ${round.direction === 'UP' ? 'Up' : 'Down'} call. Entry ${formatUsd(round.entryPrice)}.`]
   if (round.result) {
@@ -297,7 +287,7 @@ export interface Readout {
   price: string
   time: string
   /** Against the entry: the move and its direction, "before" for a sample before the entry, or null when idle. */
-  vs: { amount: string; up: boolean | null; tone: 'ahead' | 'behind' | 'level' } | 'before' | null
+  vs: { amount: string; up: boolean | null; tone: Stance } | 'before' | null
 }
 
 /** What scrubbing shows for one sample: its price and time, and how it stands against the entry. */
@@ -306,9 +296,8 @@ export function readout(sample: { price: string; time: number }, round?: ChartRo
   if (!round) return { ...base, vs: null }
   if (sample.time < round.acceptedAt) return { ...base, vs: 'before' }
   const delta = Number(sample.price) - Number(round.entryPrice)
-  const up = delta === 0 ? null : delta > 0
-  const tone = up === null ? 'level' : up === (round.direction === 'UP') ? 'ahead' : 'behind'
-  return { ...base, vs: { amount: formatUsd(String(Math.abs(delta))), up, tone } }
+  const { tone } = stance(round.direction, round.entryPrice, sample.price)
+  return { ...base, vs: { amount: formatUsd(String(Math.abs(delta))), up: delta === 0 ? null : delta > 0, tone } }
 }
 
 /** The readout as one sentence, for the polite announcement. */

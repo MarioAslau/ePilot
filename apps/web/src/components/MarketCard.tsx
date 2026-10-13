@@ -2,7 +2,8 @@ import type { ReactNode } from 'react'
 import { layoutSlot } from '../layout'
 import type { PriceSample } from '../chart/samples'
 import type { FeedStatus } from '../market'
-import { PriceChart, type ChartRound } from '../chart/PriceChart'
+import type { ChartRound } from '../chart/model'
+import { PriceChart } from '../chart/PriceChart'
 import { PriceStatus } from './PriceStatus'
 
 interface Props {

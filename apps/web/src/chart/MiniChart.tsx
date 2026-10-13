@@ -1,7 +1,7 @@
 import { formatUsd } from '../format'
 import { FrameProvider, useChartFrame } from './frame'
 import { ComparedMarker, EntryLine, PriceLine, TwoPointConnector, Zones } from './layers'
-import { settledSamples, winningSide, type SettledRound } from './model'
+import { samplesInView, winningSide, type SettledRound } from './model'
 import type { PriceSample } from './samples'
 import { ComparedTag, EntryTag } from './Tags'
 import { useChartSize } from './useChartSize'
@@ -12,7 +12,7 @@ import { useChartSize } from './useChartSize'
  */
 export function MiniChart({ round, samples }: { round: SettledRound; samples: PriceSample[] }) {
   const { ref, size } = useChartSize<HTMLDivElement>()
-  const series = settledSamples(samples, round)
+  const series = samplesInView(samples, round.result.time, round)
   const frame = useChartFrame({ samples: series, now: round.result.time, round, feed: 'live', size }, true)
   const twoPoint = series.length === 0
   return (
@@ -29,7 +29,7 @@ export function MiniChart({ round, samples }: { round: SettledRound; samples: Pr
             {!twoPoint && <Zones win={winningSide(round.direction)} />}
             <EntryLine />
             {twoPoint ? <TwoPointConnector /> : <PriceLine />}
-            <ComparedMarker />
+            <ComparedMarker outcome={round.result.outcome} />
           </svg>
           <div className="ch-overlay" aria-hidden="true">
             <EntryTag round={round} at="start" />

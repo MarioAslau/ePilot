@@ -53,17 +53,12 @@ export function useMarket(baseUrl: string, { offsetMs = 0, fastUntil = 0 }: { of
     if (!market.data) return
     const quote = market.data
     setLastGood({ price: quote.price, isFresh: quote.isFresh, receivedAt: Date.now() })
-    if (quote.isFresh) {
-      setSamples((current) => mergeSamples(current, [sampleAt(quote.price, quote.tradeTime)], Date.now() + offsetMs))
-    }
-    // offsetMs only trims old samples; a new quote is what should trigger this.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (quote.isFresh) setSamples((current) => mergeSamples(current, [sampleAt(quote.price, quote.tradeTime)]))
   }, [market.data, market.dataUpdatedAt])
 
   useEffect(() => {
     if (!recent.data) return
-    setSamples((current) => mergeSamples(current, recent.data, Date.now() + offsetMs))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setSamples((current) => mergeSamples(current, recent.data))
   }, [recent.data, recent.dataUpdatedAt])
 
   const newest = samples[samples.length - 1]?.time

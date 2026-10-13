@@ -13,8 +13,8 @@ import {
   readout,
   readoutText,
   summary,
+  samplesInView,
   segments,
-  settledSamples,
   pointsFrom,
   stepRange,
   targetRange,
@@ -49,23 +49,21 @@ describe('chartWindow', () => {
 })
 
 describe('mergeSamples', () => {
-  it('dedupes by trade time, keeps time order, and drops samples past the window', () => {
-    const now = SAMPLE_WINDOW_MS + 10_000
+  it('dedupes by trade time, keeps time order, and drops samples older than the window before the newest', () => {
     const merged = mergeSamples(
       [{ price: 'old', time: 5_000 }, { price: 'a', time: 20_000 }],
-      [{ price: 'c', time: 30_000 }, { price: 'a2', time: 20_000 }, { price: 'b', time: 15_000 }],
-      now,
+      [{ price: 'c', time: SAMPLE_WINDOW_MS + 10_000 }, { price: 'a2', time: 20_000 }, { price: 'b', time: 15_000 }],
     )
     expect(merged).toEqual([
       { price: 'b', time: 15_000 },
       { price: 'a2', time: 20_000 },
-      { price: 'c', time: 30_000 },
+      { price: 'c', time: SAMPLE_WINDOW_MS + 10_000 },
     ])
   })
 
   it('returns the same array when nothing arrives', () => {
     const current = [{ price: 'a', time: 1 }]
-    expect(mergeSamples(current, [], 2)).toBe(current)
+    expect(mergeSamples(current, [])).toBe(current)
   })
 })
 
@@ -216,8 +214,7 @@ describe('result', () => {
   it('keeps only the samples of a settled round, up to the compared trade', () => {
     const settled = { ...round, result: { price: '11', time: 175_000, outcome: 'WIN' as const } }
     const samples = [{ time: 60_000 }, { time: 80_000 }, { time: 175_000 }, { time: 176_000 }]
-    expect(settledSamples(samples, settled)).toEqual([{ time: 80_000 }, { time: 175_000 }])
-    expect(settledSamples(samples, round)).toEqual([])
+    expect(samplesInView(samples, 999_999, settled)).toEqual([{ time: 80_000 }, { time: 175_000 }])
   })
 })
 

@@ -7,14 +7,14 @@ export interface PriceSample {
 /** How long the browser keeps samples. The longest view is an active round, about two minutes. */
 export const SAMPLE_WINDOW_MS = 10 * 60 * 1000
 
-/** Merges samples by trade time, oldest first, and drops anything older than the kept window. */
-export function mergeSamples(current: PriceSample[], incoming: PriceSample[], now: number): PriceSample[] {
+/** Merges samples by trade time, oldest first, keeping only the window before the newest one. */
+export function mergeSamples(current: PriceSample[], incoming: PriceSample[]): PriceSample[] {
   if (incoming.length === 0) return current
   const byTime = new Map(current.map((sample) => [sample.time, sample]))
   incoming.forEach((sample) => byTime.set(sample.time, sample))
-  return [...byTime.values()]
-    .filter((sample) => now - sample.time <= SAMPLE_WINDOW_MS)
-    .sort((a, b) => a.time - b.time)
+  const merged = [...byTime.values()].sort((a, b) => a.time - b.time)
+  const newest = merged[merged.length - 1]!.time
+  return merged.filter((sample) => newest - sample.time <= SAMPLE_WINDOW_MS)
 }
 
 /** A sample from a trade-time ISO string. */
