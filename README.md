@@ -29,7 +29,7 @@ A small web game built for the epilot coding assignment. You guess whether the B
 
 | Requirement | How it is met |
 |---|---|
-| Current score and latest BTC/USD price always visible | Score from `GET /me`; price from `GET /market` (Coinbase BTC-USD ticker), polled about every 5 s with a Live / Delayed / Unavailable state. |
+| Current score and latest BTC/USD price always visible | Score from `GET /me`; price from `GET /market` (Coinbase BTC-USD ticker), polled every 2 s during a round and 5 s otherwise, with a Live / Delayed / Unavailable state. The chart backfills the last 3 minutes from `GET /market/recent`. |
 | Guess up or down | `POST /predictions`. The server fetches its own entry price and never trusts one from the browser. |
 | One guess at a time | A DynamoDB transaction locks the player while a round is open, so two tabs or a double click get `409 ACTIVE_ROUND`. |
 | Resolve after the price changed **and** ≥ 60 s passed | A Step Functions workflow waits until entry + 60 s, then compares a fresh trade whose timestamp is also ≥ 60 s after entry. An equal price waits 5 s and checks again. |
@@ -43,7 +43,7 @@ A small web game built for the epilot coding assignment. You guess whether the B
 
 ```
 Browser (React, AWS Amplify Hosting)
-   │  polls GET /market (~5 s) and GET /me (1–3 s)
+   │  polls GET /market (2–5 s) and GET /me (1–3 s); GET /market/recent backfills the chart
    ▼
 API Gateway HTTP API ──► Lambda handlers ──► DynamoDB (players, rounds, offers)
                               │
@@ -62,7 +62,7 @@ API Gateway HTTP API ──► Lambda handlers ──► DynamoDB (players, roun
 EventBridge schedule (every 5 min) ──► recovery Lambda restarts any round whose workflow is missing
 ```
 
-- **Fairness:** the server owns every price and timestamp; the browser's price is display only.
+- **Fairness:** the server owns every price and timestamp; the browser's price is display only. The chart plots each price at its exchange trade time, shows the winning and losing side of your entry, and after settlement marks the exact compared trade.
 - **Reliability:** one active round per player is a DynamoDB condition, guesses carry an idempotency key so retries return the same round, and settlement is conditional so it cannot count twice. CloudWatch alarms cover failed workflows and Lambda errors.
 - **Identity:** no accounts. `POST /players` returns a random 256-bit token once; the server stores only its SHA-256 hash.
 - **Stack:** React, TypeScript, Vite, Tailwind CSS, TanStack Query, Zod · AWS Lambda, API Gateway, DynamoDB, Step Functions, EventBridge, CloudWatch, SNS · Serverless Framework v4 · AWS Amplify Hosting · Vitest, React Testing Library, Playwright · GitHub Actions.

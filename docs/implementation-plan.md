@@ -1432,7 +1432,16 @@ If time runs short:
 - Manual verification: not run by Mario. The chart was driven in Chromium for hover, keyboard, the table and reduced motion. A real touch long-press was only tested in jsdom.
 - Decision or tradeoff: the frozen result window uses the same constant-width slide as a live round, ending 10 s after the compared trade. Gridline and result labels hide when the price tag crowds them instead of moving.
 - Remaining limitation: the hosted site needs `serverless deploy` for `/market/recent` and the 1 s cache, and an Amplify rebuild. Until then the backfill fails silently and the chart fills from live polls only. The chart's quotes between entry and settlement are not stored; after a reload only the backfill window can be shown.
-- Commit: `feat(chart): …` × 6, plus `docs(chart): …`.
+- Code-quality review (thermo-nuclear pass) of the chart rework, fixed in `refactor(chart): one frame builder, one stance rule, one draw helper`:
+  - The ahead / behind / level rule had been written three times (`stance()`, `readout()`, `summary()`); the chart now always calls `stance()`.
+  - Frame geometry moved out of the animation hook into pure `viewAt()` / `buildFrame()`, now unit-tested. The frame carries the entry height, the head dot (with the unchanged-price pin) and the compared point, so painters stop recomputing them.
+  - `draw()` / `place()` replace about ten hand-written show/hide blocks.
+  - `settledSamples()` duplicated `samplesInView()` and is gone.
+  - `mergeSamples()` trims relative to the newest sample, which removed the clock offset and two `eslint-disable`s from `useMarket`.
+  - One label-crowding rule; the result label measures itself instead of guessed constants.
+  - `ZoneSide` replaces six parallel refs; `Ticks` lost a remount hack; the tooltip keeps one element; fixture chart data moved to `fixtures/chart.ts`.
+  - Checks: `yarn run check` passed (API 108 + 10 skipped, web 125, contracts 14, build), `yarn workspace web e2e` 14 passed, and every chart fixture was reshot at 375 and 1280 px with no horizontal overflow and no visible change.
+- Commit: `feat(chart): …` × 6, `docs(chart): …`, and `refactor(chart): …`.
 
 ### Future entry template
 
